@@ -1,18 +1,15 @@
-import { redirect } from 'next/navigation';
-
 import { auth } from '@/auth';
-import MainHub from '@/components/Layout/MainHub';
+import WelcomeLanding from './WelcomeLanding';
 
 export default async function Home() {
   const session = await auth();
 
-  if (!session?.user) {
-    redirect('/login');
-  }
-
   return (
     <main>
-      <MainHub />
+      <WelcomeLanding
+        isLoggedIn={Boolean(session?.user)}
+        sessionUsername={session?.user?.name ?? ''}
+      />
     </main>
   );
 }

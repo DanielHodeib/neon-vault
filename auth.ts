@@ -69,12 +69,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.xp = typedUser.xp;
       }
 
+      if (!token.userId && token.sub) {
+        token.userId = token.sub;
+      }
+
+      if (!token.username && typeof token.name === 'string') {
+        token.username = token.name;
+      }
+
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = (token.userId as string) ?? '';
-        session.user.name = (token.username as string) ?? session.user.name ?? '';
+        session.user.id = ((token.userId as string) ?? (token.sub as string) ?? '');
+        session.user.name =
+          ((token.username as string) ??
+            (typeof token.name === 'string' ? token.name : '') ??
+            session.user.name ??
+            '');
         session.user.balance = (token.balance as number) ?? 0;
         session.user.xp = (token.xp as number) ?? 0;
       }

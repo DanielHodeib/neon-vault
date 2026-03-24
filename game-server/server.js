@@ -62,6 +62,7 @@ const io = new Server(server, {
 });
 
 const onlineUsers = new Map();
+const userActivities = new Map();
 let chatHistory = [];
 const crashRooms = new Map();
 const pokerRooms = new Map();
@@ -316,6 +317,31 @@ function publicCrashRoomMembers(room) {
 function broadcastOnlineUsers() {
   io.emit('online_users', Array.from(onlineUsers.values()));
 }
+
+function setUserActivity(socketId, activity) {
+  userActivities.set(socketId, activity);
+}
+
+function getUserActivity(socketId) {
+  return userActivities.get(socketId) || 'Hub';
+}
+
+app.get('/presence', (_req, res) => {
+  const uniqueUsers = new Map();
+
+  onlineUsers.forEach((username, socketId) => {
+    uniqueUsers.set(username, {
+      username,
+      activity: getUserActivity(socketId),
+      online: true,
+    });
+  });
+
+  res.json({
+    onlineCount: uniqueUsers.size,
+    users: Array.from(uniqueUsers.values()).sort((a, b) => a.username.localeCompare(b.username)),
+  });
+});
 
 function broadcastCrashState(roomId) {
   const room = getCrashRoom(roomId);
@@ -722,6 +748,7 @@ io.on('connection', (socket) => {
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
 
   onlineUsers.set(socket.id, username);
+  setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
 
   socket.emit('chat_history', chatHistory);
@@ -742,6 +769,7 @@ io.on('connection', (socket) => {
     const desired = sanitizeRoomId(payload?.roomId);
     const nextRoom = attachSocketToRoom(socket, desired);
 
+    setUserActivity(socket.id, 'Crash');
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('crash_room_joined', { ok: true, roomId: nextRoom.id });
   });
@@ -750,6 +778,7 @@ io.on('connection', (socket) => {
     const desired = sanitizeRoomId(payload?.roomId);
     const nextRoom = attachPokerSocket(socket, desired, username);
 
+    setUserActivity(socket.id, "Poker");
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
   });
@@ -758,6 +787,7 @@ io.on('connection', (socket) => {
     const desired = sanitizeRoomId(payload?.roomId);
     const nextRoom = attachBlackjackSocket(socket, desired, username);
 
+    setUserActivity(socket.id, 'Blackjack');
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('blackjack_room_joined', { ok: true, roomId: nextRoom.id });
   });
@@ -897,6 +927,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('crash_place_bet', (payload, callback) => {
+    setUserActivity(socket.id, 'Crash');
     const roomId = socket.data.crashRoomId;
     const roomState = getCrashRoom(roomId);
     const amount = Number(payload?.amount ?? 0);
@@ -958,6 +989,7 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id);
+    userActivities.delete(socket.id);
     broadcastOnlineUsers();
     detachSocketFromRoom(socket, socket.data.crashRoomId);
     detachPokerSocket(socket, socket.data.pokerRoomId);
