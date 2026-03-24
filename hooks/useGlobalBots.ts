@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-import { VipRank } from '@/store/useCasinoStore';
+type VipRank = 'Bronze' | 'Silver' | 'Gold' | 'Neon';
 
 type BotEventType = 'bet' | 'win' | 'chat';
 
