@@ -5,6 +5,8 @@
   --foreground: #f5f7ff;
   --panel: rgba(255, 255, 255, 0.02);
   --panel-border: rgba(255, 255, 255, 0.1);
+  --font-space-grotesk: "Space Grotesk", "Avenir Next", Avenir, "Segoe UI", sans-serif;
+  --font-ibm-plex-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
 @theme inline {
