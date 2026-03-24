@@ -1,21 +1,41 @@
 import { create } from 'zustand';
 
+export interface DailyProgress {
+  date: string;
+  bets: number;
+  wins: number;
+  faucetClaimed: boolean;
+  questClaimed: boolean;
+}
+
+interface WalletActionResult {
+  ok: boolean;
+  error?: string;
+}
+
 interface CasinoStore {
   balance: number;
   xp: number;
+  daily: DailyProgress;
   username: string;
   isHydrating: boolean;
   hydrateFromSession: () => Promise<void>;
   syncBalanceFromServer: () => Promise<void>;
   placeBet: (amount: number) => boolean;
   addWin: (amount: number) => void;
-  faucet: () => void;
-  persistWalletAction: (action: 'bet' | 'win' | 'faucet', amount: number) => Promise<boolean>;
+  persistWalletAction: (action: 'bet' | 'win' | 'faucet' | 'quest' | 'refund', amount: number) => Promise<WalletActionResult>;
 }
 
 export const useCasinoStore = create<CasinoStore>((set, get) => ({
   balance: 10000,
   xp: 0,
+  daily: {
+    date: '',
+    bets: 0,
+    wins: 0,
+    faucetClaimed: false,
+    questClaimed: false,
+  },
   username: 'Guest',
   isHydrating: false,
   hydrateFromSession: async () => {
@@ -31,6 +51,11 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
           username: string;
           balance: number;
           xp: number;
+          dailyStatsDate: string;
+          dailyBets: number;
+          dailyWins: number;
+          dailyFaucetClaimed: boolean;
+          dailyQuestClaimed: boolean;
         };
       };
 
@@ -42,6 +67,13 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         username: data.user.username,
         balance: data.user.balance,
         xp: data.user.xp,
+        daily: {
+          date: data.user.dailyStatsDate ?? '',
+          bets: data.user.dailyBets ?? 0,
+          wins: data.user.dailyWins ?? 0,
+          faucetClaimed: data.user.dailyFaucetClaimed ?? false,
+          questClaimed: data.user.dailyQuestClaimed ?? false,
+        },
       });
     } finally {
       set({ isHydrating: false });
@@ -58,6 +90,11 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         user?: {
           balance: number;
           xp: number;
+          dailyStatsDate: string;
+          dailyBets: number;
+          dailyWins: number;
+          dailyFaucetClaimed: boolean;
+          dailyQuestClaimed: boolean;
         };
       };
 
@@ -65,7 +102,17 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         return;
       }
 
-      set({ balance: data.user.balance, xp: data.user.xp });
+      set({
+        balance: data.user.balance,
+        xp: data.user.xp,
+        daily: {
+          date: data.user.dailyStatsDate ?? '',
+          bets: data.user.dailyBets ?? 0,
+          wins: data.user.dailyWins ?? 0,
+          faucetClaimed: data.user.dailyFaucetClaimed ?? false,
+          questClaimed: data.user.dailyQuestClaimed ?? false,
+        },
+      });
     } catch {
       // keep local state when network call fails
     }
@@ -79,7 +126,6 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
     return false;
   },
   addWin: (amount) => set((state) => ({ balance: state.balance + amount })),
-  faucet: () => set((state) => ({ balance: state.balance + 1000 })),
   persistWalletAction: async (action, amount) => {
     try {
       const response = await fetch('/api/wallet', {
@@ -88,15 +134,26 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         body: JSON.stringify({ action, amount }),
       });
 
-      const payload = (await response.json()) as { balance?: number };
+      const payload = (await response.json()) as {
+        balance?: number;
+        xp?: number;
+        error?: string;
+        daily?: DailyProgress;
+      };
+
       if (!response.ok || typeof payload.balance !== 'number') {
-        return false;
+        return { ok: false, error: payload.error ?? 'Wallet action failed.' };
       }
 
-      set({ balance: payload.balance });
-      return true;
+      set((state) => ({
+        balance: payload.balance as number,
+        xp: typeof payload.xp === 'number' ? payload.xp : state.xp,
+        daily: payload.daily ?? state.daily,
+      }));
+
+      return { ok: true };
     } catch {
-      return false;
+      return { ok: false, error: 'Network error.' };
     }
   },
 }));

@@ -18,6 +18,11 @@ export async function GET() {
       username: true,
       balance: true,
       xp: true,
+      dailyStatsDate: true,
+      dailyBets: true,
+      dailyWins: true,
+      dailyFaucetClaimed: true,
+      dailyQuestClaimed: true,
     },
   });
 
