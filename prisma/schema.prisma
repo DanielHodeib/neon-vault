@@ -18,6 +18,11 @@ model User {
   passwordHash        String
   balance             Int          @default(10000)
   xp                  Int          @default(0)
+  dailyStatsDate      String       @default("") @map("daily_stats_date")
+  dailyBets           Int          @default(0) @map("daily_bets")
+  dailyWins           Int          @default(0) @map("daily_wins")
+  dailyFaucetClaimed  Boolean      @default(false) @map("daily_faucet_claimed")
+  dailyQuestClaimed   Boolean      @default(false) @map("daily_quest_claimed")
   createdAt           DateTime     @default(now())
   settings            Settings?
   friendshipsSent     Friendship[] @relation("FriendshipsSent")

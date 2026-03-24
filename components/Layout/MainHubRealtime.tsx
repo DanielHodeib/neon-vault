@@ -117,10 +117,10 @@ export default function MainHubRealtime() {
     balance,
     username,
     xp,
+    daily,
     hydrateFromSession,
     placeBet,
     addWin,
-    faucet,
     persistWalletAction,
   } = useCasinoStore();
 
@@ -184,6 +184,22 @@ export default function MainHubRealtime() {
   const autoCashOutRef = useRef(2);
   const onlineUsersSet = useMemo(() => new Set(onlineUsers), [onlineUsers]);
 
+  const level = useMemo(() => Math.floor(xp / 1000) + 1, [xp]);
+  const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
+  const nextLevelXp = useMemo(() => level * 1000, [level]);
+  const levelProgress = useMemo(() => Math.min(100, Math.round(((xp - levelBaseXp) / 1000) * 100)), [xp, levelBaseXp]);
+
+  const questProgress = useMemo(
+    () => ({
+      bets: Math.min(daily.bets, 5),
+      wins: Math.min(daily.wins, 2),
+      faucet: daily.faucetClaimed,
+      complete: daily.bets >= 5 && daily.wins >= 2 && daily.faucetClaimed,
+      claimed: daily.questClaimed,
+    }),
+    [daily]
+  );
+
   const themeSurfaceClass = useMemo(() => {
     switch (theme) {
       case 'sunset':
@@ -211,6 +227,13 @@ export default function MainHubRealtime() {
   useEffect(() => {
     autoCashOutRef.current = autoCashOut;
   }, [autoCashOut]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    return () => {
+      document.documentElement.removeAttribute('data-theme');
+    };
+  }, [theme]);
 
   const loadFriends = useCallback(async () => {
     setFriendsLoading(true);
@@ -464,9 +487,9 @@ export default function MainHubRealtime() {
     }
 
     const persisted = await persistWalletAction('bet', amount);
-    if (!persisted) {
+    if (!persisted.ok) {
       addWin(amount);
-      setErrorMsg('Could not persist bet in database.');
+      setErrorMsg(persisted.error ?? 'Could not persist bet in database.');
       return;
     }
 
@@ -476,7 +499,7 @@ export default function MainHubRealtime() {
       (response: { ok: boolean; error?: string }) => {
         if (!response.ok) {
           addWin(amount);
-          void persistWalletAction('win', amount);
+          void persistWalletAction('refund', amount);
           setErrorMsg(response.error ?? 'Unable to place bet.');
           return;
         }
@@ -507,11 +530,23 @@ export default function MainHubRealtime() {
   };
 
   const handleFaucet = async () => {
-    faucet();
-    const persisted = await persistWalletAction('faucet', 1000);
-    if (!persisted) {
-      setErrorMsg('Faucet sync failed.');
+    const result = await persistWalletAction('faucet', 5000);
+    if (!result.ok) {
+      setErrorMsg(result.error ?? 'Daily faucet unavailable.');
+      return;
     }
+
+    setErrorMsg('Daily faucet claimed: +5000 NVC');
+  };
+
+  const handleClaimQuestReward = async () => {
+    const result = await persistWalletAction('quest', 0);
+    if (!result.ok) {
+      setSettingsNotice(result.error ?? 'Quest reward claim failed.');
+      return;
+    }
+
+    setSettingsNotice('Daily quest reward claimed: +3000 NVC');
   };
 
   const handleJoinCrashRoom = () => {
@@ -829,9 +864,14 @@ export default function MainHubRealtime() {
         <div className={`${sidebarCollapsed ? 'p-3' : 'p-4'} border-t border-slate-800`}>
           <button
             onClick={handleFaucet}
-            className={`w-full py-3 rounded bg-slate-800 hover:bg-slate-700 text-sm font-medium transition-colors text-slate-300 active:scale-95 ${sidebarCollapsed ? 'px-0' : ''}`}
+            disabled={daily.faucetClaimed}
+            className={`w-full py-3 rounded text-sm font-medium transition-colors text-slate-300 active:scale-95 ${
+              daily.faucetClaimed
+                ? 'bg-slate-800/60 cursor-not-allowed opacity-70'
+                : 'bg-slate-800 hover:bg-slate-700'
+            } ${sidebarCollapsed ? 'px-0' : ''}`}
           >
-            {sidebarCollapsed ? 'F' : 'Claim Daily Faucet'}
+            {sidebarCollapsed ? 'F' : daily.faucetClaimed ? 'Faucet Claimed' : 'Claim Daily Faucet (+5000)'}
           </button>
         </div>
       </aside>
@@ -846,7 +886,10 @@ export default function MainHubRealtime() {
           <div className="flex items-center gap-4">
             <div className="text-right">
               <p className="text-xs uppercase tracking-wide text-slate-500">{username}</p>
-              <p className="font-mono text-xs text-slate-400">XP {xp}</p>
+              <p className="font-mono text-xs text-slate-400">Level {level} · XP {xp}</p>
+              <p className="font-mono text-[10px] text-slate-500">
+                {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
+              </p>
               <p className="font-mono text-[10px] uppercase text-cyan-400">Crash Room {crashRoomId}</p>
             </div>
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-4 py-2 rounded-lg">
@@ -1278,6 +1321,47 @@ export default function MainHubRealtime() {
                 <p className="text-sm text-slate-400 mt-1">These values are persisted to your DB profile settings.</p>
 
                 <div className="mt-5 space-y-4 max-w-3xl">
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-slate-100">Level Progress</p>
+                        <p className="text-xs text-slate-500">Level {level} - {xp}/{nextLevelXp} XP</p>
+                      </div>
+                      <span className="text-sm font-semibold text-cyan-300">{levelProgress}%</span>
+                    </div>
+                    <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
+                      <div className="h-full bg-cyan-500" style={{ width: `${levelProgress}%` }} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-slate-100">Daily Quests</p>
+                        <p className="text-xs text-slate-500">Complete all quests for +3000 NVC and +250 XP.</p>
+                      </div>
+                      <button
+                        onClick={handleClaimQuestReward}
+                        disabled={!questProgress.complete || questProgress.claimed}
+                        className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold"
+                      >
+                        {questProgress.claimed ? 'Claimed' : 'Claim Reward'}
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
+                        Place Bets: {questProgress.bets}/5
+                      </div>
+                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
+                        Win Rounds: {questProgress.wins}/2
+                      </div>
+                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
+                        Faucet: {questProgress.faucet ? 'Done' : 'Pending'}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-slate-100">Sound</p>

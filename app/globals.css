@@ -5,8 +5,38 @@
   --foreground: #f5f7ff;
   --panel: rgba(255, 255, 255, 0.02);
   --panel-border: rgba(255, 255, 255, 0.1);
+  --accent-a: rgba(34, 211, 238, 0.45);
+  --accent-b: rgba(168, 85, 247, 0.45);
   --font-space-grotesk: "Space Grotesk", "Avenir Next", Avenir, "Segoe UI", sans-serif;
   --font-ibm-plex-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
+html[data-theme='steel'] {
+  --background: #0b1220;
+  --foreground: #e6edf6;
+  --accent-a: rgba(148, 163, 184, 0.5);
+  --accent-b: rgba(96, 165, 250, 0.4);
+}
+
+html[data-theme='sunset'] {
+  --background: #170b08;
+  --foreground: #fff0df;
+  --accent-a: rgba(251, 146, 60, 0.55);
+  --accent-b: rgba(244, 63, 94, 0.4);
+}
+
+html[data-theme='ocean'] {
+  --background: #03131d;
+  --foreground: #e5f7ff;
+  --accent-a: rgba(56, 189, 248, 0.55);
+  --accent-b: rgba(14, 165, 233, 0.4);
+}
+
+html[data-theme='matrix'] {
+  --background: #020907;
+  --foreground: #d9ffe7;
+  --accent-a: rgba(34, 197, 94, 0.6);
+  --accent-b: rgba(16, 185, 129, 0.4);
 }
 
 @theme inline {
@@ -35,7 +65,7 @@ button {
 }
 
 ::selection {
-  background: rgba(34, 211, 238, 0.28);
+  background: color-mix(in oklab, var(--accent-a) 70%, transparent);
   color: #ffffff;
 }
 
@@ -49,7 +79,7 @@ button {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, rgba(34, 211, 238, 0.45), rgba(168, 85, 247, 0.45));
+  background: linear-gradient(180deg, var(--accent-a), var(--accent-b));
   border-radius: 9999px;
 }
 
