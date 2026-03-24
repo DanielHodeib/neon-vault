@@ -1089,8 +1089,8 @@ export default function MainHubRealtime() {
                     <p className="text-sm text-slate-500">No players online right now.</p>
                   ) : (
                     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {onlineUsers.map((user) => (
-                      <div key={user} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 flex items-center justify-between">
+                      {onlineUsers.map((user, index) => (
+                      <div key={`${user}-${index}`} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 flex items-center justify-between">
                         <span className="font-medium text-slate-200">{user}</span>
                         <span className="text-xs uppercase tracking-wide text-emerald-400">Online</span>
                       </div>
