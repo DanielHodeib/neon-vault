@@ -30,6 +30,7 @@ import { useCasinoStore } from '../../store/useCasinoStore';
 
 type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'settings';
 type PokerMode = 'solo' | 'friends';
+type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
 interface ChatMessage {
   id: string;
@@ -161,6 +162,12 @@ export default function MainHubRealtime() {
   const [friendsLoading, setFriendsLoading] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsNotice, setSettingsNotice] = useState('');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('overview');
+  const [compactSidebar, setCompactSidebar] = useState(false);
+  const [showChatTimestamps, setShowChatTimestamps] = useState(true);
+  const [showOnlinePresence, setShowOnlinePresence] = useState(true);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [quickBetPreset, setQuickBetPreset] = useState(100);
   const [friendRealtimeNotice, setFriendRealtimeNotice] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [theme, setTheme] = useState<ThemeOption>('slate');
@@ -227,6 +234,16 @@ export default function MainHubRealtime() {
   useEffect(() => {
     autoCashOutRef.current = autoCashOut;
   }, [autoCashOut]);
+
+  useEffect(() => {
+    if (compactSidebar) {
+      setSidebarCollapsed(true);
+    }
+  }, [compactSidebar]);
+
+  useEffect(() => {
+    setBetAmount(quickBetPreset);
+  }, [quickBetPreset]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -838,8 +855,8 @@ export default function MainHubRealtime() {
   };
 
   return (
-    <div className={`h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
-      <aside className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col z-20 transition-all duration-300`}>
+    <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
+      <aside className={`hub-sidebar ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col z-20 transition-all duration-300`}>
         <div className={`h-16 flex items-center ${sidebarCollapsed ? 'px-3 justify-center' : 'px-6'} border-b border-slate-800`}>
           <button
             onClick={() => setSidebarCollapsed((current) => !current)}
@@ -876,8 +893,8 @@ export default function MainHubRealtime() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0">
-        <header className="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-8 z-10">
+      <main className="hub-main flex-1 flex flex-col min-w-0">
+        <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-8 z-10">
           <div className="flex items-center gap-2 text-slate-400">
             <ShieldCheck size={18} className="text-emerald-500" />
             <span className="text-sm font-medium">{socketConnected ? 'Realtime Connected' : 'Realtime Offline'}</span>
@@ -907,7 +924,7 @@ export default function MainHubRealtime() {
         </header>
 
         <div className="flex-1 flex p-4 lg:p-6 gap-4 overflow-hidden">
-          <div className="flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+          <div className="hub-panel flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
               <>
                 <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden px-6 py-6">
@@ -915,8 +932,8 @@ export default function MainHubRealtime() {
                     <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-blue-600/15 to-transparent" />
                     <motion.div
                       className="absolute left-0 right-0 bottom-12 h-[2px] bg-gradient-to-r from-transparent via-blue-500/70 to-transparent"
-                      animate={{ x: ['-25%', '25%', '-25%'] }}
-                      transition={{ duration: 2.2, repeat: Infinity, ease: 'linear' }}
+                      animate={reducedMotion ? { opacity: 0.5 } : { x: ['-25%', '25%', '-25%'] }}
+                      transition={reducedMotion ? { duration: 0 } : { duration: 2.2, repeat: Infinity, ease: 'linear' }}
                     />
                   </div>
 
@@ -1167,7 +1184,7 @@ export default function MainHubRealtime() {
                           <div className="flex items-center justify-between gap-2">
                             <span className="font-medium text-slate-200">{friend.username}</span>
                             <span className={`text-xs uppercase tracking-wide ${onlineUsersSet.has(friend.username) ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              {onlineUsersSet.has(friend.username) ? 'Online' : 'Offline'}
+                              {showOnlinePresence ? (onlineUsersSet.has(friend.username) ? 'Online' : 'Offline') : 'Hidden'}
                             </span>
                           </div>
                           <div className="mt-2 flex gap-2">
@@ -1318,194 +1335,281 @@ export default function MainHubRealtime() {
             {activeTab === 'settings' && (
               <div className="flex-1 p-6 overflow-y-auto">
                 <h2 className="text-2xl font-bold text-slate-100">Settings</h2>
-                <p className="text-sm text-slate-400 mt-1">These values are persisted to your DB profile settings.</p>
+                <p className="text-sm text-slate-400 mt-1">Structured controls for profile, gameplay, appearance, privacy and security.</p>
 
-                <div className="mt-5 space-y-4 max-w-3xl">
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold text-slate-100">Level Progress</p>
-                        <p className="text-xs text-slate-500">Level {level} - {xp}/{nextLevelXp} XP</p>
-                      </div>
-                      <span className="text-sm font-semibold text-cyan-300">{levelProgress}%</span>
-                    </div>
-                    <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
-                      <div className="h-full bg-cyan-500" style={{ width: `${levelProgress}%` }} />
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <div className="flex items-center justify-between gap-4">
-                      <div>
-                        <p className="font-semibold text-slate-100">Daily Quests</p>
-                        <p className="text-xs text-slate-500">Complete all quests for +3000 NVC and +250 XP.</p>
-                      </div>
+                <div className="mt-5 grid gap-5 lg:grid-cols-[240px_1fr]">
+                  <aside className="rounded-xl border border-slate-800 bg-slate-950/50 p-3 h-fit">
+                    {([
+                      ['overview', 'Overview'],
+                      ['appearance', 'Appearance'],
+                      ['gameplay', 'Gameplay'],
+                      ['privacy', 'Privacy'],
+                      ['security', 'Account & Security'],
+                    ] as const).map(([key, label]) => (
                       <button
-                        onClick={handleClaimQuestReward}
-                        disabled={!questProgress.complete || questProgress.claimed}
-                        className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold"
-                      >
-                        {questProgress.claimed ? 'Claimed' : 'Claim Reward'}
-                      </button>
-                    </div>
-
-                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                        Place Bets: {questProgress.bets}/5
-                      </div>
-                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                        Win Rounds: {questProgress.wins}/2
-                      </div>
-                      <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">
-                        Faucet: {questProgress.faucet ? 'Done' : 'Pending'}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-slate-100">Sound</p>
-                      <p className="text-xs text-slate-500">Enable game effects and notifications.</p>
-                    </div>
-                    <button
-                      onClick={() => setSoundEnabled((current) => !current)}
-                      className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
-                        soundEnabled
-                          ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                          : 'border-slate-700 bg-slate-900 text-slate-400'
-                      }`}
-                    >
-                      {soundEnabled ? 'On' : 'Off'}
-                    </button>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <p className="font-semibold text-slate-100 mb-2">Theme</p>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      {(['slate', 'steel', 'sunset', 'ocean', 'matrix'] as const).map((option) => (
-                        <button
-                          key={option}
-                          onClick={() => setTheme(option)}
-                          className={`h-9 px-4 rounded-lg border text-xs font-bold uppercase ${
-                            theme === option
-                              ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
-                              : 'border-slate-700 bg-slate-900 text-slate-400'
-                          }`}
-                        >
-                          {option}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-slate-100">Public Profile</p>
-                        <p className="text-xs text-slate-500">Allow non-friends to view your profile card.</p>
-                      </div>
-                      <button
-                        onClick={() => setPublicProfile((current) => !current)}
-                        className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
-                          publicProfile
-                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
-                            : 'border-slate-700 bg-slate-900 text-slate-400'
+                        key={key}
+                        onClick={() => setSettingsSection(key)}
+                        className={`w-full text-left h-10 px-3 rounded-lg text-sm font-semibold transition ${
+                          settingsSection === key
+                            ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/40'
+                            : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                         }`}
                       >
-                        {publicProfile ? 'Public' : 'Private'}
+                        {label}
+                      </button>
+                    ))}
+                  </aside>
+
+                  <div className="space-y-4">
+                    {settingsSection === 'overview' && (
+                      <>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="font-semibold text-slate-100">Level Progress</p>
+                              <p className="text-xs text-slate-500">Level {level} - {xp}/{nextLevelXp} XP</p>
+                            </div>
+                            <span className="text-sm font-semibold text-cyan-300">{levelProgress}%</span>
+                          </div>
+                          <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
+                            <div className="h-full bg-cyan-500" style={{ width: `${levelProgress}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="font-semibold text-slate-100">Daily Quests</p>
+                              <p className="text-xs text-slate-500">Complete all quests for +3000 NVC and +250 XP.</p>
+                            </div>
+                            <button
+                              onClick={handleClaimQuestReward}
+                              disabled={!questProgress.complete || questProgress.claimed}
+                              className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold"
+                            >
+                              {questProgress.claimed ? 'Claimed' : 'Claim Reward'}
+                            </button>
+                          </div>
+
+                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Place Bets: {questProgress.bets}/5</div>
+                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Win Rounds: {questProgress.wins}/2</div>
+                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Faucet: {questProgress.faucet ? 'Done' : 'Pending'}</div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {settingsSection === 'appearance' && (
+                      <>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <p className="font-semibold text-slate-100 mb-2">Theme</p>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {(['slate', 'steel', 'sunset', 'ocean', 'matrix'] as const).map((option) => (
+                              <button
+                                key={option}
+                                onClick={() => setTheme(option)}
+                                className={`h-9 px-4 rounded-lg border text-xs font-bold uppercase ${
+                                  theme === option
+                                    ? 'border-blue-500/40 bg-blue-500/10 text-blue-300'
+                                    : 'border-slate-700 bg-slate-900 text-slate-400'
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 grid gap-3 sm:grid-cols-2">
+                          <button
+                            onClick={() => setCompactSidebar((current) => !current)}
+                            className={`h-10 rounded-lg border text-xs font-bold uppercase ${compactSidebar ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-900 text-slate-400'}`}
+                          >
+                            Compact Sidebar {compactSidebar ? 'On' : 'Off'}
+                          </button>
+                          <button
+                            onClick={() => setReducedMotion((current) => !current)}
+                            className={`h-10 rounded-lg border text-xs font-bold uppercase ${reducedMotion ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-900 text-slate-400'}`}
+                          >
+                            Reduced Motion {reducedMotion ? 'On' : 'Off'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {settingsSection === 'gameplay' && (
+                      <>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
+                          <div>
+                            <p className="font-semibold text-slate-100">Sound</p>
+                            <p className="text-xs text-slate-500">Enable game effects and notifications.</p>
+                          </div>
+                          <button
+                            onClick={() => setSoundEnabled((current) => !current)}
+                            className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
+                              soundEnabled
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                                : 'border-slate-700 bg-slate-900 text-slate-400'
+                            }`}
+                          >
+                            {soundEnabled ? 'On' : 'Off'}
+                          </button>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <p className="font-semibold text-slate-100 mb-2">Quick Bet Preset</p>
+                          <div className="grid gap-2 sm:grid-cols-4">
+                            {[100, 250, 500, 1000].map((value) => (
+                              <button
+                                key={value}
+                                onClick={() => setQuickBetPreset(value)}
+                                className={`h-9 rounded-lg border text-xs font-bold ${
+                                  quickBetPreset === value
+                                    ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
+                                    : 'border-slate-700 bg-slate-900 text-slate-400'
+                                }`}
+                              >
+                                {value} NVC
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {settingsSection === 'privacy' && (
+                      <>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="font-semibold text-slate-100">Public Profile</p>
+                              <p className="text-xs text-slate-500">Allow non-friends to view your profile card.</p>
+                            </div>
+                            <button
+                              onClick={() => setPublicProfile((current) => !current)}
+                              className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
+                                publicProfile
+                                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                                  : 'border-slate-700 bg-slate-900 text-slate-400'
+                              }`}
+                            >
+                              {publicProfile ? 'Public' : 'Private'}
+                            </button>
+                          </div>
+
+                          <label className="block text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">Bio</label>
+                          <textarea
+                            value={bio}
+                            onChange={(event) => setBio(event.target.value.slice(0, 240))}
+                            rows={4}
+                            className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-blue-500"
+                            placeholder="Tell others what games you like..."
+                          />
+                          <p className="mt-1 text-[11px] text-slate-500">{bio.length}/240</p>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 grid gap-3 sm:grid-cols-2">
+                          <button
+                            onClick={() => setShowOnlinePresence((current) => !current)}
+                            className={`h-10 rounded-lg border text-xs font-bold uppercase ${showOnlinePresence ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-900 text-slate-400'}`}
+                          >
+                            Presence {showOnlinePresence ? 'Visible' : 'Hidden'}
+                          </button>
+                          <button
+                            onClick={() => setShowChatTimestamps((current) => !current)}
+                            className={`h-10 rounded-lg border text-xs font-bold uppercase ${showChatTimestamps ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-900 text-slate-400'}`}
+                          >
+                            Chat Time {showChatTimestamps ? 'On' : 'Off'}
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    {settingsSection === 'security' && (
+                      <>
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <p className="font-semibold text-slate-100 mb-2">Change Username</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <input
+                              value={usernameDraft}
+                              onChange={(event) => setUsernameDraft(event.target.value)}
+                              className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                              placeholder="New username"
+                            />
+                            <input
+                              type="password"
+                              value={usernamePassword}
+                              onChange={(event) => setUsernamePassword(event.target.value)}
+                              className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                              placeholder="Current password"
+                            />
+                          </div>
+                          <button
+                            onClick={handleChangeUsername}
+                            disabled={accountSaving}
+                            className="mt-3 h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                          >
+                            Update Username
+                          </button>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <p className="font-semibold text-slate-100 mb-2">Change Password</p>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            <input
+                              type="password"
+                              value={passwordCurrent}
+                              onChange={(event) => setPasswordCurrent(event.target.value)}
+                              className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                              placeholder="Current password"
+                            />
+                            <input
+                              type="password"
+                              value={passwordNext}
+                              onChange={(event) => setPasswordNext(event.target.value)}
+                              className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                              placeholder="New password"
+                            />
+                            <input
+                              type="password"
+                              value={passwordConfirm}
+                              onChange={(event) => setPasswordConfirm(event.target.value)}
+                              className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                              placeholder="Confirm new"
+                            />
+                          </div>
+                          <button
+                            onClick={handleChangePassword}
+                            disabled={accountSaving}
+                            className="mt-3 h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                          >
+                            Update Password
+                          </button>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
+                      <p className="text-sm text-slate-400">Save current preferences</p>
+                      <button
+                        onClick={handleSaveSettings}
+                        disabled={settingsSaving}
+                        className="h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                      >
+                        {settingsSaving ? 'Saving...' : 'Save Settings'}
                       </button>
                     </div>
 
-                    <label className="block text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">Bio</label>
-                    <textarea
-                      value={bio}
-                      onChange={(event) => setBio(event.target.value.slice(0, 240))}
-                      rows={4}
-                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-blue-500"
-                      placeholder="Tell others what games you like..."
-                    />
-                    <p className="mt-1 text-[11px] text-slate-500">{bio.length}/240</p>
+                    {settingsNotice ? <p className="text-sm text-slate-400">{settingsNotice}</p> : null}
+                    {accountNotice ? <p className="text-sm text-slate-400">{accountNotice}</p> : null}
                   </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <p className="font-semibold text-slate-100 mb-2">Change Username</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input
-                        value={usernameDraft}
-                        onChange={(event) => setUsernameDraft(event.target.value)}
-                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                        placeholder="New username"
-                      />
-                      <input
-                        type="password"
-                        value={usernamePassword}
-                        onChange={(event) => setUsernamePassword(event.target.value)}
-                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                        placeholder="Current password"
-                      />
-                    </div>
-                    <button
-                      onClick={handleChangeUsername}
-                      disabled={accountSaving}
-                      className="mt-3 h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
-                    >
-                      Update Username
-                    </button>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <p className="font-semibold text-slate-100 mb-2">Change Password</p>
-                    <div className="grid gap-2 sm:grid-cols-3">
-                      <input
-                        type="password"
-                        value={passwordCurrent}
-                        onChange={(event) => setPasswordCurrent(event.target.value)}
-                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                        placeholder="Current password"
-                      />
-                      <input
-                        type="password"
-                        value={passwordNext}
-                        onChange={(event) => setPasswordNext(event.target.value)}
-                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                        placeholder="New password"
-                      />
-                      <input
-                        type="password"
-                        value={passwordConfirm}
-                        onChange={(event) => setPasswordConfirm(event.target.value)}
-                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                        placeholder="Confirm new"
-                      />
-                    </div>
-                    <button
-                      onClick={handleChangePassword}
-                      disabled={accountSaving}
-                      className="mt-3 h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
-                    >
-                      Update Password
-                    </button>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
-                    <p className="text-sm text-slate-400">Save your current preferences</p>
-                    <button
-                      onClick={handleSaveSettings}
-                      disabled={settingsSaving}
-                      className="h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
-                    >
-                      {settingsSaving ? 'Saving...' : 'Save Settings'}
-                    </button>
-                  </div>
-
-                  {settingsNotice ? <p className="text-sm text-slate-400">{settingsNotice}</p> : null}
-                  {accountNotice ? <p className="text-sm text-slate-400">{accountNotice}</p> : null}
                 </div>
               </div>
             )}
           </div>
 
-          <div className="w-80 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden hidden lg:flex shadow-lg">
+          <div className="hub-chat w-80 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden hidden lg:flex shadow-lg">
             <div className="p-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center gap-3">
               <Activity size={18} className="text-emerald-400" />
               <h3 className="font-bold text-slate-100">Live Chat</h3>
@@ -1525,18 +1629,20 @@ export default function MainHubRealtime() {
                   return (
                     <motion.div
                       key={event.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
+                      initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 10 }}
+                      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+                      exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
                       className="p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 transition-all group"
                     >
                       <div className="flex items-baseline justify-between gap-2 mb-1">
                         <span className="font-bold text-sm" style={{ color: usernameColor }}>
                           {event.username}
                         </span>
-                        <span className="text-[11px] text-slate-500 font-mono group-hover:text-slate-400 transition">
-                          {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
+                        {showChatTimestamps ? (
+                          <span className="text-[11px] text-slate-500 font-mono group-hover:text-slate-400 transition">
+                            {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        ) : null}
                       </div>
                       <p className="text-sm text-slate-200 leading-snug break-words">{event.text}</p>
                     </motion.div>
@@ -1584,8 +1690,8 @@ function SidebarButton({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg transition-colors font-medium ${
-        active ? 'bg-blue-600/10 text-blue-500' : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+      className={`hub-nav-btn w-full flex items-center ${collapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg transition-colors font-medium ${
+        active ? 'hub-nav-btn-active bg-blue-600/10 text-blue-500' : 'hub-nav-btn-idle text-slate-400 hover:bg-slate-800 hover:text-slate-200'
       }`}
       title={collapsed ? label : undefined}
     >

@@ -7,6 +7,14 @@
   --panel-border: rgba(255, 255, 255, 0.1);
   --accent-a: rgba(34, 211, 238, 0.45);
   --accent-b: rgba(168, 85, 247, 0.45);
+  --hub-sidebar-bg: #0b1326;
+  --hub-header-bg: #0d162f;
+  --hub-panel-bg: #0b1430;
+  --hub-panel-border: rgba(148, 163, 184, 0.2);
+  --hub-chat-bg: #0b1430;
+  --hub-nav-active-bg: rgba(59, 130, 246, 0.2);
+  --hub-nav-active-fg: #7dd3fc;
+  --hub-nav-idle-fg: #94a3b8;
   --font-space-grotesk: "Space Grotesk", "Avenir Next", Avenir, "Segoe UI", sans-serif;
   --font-ibm-plex-mono: "IBM Plex Mono", "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
@@ -16,6 +24,14 @@ html[data-theme='steel'] {
   --foreground: #e6edf6;
   --accent-a: rgba(148, 163, 184, 0.5);
   --accent-b: rgba(96, 165, 250, 0.4);
+  --hub-sidebar-bg: #111827;
+  --hub-header-bg: #1f2937;
+  --hub-panel-bg: #0f172a;
+  --hub-panel-border: rgba(148, 163, 184, 0.28);
+  --hub-chat-bg: #111827;
+  --hub-nav-active-bg: rgba(148, 163, 184, 0.2);
+  --hub-nav-active-fg: #e2e8f0;
+  --hub-nav-idle-fg: #94a3b8;
 }
 
 html[data-theme='sunset'] {
@@ -23,6 +39,14 @@ html[data-theme='sunset'] {
   --foreground: #fff0df;
   --accent-a: rgba(251, 146, 60, 0.55);
   --accent-b: rgba(244, 63, 94, 0.4);
+  --hub-sidebar-bg: #2b120d;
+  --hub-header-bg: #3b1812;
+  --hub-panel-bg: #1f120d;
+  --hub-panel-border: rgba(251, 146, 60, 0.35);
+  --hub-chat-bg: #22100c;
+  --hub-nav-active-bg: rgba(251, 146, 60, 0.22);
+  --hub-nav-active-fg: #fdba74;
+  --hub-nav-idle-fg: #fca5a5;
 }
 
 html[data-theme='ocean'] {
@@ -30,6 +54,14 @@ html[data-theme='ocean'] {
   --foreground: #e5f7ff;
   --accent-a: rgba(56, 189, 248, 0.55);
   --accent-b: rgba(14, 165, 233, 0.4);
+  --hub-sidebar-bg: #062538;
+  --hub-header-bg: #0a3348;
+  --hub-panel-bg: #072337;
+  --hub-panel-border: rgba(56, 189, 248, 0.32);
+  --hub-chat-bg: #072b40;
+  --hub-nav-active-bg: rgba(56, 189, 248, 0.2);
+  --hub-nav-active-fg: #67e8f9;
+  --hub-nav-idle-fg: #93c5fd;
 }
 
 html[data-theme='matrix'] {
@@ -37,6 +69,39 @@ html[data-theme='matrix'] {
   --foreground: #d9ffe7;
   --accent-a: rgba(34, 197, 94, 0.6);
   --accent-b: rgba(16, 185, 129, 0.4);
+  --hub-sidebar-bg: #05180f;
+  --hub-header-bg: #082417;
+  --hub-panel-bg: #06150f;
+  --hub-panel-border: rgba(34, 197, 94, 0.3);
+  --hub-chat-bg: #071d14;
+  --hub-nav-active-bg: rgba(34, 197, 94, 0.2);
+  --hub-nav-active-fg: #86efac;
+  --hub-nav-idle-fg: #6ee7b7;
+}
+
+.hub-root .hub-sidebar {
+  background: var(--hub-sidebar-bg) !important;
+  border-color: var(--hub-panel-border) !important;
+}
+
+.hub-root .hub-header {
+  background: var(--hub-header-bg) !important;
+  border-color: var(--hub-panel-border) !important;
+}
+
+.hub-root .hub-panel,
+.hub-root .hub-chat {
+  background: var(--hub-panel-bg) !important;
+  border-color: var(--hub-panel-border) !important;
+}
+
+.hub-root .hub-nav-btn-active {
+  background: var(--hub-nav-active-bg) !important;
+  color: var(--hub-nav-active-fg) !important;
+}
+
+.hub-root .hub-nav-btn-idle {
+  color: var(--hub-nav-idle-fg) !important;
 }
 
 @theme inline {
