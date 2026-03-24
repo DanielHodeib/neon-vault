@@ -68,7 +68,22 @@ interface BlockSummary {
 
 interface SettingsPayload {
   soundEnabled: boolean;
-  theme: 'slate' | 'steel';
+  theme: ThemeOption;
+  publicProfile: boolean;
+  bio: string;
+}
+
+type ThemeOption = 'slate' | 'steel' | 'sunset' | 'ocean' | 'matrix';
+
+interface PublicProfileData {
+  username: string;
+  xp: number;
+  bio: string;
+  theme: string;
+  publicProfile: boolean;
+  isFriend: boolean;
+  createdAt: string;
+  friendsCount: number;
 }
 
 function getSocketUrl() {
@@ -148,7 +163,18 @@ export default function MainHubRealtime() {
   const [settingsNotice, setSettingsNotice] = useState('');
   const [friendRealtimeNotice, setFriendRealtimeNotice] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [theme, setTheme] = useState<'slate' | 'steel'>('slate');
+  const [theme, setTheme] = useState<ThemeOption>('slate');
+  const [publicProfile, setPublicProfile] = useState(true);
+  const [bio, setBio] = useState('');
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernamePassword, setUsernamePassword] = useState('');
+  const [passwordCurrent, setPasswordCurrent] = useState('');
+  const [passwordNext, setPasswordNext] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [accountSaving, setAccountSaving] = useState(false);
+  const [accountNotice, setAccountNotice] = useState('');
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfileData | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const incomingSeenRef = useRef<Set<string>>(new Set());
@@ -157,6 +183,22 @@ export default function MainHubRealtime() {
   const autoCashOutEnabledRef = useRef(true);
   const autoCashOutRef = useRef(2);
   const onlineUsersSet = useMemo(() => new Set(onlineUsers), [onlineUsers]);
+
+  const themeSurfaceClass = useMemo(() => {
+    switch (theme) {
+      case 'sunset':
+        return 'bg-[radial-gradient(circle_at_top,_rgba(251,146,60,0.18),_rgba(15,23,42,1)_50%)]';
+      case 'ocean':
+        return 'bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_rgba(15,23,42,1)_50%)]';
+      case 'matrix':
+        return 'bg-[radial-gradient(circle_at_top,_rgba(34,197,94,0.2),_rgba(2,6,23,1)_55%)]';
+      case 'steel':
+        return 'bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.16),_rgba(15,23,42,1)_50%)]';
+      case 'slate':
+      default:
+        return 'bg-slate-950';
+    }
+  }, [theme]);
 
   useEffect(() => {
     hasBetRef.current = hasBet;
@@ -218,8 +260,14 @@ export default function MainHubRealtime() {
 
     setSoundEnabled(payload.settings.soundEnabled);
     setTheme(payload.settings.theme);
+    setPublicProfile(payload.settings.publicProfile);
+    setBio(payload.settings.bio ?? '');
     settingsHydratedRef.current = true;
   }, []);
+
+  useEffect(() => {
+    setUsernameDraft(username);
+  }, [username]);
 
   useEffect(() => {
     void hydrateFromSession();
@@ -353,7 +401,7 @@ export default function MainHubRealtime() {
       const response = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soundEnabled, theme }),
+        body: JSON.stringify({ soundEnabled, theme, publicProfile, bio }),
       });
 
       const payload = (await response.json()) as { error?: string };
@@ -366,7 +414,7 @@ export default function MainHubRealtime() {
 
       setSettingsNotice(silent ? 'Settings autosaved.' : 'Settings saved.');
     },
-    [soundEnabled, theme]
+    [soundEnabled, theme, publicProfile, bio]
   );
 
   useEffect(() => {
@@ -379,7 +427,7 @@ export default function MainHubRealtime() {
     }, 850);
 
     return () => window.clearTimeout(timeout);
-  }, [soundEnabled, theme, persistSettings]);
+  }, [soundEnabled, theme, publicProfile, bio, persistSettings]);
 
   const crashLabel =
     crashState.phase === 'crashed'
@@ -504,12 +552,11 @@ export default function MainHubRealtime() {
   };
 
   const handleCopyCrashInvite = async () => {
-    const invite = `${window.location.origin}/login`;
-    const text = `Login: ${invite}\nCrash room code: ${crashRoomId}`;
+    const text = crashRoomId;
 
     const copied = await copyToClipboard(text);
     if (copied) {
-      setErrorMsg('Invite copied. Share it and the room id with your friend.');
+      setErrorMsg('Room code copied.');
     } else {
       setErrorMsg(`Share this room id with your friend: ${crashRoomId}`);
     }
@@ -661,12 +708,102 @@ export default function MainHubRealtime() {
     void loadFriends();
   };
 
+  const handleViewProfile = async (targetUsername: string) => {
+    setProfileLoading(true);
+    setFriendNotice('');
+
+    const response = await fetch(`/api/profile/${encodeURIComponent(targetUsername)}`, { cache: 'no-store' });
+    const payload = (await response.json()) as { error?: string; profile?: PublicProfileData };
+    setProfileLoading(false);
+
+    if (!response.ok || !payload.profile) {
+      setSelectedProfile(null);
+      setFriendNotice(payload.error ?? 'Could not load profile.');
+      return;
+    }
+
+    setSelectedProfile(payload.profile);
+  };
+
+  const handleChangeUsername = async () => {
+    const nextUsername = usernameDraft.trim();
+    if (nextUsername.length < 3) {
+      setAccountNotice('Username must be at least 3 characters.');
+      return;
+    }
+
+    if (!usernamePassword) {
+      setAccountNotice('Enter current password to confirm username change.');
+      return;
+    }
+
+    setAccountSaving(true);
+    setAccountNotice('');
+
+    const response = await fetch('/api/account', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'username', username: nextUsername, currentPassword: usernamePassword }),
+    });
+
+    const payload = (await response.json()) as { error?: string; requiresRelogin?: boolean };
+    setAccountSaving(false);
+
+    if (!response.ok) {
+      setAccountNotice(payload.error ?? 'Username change failed.');
+      return;
+    }
+
+    setAccountNotice('Username changed. Please login again.');
+    setUsernamePassword('');
+
+    if (payload.requiresRelogin) {
+      setTimeout(() => {
+        void signOut({ callbackUrl: '/login' });
+      }, 900);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordCurrent || !passwordNext || !passwordConfirm) {
+      setAccountNotice('Fill all password fields.');
+      return;
+    }
+
+    if (passwordNext !== passwordConfirm) {
+      setAccountNotice('New password confirmation does not match.');
+      return;
+    }
+
+    setAccountSaving(true);
+    setAccountNotice('');
+
+    const response = await fetch('/api/account', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'password', currentPassword: passwordCurrent, nextPassword: passwordNext }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    setAccountSaving(false);
+
+    if (!response.ok) {
+      setAccountNotice(payload.error ?? 'Password change failed.');
+      return;
+    }
+
+    setPasswordCurrent('');
+    setPasswordNext('');
+    setPasswordConfirm('');
+    setAccountNotice('Password updated successfully.');
+  };
+
   const handleSaveSettings = async () => {
     await persistSettings(false);
   };
 
   return (
-    <div className="h-screen w-full bg-slate-950 text-slate-200 font-sans flex overflow-hidden">
+    <div className={`h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
       <aside className={`${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col z-20 transition-all duration-300`}>
         <div className={`h-16 flex items-center ${sidebarCollapsed ? 'px-3 justify-center' : 'px-6'} border-b border-slate-800`}>
           <button
@@ -992,6 +1129,12 @@ export default function MainHubRealtime() {
                           </div>
                           <div className="mt-2 flex gap-2">
                             <button
+                              onClick={() => handleViewProfile(friend.username)}
+                              className="h-8 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white"
+                            >
+                              View Profile
+                            </button>
+                            <button
                               onClick={() => handleRemoveFriendship(friend.friendshipId)}
                               className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
                             >
@@ -1099,6 +1242,33 @@ export default function MainHubRealtime() {
                     </div>
                   )}
                 </div>
+
+                <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Friend Profile</p>
+                    {profileLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
+                  </div>
+
+                  {!selectedProfile && !profileLoading ? (
+                    <p className="mt-2 text-sm text-slate-500">Select a friend and click View Profile.</p>
+                  ) : null}
+
+                  {selectedProfile ? (
+                    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-100">{selectedProfile.username}</p>
+                        <span className="text-xs uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-400">
+                        XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
+                      </p>
+                      <p className="mt-2 text-sm text-slate-300">{selectedProfile.bio || 'No bio yet.'}</p>
+                      <p className="mt-2 text-[11px] text-slate-500">
+                        Joined {new Date(selectedProfile.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
               </div>
             )}
 
@@ -1107,7 +1277,7 @@ export default function MainHubRealtime() {
                 <h2 className="text-2xl font-bold text-slate-100">Settings</h2>
                 <p className="text-sm text-slate-400 mt-1">These values are persisted to your DB profile settings.</p>
 
-                <div className="mt-5 space-y-4 max-w-xl">
+                <div className="mt-5 space-y-4 max-w-3xl">
                   <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-slate-100">Sound</p>
@@ -1127,8 +1297,8 @@ export default function MainHubRealtime() {
 
                   <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
                     <p className="font-semibold text-slate-100 mb-2">Theme</p>
-                    <div className="flex gap-2">
-                      {(['slate', 'steel'] as const).map((option) => (
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {(['slate', 'steel', 'sunset', 'ocean', 'matrix'] as const).map((option) => (
                         <button
                           key={option}
                           onClick={() => setTheme(option)}
@@ -1144,6 +1314,95 @@ export default function MainHubRealtime() {
                     </div>
                   </div>
 
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-slate-100">Public Profile</p>
+                        <p className="text-xs text-slate-500">Allow non-friends to view your profile card.</p>
+                      </div>
+                      <button
+                        onClick={() => setPublicProfile((current) => !current)}
+                        className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
+                          publicProfile
+                            ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                            : 'border-slate-700 bg-slate-900 text-slate-400'
+                        }`}
+                      >
+                        {publicProfile ? 'Public' : 'Private'}
+                      </button>
+                    </div>
+
+                    <label className="block text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">Bio</label>
+                    <textarea
+                      value={bio}
+                      onChange={(event) => setBio(event.target.value.slice(0, 240))}
+                      rows={4}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 outline-none focus:border-blue-500"
+                      placeholder="Tell others what games you like..."
+                    />
+                    <p className="mt-1 text-[11px] text-slate-500">{bio.length}/240</p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <p className="font-semibold text-slate-100 mb-2">Change Username</p>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input
+                        value={usernameDraft}
+                        onChange={(event) => setUsernameDraft(event.target.value)}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                        placeholder="New username"
+                      />
+                      <input
+                        type="password"
+                        value={usernamePassword}
+                        onChange={(event) => setUsernamePassword(event.target.value)}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                        placeholder="Current password"
+                      />
+                    </div>
+                    <button
+                      onClick={handleChangeUsername}
+                      disabled={accountSaving}
+                      className="mt-3 h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                    >
+                      Update Username
+                    </button>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <p className="font-semibold text-slate-100 mb-2">Change Password</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      <input
+                        type="password"
+                        value={passwordCurrent}
+                        onChange={(event) => setPasswordCurrent(event.target.value)}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                        placeholder="Current password"
+                      />
+                      <input
+                        type="password"
+                        value={passwordNext}
+                        onChange={(event) => setPasswordNext(event.target.value)}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                        placeholder="New password"
+                      />
+                      <input
+                        type="password"
+                        value={passwordConfirm}
+                        onChange={(event) => setPasswordConfirm(event.target.value)}
+                        className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                        placeholder="Confirm new"
+                      />
+                    </div>
+                    <button
+                      onClick={handleChangePassword}
+                      disabled={accountSaving}
+                      className="mt-3 h-10 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                    >
+                      Update Password
+                    </button>
+                  </div>
+
                   <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
                     <p className="text-sm text-slate-400">Save your current preferences</p>
                     <button
@@ -1156,6 +1415,7 @@ export default function MainHubRealtime() {
                   </div>
 
                   {settingsNotice ? <p className="text-sm text-slate-400">{settingsNotice}</p> : null}
+                  {accountNotice ? <p className="text-sm text-slate-400">{accountNotice}</p> : null}
                 </div>
               </div>
             )}
