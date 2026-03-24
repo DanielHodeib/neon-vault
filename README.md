@@ -1,36 +1,117 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Neon Vault
 
-## Getting Started
+Realtime casino app with auth, friends, and multiplayer rooms.
 
-First, run the development server:
+## Local Development
+
+Install dependencies:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cd game-server && npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run app + socket server:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# terminal 1
+npm run dev
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# terminal 2
+npm run dev:game-server
+```
 
-## Learn More
+## Play From Other Laptops (LAN)
 
-To learn more about Next.js, take a look at the following resources:
+1. Find your local IP:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+ipconfig getifaddr en0
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+2. Update root `.env`:
 
-## Deploy on Vercel
+```env
+NEXTAUTH_URL="http://YOUR_IP:3000"
+NEXT_PUBLIC_GAME_SERVER_URL="http://YOUR_IP:4001"
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+3. Start both services with LAN host binding:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+# terminal 1
+npm run dev:lan
+
+# terminal 2
+npm run dev:game-server:lan
+```
+
+4. Open firewall for ports `3000` and `4001` if macOS prompts.
+
+5. Friends open `http://YOUR_IP:3000`, register/login, then join your room id (Crash/Poker/Blackjack).
+6. In Poker/Blackjack, friends only need the room id string (for example `bj-ab123`) in the room input, then click `Join Room`.
+
+## Multiplayer Notes
+
+- Crash: room join/create + live room member list.
+- Poker: `Solo + Bots` mode and `Friends Room` mode.
+- Blackjack: `Solo + Bots` mode and `Friends Room` mode with dealer/player table seats.
+
+## Production Deployment (Docker)
+
+This repository includes a full deployment setup for:
+
+- Next.js app (`3000`)
+- Socket game server (`4001`)
+- Persistent Prisma SQLite database volume
+
+### 1) Prepare env files
+
+Create production env files from templates:
+
+```bash
+cp .env.production.example .env.production
+cp game-server/.env.production.example game-server/.env.production
+```
+
+Edit `.env.production`:
+
+```env
+DATABASE_URL="file:/app/prisma/prod.db"
+NEXTAUTH_SECRET="your-long-random-secret"
+NEXTAUTH_URL="https://your-domain.com"
+NEXT_PUBLIC_GAME_SERVER_URL="https://your-domain.com:4001"
+```
+
+Edit `game-server/.env.production`:
+
+```env
+HOST=0.0.0.0
+PORT=4001
+CLIENT_ORIGIN=https://your-domain.com
+CLIENT_ORIGINS=https://your-domain.com
+```
+
+### 2) Build and start
+
+```bash
+npm run deploy:up
+```
+
+### 3) Watch logs
+
+```bash
+npm run deploy:logs
+```
+
+### 4) Stop deployment
+
+```bash
+npm run deploy:down
+```
+
+### Notes
+
+- Open inbound ports `3000` and `4001` on your host/firewall.
+- For public internet deployment, place a reverse proxy in front (for HTTPS and domain routing).
+- Prisma data is persisted in the Docker volume `prisma_data`.
