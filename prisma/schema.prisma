@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum FriendshipStatus {
+  pending
+  accepted
+}
+
+model User {
+  id                  String       @id @default(cuid())
+  username            String       @unique
+  passwordHash        String
+  balance             Int          @default(10000)
+  xp                  Int          @default(0)
+  createdAt           DateTime     @default(now())
+  settings            Settings?
+  friendshipsSent     Friendship[] @relation("FriendshipsSent")
+  friendshipsReceived Friendship[] @relation("FriendshipsReceived")
+  blocksSent          Block[]      @relation("BlocksSent")
+  blocksReceived      Block[]      @relation("BlocksReceived")
+
+  @@map("users")
+}
+
+model Block {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  blockedUserId String   @map("blocked_user_id")
+  createdAt     DateTime @default(now())
+
+  user        User @relation("BlocksSent", fields: [userId], references: [id], onDelete: Cascade)
+  blockedUser User @relation("BlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("blocks")
+}
+
+model Friendship {
+  id        String           @id @default(cuid())
+  userId    String           @map("user_id")
+  friendId  String           @map("friend_id")
+  status    FriendshipStatus @default(pending)
+  createdAt DateTime         @default(now())
+
+  user   User @relation("FriendshipsSent", fields: [userId], references: [id], onDelete: Cascade)
+  friend User @relation("FriendshipsReceived", fields: [friendId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, friendId])
+  @@index([friendId])
+  @@map("friendships")
+}
+
+model Settings {
+  id           String   @id @default(cuid())
+  userId       String   @unique @map("user_id")
+  soundEnabled Boolean  @default(true)
+  theme        String   @default("slate")
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("settings")
+}
