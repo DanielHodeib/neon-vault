@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
+import { copyToClipboard } from '@/lib/copyToClipboard';
+
 interface PokerPlayer {
   socketId: string;
   username: string;
@@ -175,12 +177,13 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   };
 
   const copyInvite = async () => {
-    const text = `${window.location.origin}/login | Poker room: ${pokerRoomId}`;
-    try {
-      await navigator.clipboard.writeText(text);
+    const roomCode = state.roomId || pokerRoomId;
+    const text = `Login: ${window.location.origin}/login\nPoker room code: ${roomCode}`;
+    const copied = await copyToClipboard(text);
+    if (copied) {
       setNotice('Invite copied. Share the login link and room id.');
-    } catch {
-      setNotice(`Share this room id with your friend: ${pokerRoomId}`);
+    } else {
+      setNotice(`Share this room id with your friend: ${roomCode}`);
     }
   };
 

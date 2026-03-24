@@ -25,6 +25,7 @@ import RouletteGame from '@/components/games/RouletteGame';
 import SlotsGame from '@/components/games/SlotsGame';
 import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
+import { copyToClipboard } from '@/lib/copyToClipboard';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'settings';
@@ -504,12 +505,12 @@ export default function MainHubRealtime() {
 
   const handleCopyCrashInvite = async () => {
     const invite = `${window.location.origin}/login`;
-    const text = `${invite} | Crash room: ${crashRoomId}`;
+    const text = `Login: ${invite}\nCrash room code: ${crashRoomId}`;
 
-    try {
-      await navigator.clipboard.writeText(text);
+    const copied = await copyToClipboard(text);
+    if (copied) {
       setErrorMsg('Invite copied. Share it and the room id with your friend.');
-    } catch {
+    } else {
       setErrorMsg(`Share this room id with your friend: ${crashRoomId}`);
     }
   };

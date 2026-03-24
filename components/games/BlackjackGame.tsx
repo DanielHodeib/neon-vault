@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 
+import { copyToClipboard } from '@/lib/copyToClipboard';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 type BlackjackMode = 'solo' | 'friends';
@@ -521,12 +522,13 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const copyFriendsInvite = async () => {
-    const text = `${window.location.origin}/login | Blackjack room: ${friendsRoomId}`;
-    try {
-      await navigator.clipboard.writeText(text);
+    const roomCode = friendsState.roomId || friendsRoomId;
+    const text = `Login: ${window.location.origin}/login\nBlackjack room code: ${roomCode}`;
+    const copied = await copyToClipboard(text);
+    if (copied) {
       setFriendsNotice('Invite copied.');
-    } catch {
-      setFriendsNotice(`Share this room id: ${friendsRoomId}`);
+    } else {
+      setFriendsNotice(`Share this room id: ${roomCode}`);
     }
   };
 
