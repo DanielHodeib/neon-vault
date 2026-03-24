@@ -113,7 +113,7 @@ function getSocketUrl() {
   }
 }
 
-export default function MainHubRealtime() {
+export default function MainHubRealtime({ initialUsername }: { initialUsername?: string }) {
   const {
     balance,
     username,
@@ -190,6 +190,15 @@ export default function MainHubRealtime() {
   const autoCashOutEnabledRef = useRef(true);
   const autoCashOutRef = useRef(2);
   const onlineUsersSet = useMemo(() => new Set(onlineUsers), [onlineUsers]);
+  const effectiveUsername = useMemo(() => {
+    const trimmedStore = (username ?? '').trim();
+    if (trimmedStore && trimmedStore !== 'Guest') {
+      return trimmedStore;
+    }
+
+    const trimmedInitial = (initialUsername ?? '').trim();
+    return trimmedInitial || 'Guest';
+  }, [username, initialUsername]);
 
   const level = useMemo(() => Math.floor(xp / 1000) + 1, [xp]);
   const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
@@ -306,8 +315,8 @@ export default function MainHubRealtime() {
   }, []);
 
   useEffect(() => {
-    setUsernameDraft(username);
-  }, [username]);
+    setUsernameDraft(effectiveUsername);
+  }, [effectiveUsername]);
 
   useEffect(() => {
     void hydrateFromSession();
@@ -337,7 +346,7 @@ export default function MainHubRealtime() {
     const socketUrl = getSocketUrl();
     const socket: Socket = io(socketUrl, {
       transports: ['websocket'],
-      query: { username, crashRoomId: 'global' },
+      query: { username: effectiveUsername, crashRoomId: 'global' },
     });
     socketRef.current = socket;
 
@@ -420,7 +429,7 @@ export default function MainHubRealtime() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [addWin, persistWalletAction, username]);
+  }, [addWin, persistWalletAction, effectiveUsername]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -902,7 +911,7 @@ export default function MainHubRealtime() {
 
           <div className="flex items-center gap-4">
             <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-slate-500">{username}</p>
+              <p className="text-xs uppercase tracking-wide text-slate-500">{effectiveUsername}</p>
               <p className="font-mono text-xs text-slate-400">Level {level} · XP {xp}</p>
               <p className="font-mono text-[10px] text-slate-500">
                 {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
@@ -1105,7 +1114,7 @@ export default function MainHubRealtime() {
               </>
             )}
 
-            {activeTab === 'blackjack' && <BlackjackGame username={username} />}
+            {activeTab === 'blackjack' && <BlackjackGame username={effectiveUsername} />}
             {activeTab === 'roulette' && <RouletteGame />}
             {activeTab === 'slots' && <SlotsGame />}
             {activeTab === 'poker' && (
@@ -1139,7 +1148,7 @@ export default function MainHubRealtime() {
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0">{pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={username} />}</div>
+                <div className="flex-1 min-h-0">{pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={effectiveUsername} />}</div>
               </div>
             )}
 
