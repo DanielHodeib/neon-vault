@@ -79,6 +79,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   const [pokerRoomId, setPokerRoomId] = useState('global');
   const [roomInput, setRoomInput] = useState('global');
   const [joiningRoom, setJoiningRoom] = useState(false);
+  const [selfSocketId, setSelfSocketId] = useState<string | null>(null);
   const [state, setState] = useState<PokerState>({
     roomId: 'global',
     started: false,
@@ -91,8 +92,24 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
   const socketRef = useRef<Socket | null>(null);
 
-  const me = useMemo(() => state.players.find((player) => player.username === username), [state.players, username]);
-  const others = useMemo(() => state.players.filter((player) => player.username !== username), [state.players, username]);
+  const me = useMemo(() => {
+    if (selfSocketId) {
+      const bySocket = state.players.find((player) => player.socketId === selfSocketId);
+      if (bySocket) {
+        return bySocket;
+      }
+    }
+
+    return state.players.find((player) => player.username === username) ?? null;
+  }, [state.players, selfSocketId, username]);
+
+  const others = useMemo(() => {
+    if (selfSocketId) {
+      return state.players.filter((player) => player.socketId !== selfSocketId);
+    }
+
+    return state.players.filter((player) => player.username !== username);
+  }, [state.players, selfSocketId, username]);
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
@@ -102,6 +119,10 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     });
 
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      setSelfSocketId(socket.id ?? null);
+    });
 
     socket.on('poker_room_joined', (payload: { ok: boolean; roomId?: string }) => {
       if (payload.ok && payload.roomId) {
@@ -116,6 +137,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     });
 
     return () => {
+      setSelfSocketId(null);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -178,10 +200,9 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
   const copyInvite = async () => {
     const roomCode = state.roomId || pokerRoomId;
-    const text = `Login: ${window.location.origin}/login\nPoker room code: ${roomCode}`;
-    const copied = await copyToClipboard(text);
+    const copied = await copyToClipboard(roomCode);
     if (copied) {
-      setNotice('Invite copied. Share the login link and room id.');
+      setNotice('Room code copied.');
     } else {
       setNotice(`Share this room id with your friend: ${roomCode}`);
     }
