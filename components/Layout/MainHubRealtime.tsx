@@ -30,6 +30,7 @@ import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatMoney } from '@/lib/formatMoney';
+import { canUseRankTag, getRankColor, RANKS, type RankTag } from '@/lib/ranks';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'leaderboard' | 'quests' | 'settings';
@@ -77,6 +78,7 @@ interface BlockSummary {
 interface SettingsPayload {
   soundEnabled: boolean;
   theme: ThemeOption;
+  selectedRankTag: RankTag;
   publicProfile: boolean;
   bio: string;
 }
@@ -200,6 +202,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [friendRealtimeNotice, setFriendRealtimeNotice] = useState('');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [theme, setTheme] = useState<ThemeOption>('slate');
+  const [selectedRankTag, setSelectedRankTag] = useState<RankTag>('BRONZE');
   const [publicProfile, setPublicProfile] = useState(true);
   const [bio, setBio] = useState('');
   const [usernameDraft, setUsernameDraft] = useState('');
@@ -386,6 +389,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
       setSoundEnabled(payload.settings.soundEnabled);
       setTheme(payload.settings.theme);
+      setSelectedRankTag(payload.settings.selectedRankTag ?? 'BRONZE');
       setPublicProfile(payload.settings.publicProfile);
       setBio(payload.settings.bio ?? '');
       settingsHydratedRef.current = true;
@@ -525,8 +529,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     socket.emit('profile_sync', {
       username: effectiveUsername,
       xp,
+      selectedRankTag,
     });
-  }, [xp, effectiveUsername, socketConnected]);
+  }, [xp, effectiveUsername, selectedRankTag, socketConnected]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -547,7 +552,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       const response = await fetch('/api/settings', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soundEnabled, theme, publicProfile, bio }),
+        body: JSON.stringify({ soundEnabled, theme, selectedRankTag, publicProfile, bio }),
       });
 
       const payload = (await response.json()) as { error?: string };
@@ -560,7 +565,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
       setSettingsNotice(silent ? 'Settings autosaved.' : 'Settings saved.');
     },
-    [soundEnabled, theme, publicProfile, bio]
+    [soundEnabled, theme, selectedRankTag, publicProfile, bio]
   );
 
   useEffect(() => {
@@ -573,7 +578,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     }, 850);
 
     return () => window.clearTimeout(timeout);
-  }, [soundEnabled, theme, publicProfile, bio, persistSettings]);
+  }, [soundEnabled, theme, selectedRankTag, publicProfile, bio, persistSettings]);
 
   const crashLabel =
     crashState.phase === 'crashed'
@@ -1627,6 +1632,42 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                           </div>
                           <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
                             <div className="h-full bg-cyan-500" style={{ width: `${levelProgress}%` }} />
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <p className="font-semibold text-slate-100 mb-1">Chat Nametag</p>
+                          <p className="text-xs text-slate-500 mb-3">Alle Ränge sind sichtbar, aber erst ab dem jeweiligen Level freischaltbar.</p>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {RANKS.map((rank) => {
+                              const unlocked = canUseRankTag(level, rank.tag);
+                              const selected = selectedRankTag === rank.tag;
+                              return (
+                                <button
+                                  key={rank.tag}
+                                  onClick={() => {
+                                    if (!unlocked) {
+                                      setSettingsNotice(`Rank ${rank.tag} unlockt ab Level ${rank.minLevel}.`);
+                                      return;
+                                    }
+                                    setSelectedRankTag(rank.tag);
+                                  }}
+                                  className={`rounded-lg border px-3 py-2 text-left transition ${
+                                    selected
+                                      ? 'border-cyan-500/50 bg-cyan-500/10'
+                                      : 'border-slate-700 bg-slate-900 hover:bg-slate-800'
+                                  } ${!unlocked ? 'opacity-70' : ''}`}
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black uppercase" style={{ color: getRankColor(rank.tag) }}>
+                                      {rank.tag}
+                                    </span>
+                                    <span className="text-[11px] text-slate-500">{unlocked ? 'Unlocked' : `Locked L${rank.minLevel}`}</span>
+                                  </div>
+                                  <p className="mt-1 text-[11px] text-slate-400">Wird als Tag neben deinem Namen im Live-Chat angezeigt.</p>
+                                </button>
+                              );
+                            })}
                           </div>
                         </div>
                       </>

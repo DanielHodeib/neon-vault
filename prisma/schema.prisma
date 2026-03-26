@@ -67,6 +67,7 @@ model Settings {
   userId       String   @unique @map("user_id")
   soundEnabled Boolean  @default(true)
   theme        String   @default("slate")
+  selectedRankTag String @default("BRONZE") @map("selected_rank_tag")
   publicProfile Boolean @default(true) @map("public_profile")
   bio          String   @default("")
   updatedAt    DateTime @updatedAt

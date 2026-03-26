@@ -14,7 +14,7 @@ const ROOM_PREFIX = 'crash:';
 const POKER_ROOM_PREFIX = 'poker:';
 const BLACKJACK_ROOM_PREFIX = 'blackjack:';
 const ROULETTE_ROOM_PREFIX = 'roulette:';
-const CRASH_ROUND_WAIT_MS = 5000;
+const CRASH_ROUND_WAIT_MS = 10000;
 const GLOBAL_CRASH_ROOM_ID = 'global';
 
 const SUITS = ['S', 'H', 'D', 'C'];
@@ -76,31 +76,39 @@ const rouletteRooms = new Map();
 const socketProfiles = new Map();
 
 const BIG_WIN_THRESHOLD = 5000;
+const RANK_RULES = [
+  { tag: 'BRONZE', color: '#d97706', minLevel: 1 },
+  { tag: 'SILBER', color: '#cbd5e1', minLevel: 10 },
+  { tag: 'GOLD', color: '#fbbf24', minLevel: 20 },
+  { tag: 'NEON', color: '#22d3ee', minLevel: 40 },
+];
 
 function rankFromXp(rawXp) {
   const xp = Number.isFinite(Number(rawXp)) ? Math.max(0, Math.floor(Number(rawXp))) : 0;
   const level = Math.floor(xp / 1000) + 1;
-
-  if (level >= 40) {
-    return { xp, level, rankTag: 'NEON', rankColor: '#22d3ee' };
-  }
-  if (level >= 20) {
-    return { xp, level, rankTag: 'GOLD', rankColor: '#fbbf24' };
-  }
-  if (level >= 10) {
-    return { xp, level, rankTag: 'SILBER', rankColor: '#cbd5e1' };
-  }
-  return { xp, level, rankTag: 'BRONZE', rankColor: '#d97706' };
+  const unlocked = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel) || RANK_RULES[0];
+  return { xp, level, rankTag: unlocked.tag, rankColor: unlocked.color };
 }
 
-function upsertSocketProfile(socketId, username, rawXp) {
+function rankFromSelection(level, selectedRankTag) {
+  const selected = typeof selectedRankTag === 'string' ? RANK_RULES.find((rule) => rule.tag === selectedRankTag) : null;
+  if (selected && level >= selected.minLevel) {
+    return { rankTag: selected.tag, rankColor: selected.color };
+  }
+
+  const fallback = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel) || RANK_RULES[0];
+  return { rankTag: fallback.tag, rankColor: fallback.color };
+}
+
+function upsertSocketProfile(socketId, username, rawXp, selectedRankTag) {
   const rank = rankFromXp(rawXp);
+  const displayed = rankFromSelection(rank.level, selectedRankTag);
   const profile = {
     username,
     xp: rank.xp,
     level: rank.level,
-    rankTag: rank.rankTag,
-    rankColor: rank.rankColor,
+    rankTag: displayed.rankTag,
+    rankColor: displayed.rankColor,
   };
 
   socketProfiles.set(socketId, profile);
@@ -113,7 +121,7 @@ function getSocketProfile(socketId, usernameFallback) {
     return existing;
   }
 
-  return upsertSocketProfile(socketId, usernameFallback, 0);
+  return upsertSocketProfile(socketId, usernameFallback, 0, undefined);
 }
 
 function emitSystemBigWin(username, amount) {
@@ -999,7 +1007,8 @@ io.on('connection', (socket) => {
   const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
 
   onlineUsers.set(socket.id, username);
-  upsertSocketProfile(socket.id, username, initialXp);
+  const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
 
@@ -1107,7 +1116,8 @@ io.on('connection', (socket) => {
   socket.on('profile_sync', (payload, callback) => {
     const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
-    const profile = upsertSocketProfile(socket.id, name, xp);
+    const selectedRankTag = typeof payload?.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
+    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag);
     callback?.({ ok: true, level: profile.level, rankTag: profile.rankTag, rankColor: profile.rankColor });
   });
 
