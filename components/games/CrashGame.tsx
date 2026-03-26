@@ -19,7 +19,14 @@ interface CrashStatePayload {
   roomId?: string;
   phase: 'waiting' | 'running' | 'crashed';
   multiplier: number;
+  history?: number[];
   players: CrashPlayer[];
+}
+
+interface CrashCrashedPayload {
+  crashPoint?: number;
+  multiplier?: number;
+  history?: number[];
 }
 
 function burstOffset(index: number) {
@@ -52,6 +59,7 @@ export default function CrashGame() {
   const [multiplier, setMultiplier] = useState(1.0);
   const [betInput, setBetInput] = useState('100');
   const [players, setPlayers] = useState<CrashPlayer[]>([]);
+  const [history, setHistory] = useState<number[]>([]);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncingCashOut, setIsSyncingCashOut] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -188,6 +196,7 @@ export default function CrashGame() {
     socket.on('crash_state', (payload: CrashStatePayload) => {
       setPhase(payload.phase);
       setMultiplier(payload.multiplier);
+      setHistory(Array.isArray(payload.history) ? payload.history : []);
       setPlayers(payload.players || []);
       if (payload.phase !== 'running') setIsSyncingCashOut(false);
     });
@@ -198,9 +207,15 @@ export default function CrashGame() {
       setPhase('running');
     });
 
-    socket.on('crash_crashed', (data: { multiplier: number }) => {
+    socket.on('crash_crashed', (data: CrashCrashedPayload) => {
       setPhase('crashed');
-      setMultiplier(data.multiplier);
+      const crashValue = Number(data?.crashPoint ?? data?.multiplier ?? multiplier);
+      setMultiplier(Number.isFinite(crashValue) ? crashValue : multiplier);
+      if (Array.isArray(data?.history)) {
+        setHistory(data.history);
+      } else if (Number.isFinite(crashValue)) {
+        setHistory((current) => [crashValue, ...current].slice(0, 16));
+      }
       setIsSyncingCashOut(false);
       setIsPlacingBet(false);
     });
@@ -329,6 +344,15 @@ export default function CrashGame() {
         </motion.div>
 
         <motion.div
+          className="absolute inset-x-0 bottom-0 h-36 pointer-events-none"
+          animate={phase === 'running' ? { opacity: [0.45, 0.8, 0.5], y: [0, -4, 0] } : { opacity: phase === 'crashed' ? [0.7, 0.95, 0.75] : 0.35, y: 0 }}
+          transition={{ duration: 0.65, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_92%,rgba(248,113,113,0.42)_0%,rgba(248,113,113,0.2)_22%,rgba(239,68,68,0.11)_38%,transparent_72%)]" />
+          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_8%,rgba(244,63,94,0.12)_72%,rgba(190,24,93,0.2)_100%)]" />
+        </motion.div>
+
+        <motion.div
           className="absolute inset-0 opacity-45"
           animate={{ x: ['0%', '-50%'] }}
           transition={{ duration: scanDuration, ease: 'linear', repeat: Infinity }}
@@ -353,27 +377,33 @@ export default function CrashGame() {
         </div>
 
         <motion.div
-          className="absolute z-30"
+          className="absolute z-30 -translate-x-1/2"
           style={{ left: `${rocketX}%`, top: `${rocketY}%` }}
-          animate={phase === 'running' ? { x: [-1, 1, -1, 1, 0], y: [-1, 1, -1, 1, 0], rotate: [-1, 1, -1, 1, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -22 : 0 }}
+          animate={phase === 'running' ? { x: [-0.5, 0.5, -0.5, 0.5, 0], y: [-1, 1, -1, 1, 0], rotate: [-0.4, 0.4, -0.4, 0.4, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -12 : 0 }}
           transition={phase === 'running' ? { duration: 0.42, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.24 }}
         >
           <motion.div
-            className={`relative h-16 w-24 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
+            className={`relative h-24 w-16 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
             animate={phase === 'crashed' ? { filter: ['drop-shadow(0 0 9px rgba(251,113,133,0.72))', 'drop-shadow(0 0 24px rgba(251,113,133,1))', 'drop-shadow(0 0 9px rgba(251,113,133,0.72))'] } : { filter: 'drop-shadow(0 0 15px rgba(34,211,238,0.86))' }}
             transition={{ duration: 0.55 }}
           >
-            <svg viewBox="0 0 220 130" className="h-full w-full" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M30 66 L96 42 L164 42 L206 62 L164 84 L96 84 Z" />
-              <path d="M84 42 L104 18 L148 18 L132 42 Z" />
-              <path d="M94 84 L124 112 L112 84 Z" />
-              <path d="M150 84 L176 114 L164 84 Z" />
-              <circle cx="146" cy="63" r="10" className="text-slate-950" fill="currentColor" />
+            <svg viewBox="0 0 120 220" className="h-full w-full" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+              <path d="M60 14 L78 46 L78 140 L42 140 L42 46 Z" />
+              <path d="M42 46 L60 14 L78 46 Z" />
+              <path d="M42 120 L22 148 L42 140 Z" />
+              <path d="M78 120 L98 148 L78 140 Z" />
+              <path d="M42 140 L60 178 L78 140 Z" />
+              <circle cx="60" cy="86" r="10" className="text-slate-950" fill="currentColor" />
             </svg>
             <motion.div
-              className="absolute -left-7 top-1/2 h-4 w-12 -translate-y-1/2 rounded-full bg-cyan-400/65 blur-md"
-              animate={{ scaleX: phase === 'running' ? [0.8, 1.22, 0.86] : 0.7, opacity: phase === 'crashed' ? 0 : [0.4, 0.92, 0.4] }}
+              className="absolute left-1/2 -bottom-8 h-10 w-4 -translate-x-1/2 rounded-full bg-rose-500/70 blur-md"
+              animate={{ scaleY: phase === 'running' ? [0.7, 1.45, 0.82] : 0.55, opacity: phase === 'crashed' ? 0 : [0.45, 1, 0.45] }}
               transition={{ duration: trailDuration, repeat: Infinity, ease: 'linear' }}
+            />
+            <motion.div
+              className="absolute left-1/2 -bottom-11 h-8 w-8 -translate-x-1/2 rounded-full bg-orange-400/40 blur-lg"
+              animate={{ scale: phase === 'running' ? [0.85, 1.2, 0.9] : 0.72, opacity: phase === 'crashed' ? 0 : [0.35, 0.9, 0.35] }}
+              transition={{ duration: 0.36, repeat: Infinity, ease: 'easeInOut' }}
             />
           </motion.div>
         </motion.div>
@@ -510,6 +540,21 @@ export default function CrashGame() {
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+
+        <div className="max-w-4xl mx-auto mt-4 rounded-xl border border-slate-800 bg-slate-950 p-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-2">History</p>
+          <div className="flex flex-wrap gap-1.5">
+            {history.length === 0 ? <span className="text-xs text-slate-500">No rounds yet</span> : null}
+            {history.slice(0, 14).map((entry, index) => (
+              <span
+                key={`crash-history-${entry}-${index}`}
+                className={`px-2 py-1 rounded-md border text-[11px] font-mono ${entry >= 3 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : entry >= 1.8 ? 'bg-blue-500/10 text-blue-400 border-blue-500/30' : 'bg-rose-500/10 text-rose-400 border-rose-500/30'}`}
+              >
+                {entry.toFixed(2)}x
+              </span>
+            ))}
           </div>
         </div>
       </div>
