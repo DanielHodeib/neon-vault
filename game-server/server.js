@@ -15,7 +15,9 @@ const POKER_ROOM_PREFIX = 'poker:';
 const BLACKJACK_ROOM_PREFIX = 'blackjack:';
 const ROULETTE_ROOM_PREFIX = 'roulette:';
 const CRASH_ROUND_WAIT_MS = 10000;
+const CRASH_ROUND_CRASHED_MS = 1500;
 const GLOBAL_CRASH_ROOM_ID = 'global';
+const ROULETTE_WHEEL_NUMBERS = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -68,15 +70,19 @@ const io = new Server(server, {
 
 const onlineUsers = new Map();
 const userActivities = new Map();
+const userActivityStartedAt = new Map();
+const userGameDurations = new Map();
 let chatHistory = [];
 const crashRooms = new Map();
 const pokerRooms = new Map();
 const blackjackRooms = new Map();
 const rouletteRooms = new Map();
+const genericRooms = new Map();
 const socketProfiles = new Map();
 
-const BIG_WIN_THRESHOLD = 5000;
+const HIGH_ROLLER_THRESHOLD = 50000;
 const RANK_RULES = [
+  { tag: 'BALLER', color: '#fb923c', minLevel: 1, minBalance: 0 },
   { tag: 'BRONZE', color: '#d97706', minLevel: 1, minBalance: 0 },
   { tag: 'IRON', color: '#9ca3af', minLevel: 2, minBalance: 2500 },
   { tag: 'COPPER', color: '#b45309', minLevel: 3, minBalance: 5000 },
@@ -117,12 +123,36 @@ function rankFromSelection(level, balance, selectedRankTag) {
   return { rankTag: fallback.tag, rankColor: fallback.color };
 }
 
-function upsertSocketProfile(socketId, username, rawXp, selectedRankTag, rawBalance = Number.MAX_SAFE_INTEGER) {
+function normalizeRole(rawRole) {
+  const role = typeof rawRole === 'string' ? rawRole.trim().toUpperCase() : '';
+  return role || 'USER';
+}
+
+function normalizeClanTag(rawClanTag) {
+  if (typeof rawClanTag !== 'string') {
+    return null;
+  }
+
+  const clanTag = rawClanTag.trim().toUpperCase();
+  return clanTag ? clanTag.slice(0, 5) : null;
+}
+
+function upsertSocketProfile(
+  socketId,
+  username,
+  rawXp,
+  selectedRankTag,
+  rawBalance = Number.MAX_SAFE_INTEGER,
+  rawRole = 'USER',
+  rawClanTag = null
+) {
   const rank = rankFromXp(rawXp, rawBalance);
   const balance = Number.isFinite(Number(rawBalance)) ? Math.max(0, Math.floor(Number(rawBalance))) : 0;
   const displayed = rankFromSelection(rank.level, balance, selectedRankTag);
   const profile = {
     username,
+    role: normalizeRole(rawRole),
+    clanTag: normalizeClanTag(rawClanTag),
     xp: rank.xp,
     level: rank.level,
     rankTag: displayed.rankTag,
@@ -139,22 +169,57 @@ function getSocketProfile(socketId, usernameFallback) {
     return existing;
   }
 
-  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER);
+  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER, 'USER', null);
 }
 
-function emitSystemBigWin(username, amount) {
+function shouldBroadcastSystemWin(amount = 0) {
+  return amount >= HIGH_ROLLER_THRESHOLD;
+}
+
+function getHypeMessage(username, payout, source = '') {
+  const game = typeof source === 'string' ? source.trim().toLowerCase() : '';
+  const amountText = Math.floor(Number(payout) || 0);
+
+  if (game === 'crash') {
+    return `🚀 CRASH MOONSHOT! ${username} hat ${amountText} NVC aus dem Crash geholt!`;
+  }
+
+  if (game === 'slots') {
+    return `🎰 SLOT EXPLOSION! ${username} hat ${amountText} NVC aus den Slots gesnackt!`;
+  }
+
+  if (game === 'roulette') {
+    return `🎯 ROULETTE SNIPE! ${username} hat ${amountText} NVC am Roulette-Tisch getroffen!`;
+  }
+
+  if (game === 'blackjack') {
+    return `🃏 BLACKJACK HEATER! ${username} hat ${amountText} NVC im Blackjack abgeräumt!`;
+  }
+
+  if (game === 'poker') {
+    return `♠️ POKER CRUSH! ${username} hat ${amountText} NVC am Poker-Table gewonnen!`;
+  }
+
+  return `🏆 HIGH ROLLER! ${username} hat ${amountText} NVC gewonnen!`;
+}
+
+function emitSystemBigWin(username, amount, source = '') {
   const numericAmount = Number.isFinite(Number(amount)) ? Math.floor(Number(amount)) : 0;
-  if (numericAmount < BIG_WIN_THRESHOLD) {
+
+  if (!shouldBroadcastSystemWin(numericAmount)) {
     return;
   }
+
+  const hypeText = getHypeMessage(username, numericAmount, source);
 
   const message = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     username: 'SYSTEM',
-    text: `🏆 MIND-BLOWING! ${username} hat ${numericAmount} NVC gewonnen!`,
+    sender: 'SYSTEM',
+    text: hypeText,
+    timestamp: new Date().toISOString(),
     createdAt: Date.now(),
-    rankTag: 'SYSTEM',
-    rankColor: '#ef4444',
+    role: 'ADMIN',
     system: true,
   };
 
@@ -202,6 +267,20 @@ function rouletteChannel(roomId) {
   return `${ROULETTE_ROOM_PREFIX}${roomId}`;
 }
 
+function sanitizeGenericRoomId(value) {
+  const raw = typeof value === 'string' ? value.trim().toLowerCase() : '';
+  return raw || 'global';
+}
+
+function emitGenericRoomUpdate(roomId) {
+  const room = genericRooms.get(roomId) || new Set();
+  const members = Array.from(room).map((socketId) => onlineUsers.get(socketId) || `Guest-${socketId.slice(0, 6)}`);
+  io.to(roomId).emit('room_update', {
+    roomId,
+    members,
+  });
+}
+
 function createDeck() {
   const deck = [];
 
@@ -235,6 +314,9 @@ function getCrashRoom(roomId) {
     phase: 'waiting',
     multiplier: 1,
     crashPoint: generateCrashPoint(),
+    roundId: 1,
+    resolvingCrash: false,
+    crashResetTimer: null,
     history: [],
     players: new Map(),
     sockets: new Set(),
@@ -457,12 +539,88 @@ function broadcastOnlineUsers() {
   io.emit('online_users', Array.from(onlineUsers.values()));
 }
 
+function getSocketIdsByUsername(username) {
+  const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  if (!normalized) {
+    return [];
+  }
+
+  const socketIds = [];
+  onlineUsers.forEach((onlineUsername, socketId) => {
+    if (String(onlineUsername).trim().toLowerCase() === normalized) {
+      socketIds.push(socketId);
+    }
+  });
+  return socketIds;
+}
+
 function setUserActivity(socketId, activity) {
-  userActivities.set(socketId, activity);
+  const nextActivity = typeof activity === 'string' && activity.trim() ? activity.trim() : 'Hub';
+  const now = Date.now();
+  const previousActivity = userActivities.get(socketId);
+  const previousStartedAt = userActivityStartedAt.get(socketId);
+
+  if (!previousActivity || !previousStartedAt) {
+    userActivities.set(socketId, nextActivity);
+    userActivityStartedAt.set(socketId, now);
+    return;
+  }
+
+  if (previousActivity === nextActivity) {
+    return;
+  }
+
+  const elapsedMs = Math.max(0, now - previousStartedAt);
+  if (elapsedMs > 0) {
+    const username = onlineUsers.get(socketId);
+    if (username) {
+      const normalizedUsername = String(username).trim();
+      if (normalizedUsername) {
+        const currentDurations = userGameDurations.get(normalizedUsername) || {};
+        currentDurations[previousActivity] = (Number(currentDurations[previousActivity]) || 0) + elapsedMs;
+        userGameDurations.set(normalizedUsername, currentDurations);
+      }
+    }
+  }
+
+  userActivities.set(socketId, nextActivity);
+  userActivityStartedAt.set(socketId, now);
 }
 
 function getUserActivity(socketId) {
   return userActivities.get(socketId) || 'Hub';
+}
+
+function getFavoriteGameForUsername(username) {
+  const normalizedUsername = typeof username === 'string' ? username.trim() : '';
+  if (!normalizedUsername) {
+    return null;
+  }
+
+  const durations = userGameDurations.get(normalizedUsername);
+  if (!durations) {
+    return null;
+  }
+
+  let favorite = null;
+  let maxMs = 0;
+
+  Object.entries(durations).forEach(([game, totalMs]) => {
+    const safeMs = Number.isFinite(Number(totalMs)) ? Number(totalMs) : 0;
+    if (safeMs > maxMs) {
+      maxMs = safeMs;
+      favorite = game;
+    }
+  });
+
+  if (!favorite) {
+    return null;
+  }
+
+  return {
+    game: favorite,
+    totalMs: Math.round(maxMs),
+  };
 }
 
 app.get('/presence', (_req, res) => {
@@ -482,10 +640,30 @@ app.get('/presence', (_req, res) => {
   });
 });
 
+app.get('/favorite-game/:username', (req, res) => {
+  const rawUsername = typeof req.params?.username === 'string' ? req.params.username : '';
+  const username = decodeURIComponent(rawUsername).trim();
+
+  if (!username) {
+    return res.status(400).json({ error: 'Username required.' });
+  }
+
+  const favorite = getFavoriteGameForUsername(username);
+  if (!favorite) {
+    return res.json({ game: 'Unknown', totalMs: 0 });
+  }
+
+  return res.json({
+    game: favorite.game,
+    totalMs: favorite.totalMs,
+  });
+});
+
 function broadcastCrashState(roomId) {
   const room = getCrashRoom(roomId);
   const payload = {
     roomId: room.id,
+    roundId: room.roundId,
     phase: room.phase,
     multiplier: room.multiplier,
     crashPoint: room.phase === 'crashed' ? room.crashPoint : null,
@@ -493,12 +671,6 @@ function broadcastCrashState(roomId) {
     players: publicCrashPlayers(room),
     roundStartAt: room.roundStartAt,
   };
-
-  if (room.id === GLOBAL_CRASH_ROOM_ID) {
-    io.emit('crash_state', payload);
-    return;
-  }
-
   io.to(roomChannel(room.id)).emit('crash_state', payload);
 }
 
@@ -508,13 +680,12 @@ function broadcastCrashRoomMembers(roomId) {
     roomId: room.id,
     members: publicCrashRoomMembers(room),
   };
-
-  if (room.id === GLOBAL_CRASH_ROOM_ID) {
-    io.emit('crash_room_members', payload);
-    return;
-  }
-
   io.to(roomChannel(room.id)).emit('crash_room_members', payload);
+}
+
+function emitToCrashRoom(roomId, event, payload) {
+  const room = getCrashRoom(roomId);
+  io.to(roomChannel(room.id)).emit(event, payload);
 }
 
 function publicPokerState(room, targetSocketId) {
@@ -677,11 +848,16 @@ function startPokerRound(roomId) {
 
 function startCrashRound(roomId) {
   const room = getCrashRoom(roomId);
+  if (room.phase !== 'waiting') {
+    return;
+  }
+
+  room.resolvingCrash = false;
   room.phase = 'running';
   room.multiplier = 1;
   room.crashPoint = generateCrashPoint();
 
-  io.emit('crash_round_started', {
+  emitToCrashRoom(room.id, 'crash_round_started', {
     roomId: room.id,
     crashPointHidden: true,
   });
@@ -691,21 +867,41 @@ function startCrashRound(roomId) {
 
 function crashRoundNow(roomId) {
   const room = getCrashRoom(roomId);
+  if (room.resolvingCrash || room.phase !== 'running') {
+    return;
+  }
+
+  room.resolvingCrash = true;
   room.phase = 'crashed';
   room.history = [room.crashPoint, ...room.history].slice(0, 16);
 
-  io.emit('crash_crashed', {
+  const playersAtCrash = publicCrashPlayers(room);
+
+  emitToCrashRoom(room.id, 'crash_crashed', {
     roomId: room.id,
+    roundId: room.roundId,
     crashPoint: room.crashPoint,
     history: room.history,
-    players: publicCrashPlayers(room),
+    players: playersAtCrash,
   });
 
-  room.players.clear();
-  room.multiplier = 1;
-  room.phase = 'waiting';
-  room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
   broadcastCrashState(room.id);
+
+  if (room.crashResetTimer) {
+    clearTimeout(room.crashResetTimer);
+  }
+
+  room.crashResetTimer = setTimeout(() => {
+    room.players.clear();
+    room.multiplier = 1;
+    room.phase = 'waiting';
+    room.roundId += 1;
+    room.resolvingCrash = false;
+    room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+    room.crashResetTimer = null;
+    broadcastCrashState(room.id);
+    io.to(roomChannel(room.id)).emit('crash_players', publicCrashPlayers(room));
+  }, CRASH_ROUND_CRASHED_MS);
 }
 
 function detachSocketFromRoom(socket, roomId) {
@@ -901,56 +1097,73 @@ function broadcastRouletteRoomMembers(roomId) {
   });
 }
 
+function spinRouletteResult() {
+  const winningIndex = Math.floor(Math.random() * ROULETTE_WHEEL_NUMBERS.length);
+  const winningNumber = ROULETTE_WHEEL_NUMBERS[winningIndex];
+  return {
+    winningIndex,
+    winningNumber,
+    wheelSize: ROULETTE_WHEEL_NUMBERS.length,
+  };
+}
+
 setInterval(() => {
-  const room = getCrashRoom(GLOBAL_CRASH_ROOM_ID);
+  const rooms = Array.from(crashRooms.values());
 
-  if (room.phase === 'waiting') {
-    if (Date.now() >= room.roundStartAt) {
-      startCrashRound(GLOBAL_CRASH_ROOM_ID);
+  rooms.forEach((room) => {
+    if (room.phase === 'waiting') {
+      if (Date.now() >= room.roundStartAt) {
+        startCrashRound(room.id);
+      }
+      return;
     }
-    return;
-  }
 
-  if (room.phase !== 'running') {
-    return;
-  }
-
-  room.multiplier = Number((room.multiplier + 0.01 * (room.multiplier * 1.24)).toFixed(4));
-
-  io.emit('crash_tick', {
-    roomId: room.id,
-    multiplier: room.multiplier,
-    players: publicCrashPlayers(room),
-  });
-
-  if (room.multiplier >= room.crashPoint) {
-    crashRoundNow(GLOBAL_CRASH_ROOM_ID);
-    return;
-  }
-
-  const eligible = Array.from(room.players.values()).filter((player) => player.autoCashOut >= 1 && !player.cashedOut);
-  eligible.forEach((player) => {
-    if (room.multiplier >= player.autoCashOut) {
-      const payout = Number((player.amount * player.autoCashOut).toFixed(2));
-      player.cashedOut = true;
-      player.cashedAt = player.autoCashOut;
-
-      io.to(player.socketId).emit('crash_cashout_result', {
-        ok: true,
-        payout,
-        multiplier: player.autoCashOut,
-        mode: 'auto',
-        roomId: room.id,
-      });
-
-      io.emit('crash_player_cashed_out', {
-        username: player.username,
-        multiplier: player.autoCashOut,
-        payout,
-        mode: 'auto',
-        roomId: room.id,
-      });
+    if (room.phase !== 'running') {
+      return;
     }
+
+    room.multiplier = Number((room.multiplier + 0.01 * (room.multiplier * 1.24)).toFixed(4));
+
+    if (room.multiplier >= room.crashPoint) {
+      crashRoundNow(room.id);
+      return;
+    }
+
+    emitToCrashRoom(room.id, 'crash_tick', {
+      roomId: room.id,
+      roundId: room.roundId,
+      multiplier: room.multiplier,
+      players: publicCrashPlayers(room),
+    });
+
+    const eligible = Array.from(room.players.values()).filter(
+      (player) => player.autoCashOut >= 1 && !player.cashedOut && player.roundId === room.roundId
+    );
+    eligible.forEach((player) => {
+      if (room.multiplier >= player.autoCashOut) {
+        const payout = Number((player.amount * player.autoCashOut).toFixed(2));
+        player.cashedOut = true;
+        player.cashedAt = player.autoCashOut;
+
+        io.to(player.socketId).emit('crash_cashout_result', {
+          ok: true,
+          payout,
+          multiplier: player.autoCashOut,
+          mode: 'auto',
+          roomId: room.id,
+        });
+
+        emitToCrashRoom(room.id, 'crash_player_cashed_out', {
+          username: player.username,
+          multiplier: player.autoCashOut,
+          payout,
+          mode: 'auto',
+          roomId: room.id,
+        });
+
+          emitSystemBigWin(player.username, payout, 'crash');
+      }
+    });
   });
 }, 90);
 
@@ -1010,12 +1223,41 @@ app.post('/internal/leaderboard/broadcast', (req, res) => {
 app.post('/internal/chat/win', (req, res) => {
   const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
   const amount = Number.isFinite(Number(req.body?.amount)) ? Math.floor(Number(req.body.amount)) : 0;
-
+  const source = typeof req.body?.source === 'string' ? req.body.source.trim().toLowerCase() : '';
   if (!username || amount <= 0) {
     return res.status(400).json({ ok: false, error: 'Invalid payload' });
   }
 
-  emitSystemBigWin(username, amount);
+    emitSystemBigWin(username, amount, source);
+  return res.json({ ok: true });
+});
+
+app.post('/internal/global-notification', (req, res) => {
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 240) : '';
+  if (!message) {
+    return res.status(400).json({ ok: false, error: 'Message is required.' });
+  }
+
+  io.emit('global_notification', {
+    message,
+    createdAt: Date.now(),
+  });
+
+  return res.json({ ok: true });
+});
+
+app.post('/internal/admin-broadcast', (req, res) => {
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 240) : '';
+  if (!message) {
+    return res.status(400).json({ ok: false, error: 'Message is required.' });
+  }
+
+  io.emit('admin_broadcast', {
+    message,
+    createdAt: Date.now(),
+    from: 'Daniel',
+  });
+
   return res.json({ ok: true });
 });
 
@@ -1023,11 +1265,18 @@ io.on('connection', (socket) => {
   const rawName = socket.handshake.query.username;
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
   const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
+  const initialRole = typeof socket.handshake.query.role === 'string' ? socket.handshake.query.role : 'USER';
+  const initialClanTag =
+    typeof socket.handshake.query.clanTag === 'string'
+      ? socket.handshake.query.clanTag
+      : typeof socket.handshake.query.clan === 'string'
+        ? socket.handshake.query.clan
+        : null;
 
   onlineUsers.set(socket.id, username);
   const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
   const initialBalance = Number.isFinite(Number(socket.handshake.query.balance)) ? Number(socket.handshake.query.balance) : Number.MAX_SAFE_INTEGER;
-  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance);
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, initialRole, initialClanTag);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
 
@@ -1076,8 +1325,36 @@ io.on('connection', (socket) => {
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
   });
 
+  socket.on('join_room', (payload, callback) => {
+    const nextRoomId = sanitizeGenericRoomId(payload?.roomId);
+    const previousRoomId = socket.data.genericRoomId;
+
+    if (previousRoomId && previousRoomId !== nextRoomId) {
+      socket.leave(previousRoomId);
+      const previousMembers = genericRooms.get(previousRoomId);
+      if (previousMembers) {
+        previousMembers.delete(socket.id);
+        if (previousMembers.size === 0) {
+          genericRooms.delete(previousRoomId);
+        }
+      }
+      emitGenericRoomUpdate(previousRoomId);
+    }
+
+    socket.join(nextRoomId);
+    socket.data.genericRoomId = nextRoomId;
+
+    if (!genericRooms.has(nextRoomId)) {
+      genericRooms.set(nextRoomId, new Set());
+    }
+    genericRooms.get(nextRoomId).add(socket.id);
+
+    emitGenericRoomUpdate(nextRoomId);
+    callback?.({ ok: true, roomId: nextRoomId });
+  });
+
   socket.on('join_crash_room', (payload, callback) => {
-    const desired = GLOBAL_CRASH_ROOM_ID;
+    const desired = sanitizeRoomId(payload?.roomId);
     const nextRoom = attachSocketToRoom(socket, desired);
 
     setUserActivity(socket.id, 'Crash');
@@ -1128,17 +1405,84 @@ io.on('connection', (socket) => {
 
     const isRealPlayer = !String(username).startsWith('Guest-');
     if (isRealPlayer) {
-      emitSystemBigWin(username, amount);
+        emitSystemBigWin(username, amount, 'roulette');
     }
+  });
+
+  socket.on('friend_transfer_notification', (payload, callback) => {
+    const receiverUsername = typeof payload?.receiverUsername === 'string' ? payload.receiverUsername.trim() : '';
+    const message = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'Du hast NVC erhalten!';
+
+    if (!receiverUsername) {
+      callback?.({ ok: false, error: 'receiverUsername is required.' });
+      return;
+    }
+
+    const receiverSocketIds = getSocketIdsByUsername(receiverUsername).filter((socketId) => socketId !== socket.id);
+    receiverSocketIds.forEach((receiverSocketId) => {
+      io.to(receiverSocketId).emit('notification', { message });
+    });
+
+    callback?.({ ok: true, delivered: receiverSocketIds.length });
+  });
+
+  socket.on('roulette_spin_request', (_payload, callback) => {
+    const roomId = socket.data.rouletteRoomId;
+    if (!roomId) {
+      callback?.({ ok: false, error: 'Not in roulette room.' });
+      return;
+    }
+
+    const room = rouletteRooms.get(roomId);
+    if (!room || !room.sockets.has(socket.id)) {
+      callback?.({ ok: false, error: 'Invalid roulette room state.' });
+      return;
+    }
+
+    const result = spinRouletteResult();
+    const roundId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+    io.to(rouletteChannel(roomId)).emit('roulette_spin_result', {
+      roomId,
+      roundId,
+      winningNumber: result.winningNumber,
+      winningIndex: result.winningIndex,
+      wheelSize: result.wheelSize,
+      emittedAt: Date.now(),
+      initiatedBy: username,
+    });
+
+    callback?.({
+      ok: true,
+      roomId,
+      roundId,
+      winningNumber: result.winningNumber,
+      winningIndex: result.winningIndex,
+      wheelSize: result.wheelSize,
+    });
   });
 
   socket.on('profile_sync', (payload, callback) => {
     const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
     const balance = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Number.MAX_SAFE_INTEGER;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
+    const role = typeof payload?.role === 'string' ? payload.role : 'USER';
+    const clanTag =
+      typeof payload?.clanTag === 'string'
+        ? payload.clanTag
+        : typeof payload?.clan === 'string'
+          ? payload.clan
+          : null;
     const selectedRankTag = typeof payload?.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
-    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance);
-    callback?.({ ok: true, level: profile.level, rankTag: profile.rankTag, rankColor: profile.rankColor });
+    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance, role, clanTag);
+    callback?.({
+      ok: true,
+      level: profile.level,
+      rankTag: profile.rankTag,
+      rankColor: profile.rankColor,
+      role: profile.role,
+      clanTag: profile.clanTag,
+    });
   });
 
   socket.on('blackjack_start_round', (_payload, callback) => {
@@ -1272,6 +1616,8 @@ io.on('connection', (socket) => {
       username,
       text: text.slice(0, 280),
       createdAt: Date.now(),
+      role: profile.role,
+      clanTag: profile.clanTag,
       rankTag: profile.rankTag,
       rankColor: profile.rankColor,
       level: profile.level,
@@ -1279,49 +1625,165 @@ io.on('connection', (socket) => {
 
     chatHistory = [...chatHistory, message].slice(-80);
     io.emit('chat_message', message);
+
+    const mentionMatches = text.match(/@([a-zA-Z0-9_]+)/g) ?? [];
+    const mentionedUsernames = Array.from(
+      new Set(
+        mentionMatches
+          .map((mention) => mention.slice(1).trim())
+          .filter(Boolean)
+      )
+    );
+
+    mentionedUsernames.forEach((mentionedUsername) => {
+      const receiverSocketIds = getSocketIdsByUsername(mentionedUsername).filter((socketId) => socketId !== socket.id);
+      receiverSocketIds.forEach((receiverSocketId) => {
+        io.to(receiverSocketId).emit('chat_mention', {
+          sender: username,
+          message: message.text,
+          mentioned: mentionedUsername,
+          createdAt: message.createdAt,
+        });
+      });
+    });
+  });
+
+  socket.on('admin_broadcast', (payload, callback) => {
+    const profile = getSocketProfile(socket.id, username);
+    const isDanielAdmin = profile.username === 'Daniel' && String(profile.role).toUpperCase() === 'ADMIN';
+    if (!isDanielAdmin) {
+      callback?.({ ok: false, error: 'Unauthorized broadcast sender.' });
+      return;
+    }
+
+    const message = typeof payload?.message === 'string' ? payload.message.trim().slice(0, 180) : '';
+    if (!message) {
+      callback?.({ ok: false, error: 'Message is required.' });
+      return;
+    }
+
+    io.emit('admin_broadcast', {
+      message,
+      createdAt: Date.now(),
+      from: 'Daniel',
+    });
+
+    callback?.({ ok: true });
   });
 
   socket.on('crash_place_bet', (payload, callback) => {
     setUserActivity(socket.id, 'Crash');
-    const roomId = GLOBAL_CRASH_ROOM_ID;
+    const requestedRoomId = sanitizeRoomId(payload?.roomId);
+    const roomId = socket.data.crashRoomId || GLOBAL_CRASH_ROOM_ID;
+
+    if (requestedRoomId !== roomId) {
+      console.warn(`[crash_place_bet] room mismatch user=${username} requested=${requestedRoomId} socketRoom=${roomId}`);
+      callback?.({ ok: false, error: 'Room mismatch. Join the selected crash room first.' });
+      return;
+    }
+
     const roomState = getCrashRoom(roomId);
-    const amount = Number(payload?.amount ?? 0);
+    const parsedAmount = Number(payload?.amount ?? 0);
     const autoCashOut = Number(payload?.autoCashOut ?? 0);
 
-    if (roomState.phase !== 'waiting') {
+    if (!roomState.sockets.has(socket.id)) {
+      attachSocketToRoom(socket, roomId);
+    }
+
+    if (!roomState.sockets.has(socket.id)) {
+      console.warn(`[crash_place_bet] socket room sync failed user=${username} room=${roomId} socketId=${socket.id}`);
+      callback?.({ ok: false, error: 'Socket room sync failed.' });
+      return;
+    }
+
+    if (roomState.phase !== 'waiting' || roomState.resolvingCrash) {
+      console.warn(`[crash_place_bet] rejected not waiting user=${username} room=${roomId} phase=${roomState.phase}`);
       callback?.({ ok: false, error: 'Round already running.' });
       return;
     }
 
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      console.warn(`[crash_place_bet] invalid amount user=${username} room=${roomId} amount=${payload?.amount}`);
       callback?.({ ok: false, error: 'Invalid amount.' });
+      return;
+    }
+
+    const safeAmount = Math.floor(Number(parsedAmount));
+
+    const existingBet = roomState.players.get(socket.id);
+    if (existingBet && !existingBet.cashedOut) {
+      console.warn(`[crash_place_bet] duplicate bet user=${username} room=${roomId} amount=${existingBet.amount}`);
+      callback?.({ ok: false, error: 'Bet already placed for this round.' });
       return;
     }
 
     roomState.players.set(socket.id, {
       socketId: socket.id,
       username,
-      amount: Math.floor(amount),
+      amount: safeAmount,
       autoCashOut: Number.isFinite(autoCashOut) ? autoCashOut : 0,
+      roundId: roomState.roundId,
       cashedOut: false,
       cashedAt: null,
     });
 
-    io.emit('crash_players', publicCrashPlayers(roomState));
+    const persistedPlayer = roomState.players.get(socket.id);
+    const failedToPersist =
+      !persistedPlayer ||
+      persistedPlayer.amount !== safeAmount ||
+      persistedPlayer.roundId !== roomState.roundId;
+
+    if (failedToPersist) {
+      console.warn(`[crash_place_bet] live room persist failed user=${username} room=${roomId}`);
+      roomState.players.delete(socket.id);
+      callback?.({ ok: false, error: 'Bet could not be registered in live room state.' });
+      return;
+    }
+
+    console.log(`User ${username} placed ${safeAmount} in Room ${roomId}`);
+
+    io.to(socket.id).emit('crash_bet_registered', {
+      ok: true,
+      roomId,
+      amount: safeAmount,
+    });
+
+    // Broadcast the full crash state immediately so clients sync active bets without delay.
+    broadcastCrashState(roomState.id);
+
+    emitToCrashRoom(roomState.id, 'crash_players', publicCrashPlayers(roomState));
+
     callback?.({ ok: true, roomId });
   });
 
-  socket.on('crash_cashout', (_payload, callback) => {
-    const roomId = GLOBAL_CRASH_ROOM_ID;
+  socket.on('crash_cancel_bet', (_payload, callback) => {
+    const roomId = socket.data.crashRoomId || GLOBAL_CRASH_ROOM_ID;
     const roomState = getCrashRoom(roomId);
 
-    if (roomState.phase !== 'running') {
+    if (roomState.phase !== 'waiting') {
+      callback?.({ ok: false, error: 'Cannot cancel after round start.' });
+      return;
+    }
+
+    const hadBet = roomState.players.delete(socket.id);
+    console.warn(`[crash_cancel_bet] user=${username} room=${roomId} canceled=${hadBet}`);
+
+    emitToCrashRoom(roomState.id, 'crash_players', publicCrashPlayers(roomState));
+
+    callback?.({ ok: true, canceled: hadBet });
+  });
+
+  socket.on('crash_cashout', (_payload, callback) => {
+    const roomId = socket.data.crashRoomId || GLOBAL_CRASH_ROOM_ID;
+    const roomState = getCrashRoom(roomId);
+
+    if (roomState.phase !== 'running' || roomState.resolvingCrash) {
       callback?.({ ok: false, error: 'Round is not running.' });
       return;
     }
 
     const player = roomState.players.get(socket.id);
-    if (!player || player.cashedOut) {
+    if (!player || player.cashedOut || player.roundId !== roomState.roundId) {
       callback?.({ ok: false, error: 'No active crash bet.' });
       return;
     }
@@ -1339,7 +1801,7 @@ io.on('connection', (socket) => {
       roomId,
     });
 
-    io.emit('crash_player_cashed_out', {
+    emitToCrashRoom(roomState.id, 'crash_player_cashed_out', {
       username: player.username,
       multiplier: roomState.multiplier,
       payout,
@@ -1347,18 +1809,34 @@ io.on('connection', (socket) => {
       roomId,
     });
 
+    emitSystemBigWin(player.username, payout, 'crash');
+
     callback?.({ ok: true, payout, multiplier: roomState.multiplier, mode: 'manual', roomId });
   });
 
   socket.on('disconnect', () => {
+    setUserActivity(socket.id, 'Offline');
     onlineUsers.delete(socket.id);
     socketProfiles.delete(socket.id);
     userActivities.delete(socket.id);
+    userActivityStartedAt.delete(socket.id);
     broadcastOnlineUsers();
     detachSocketFromRoom(socket, socket.data.crashRoomId);
     detachPokerSocket(socket, socket.data.pokerRoomId);
     detachBlackjackSocket(socket, socket.data.blackjackRoomId);
     detachRouletteSocket(socket, socket.data.rouletteRoomId);
+
+    const genericRoomId = socket.data.genericRoomId;
+    if (genericRoomId) {
+      const roomMembers = genericRooms.get(genericRoomId);
+      if (roomMembers) {
+        roomMembers.delete(socket.id);
+        if (roomMembers.size === 0) {
+          genericRooms.delete(genericRoomId);
+        }
+      }
+      emitGenericRoomUpdate(genericRoomId);
+    }
   });
 });
 
