@@ -1,5 +1,28 @@
 import { create } from 'zustand';
 
+function normalizeCurrency(value: number) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function parseBalanceValue(value: unknown) {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return normalizeCurrency(value);
+  }
+
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return normalizeCurrency(numeric);
+    }
+  }
+
+  return null;
+}
+
 export interface DailyProgress {
   date: string;
   bets: number;
@@ -19,15 +42,16 @@ interface CasinoStore {
   daily: DailyProgress;
   username: string;
   isHydrating: boolean;
+  fetchInitialBalance: () => Promise<void>;
   hydrateFromSession: () => Promise<void>;
   syncBalanceFromServer: () => Promise<void>;
   placeBet: (amount: number) => boolean;
   addWin: (amount: number) => void;
-  persistWalletAction: (action: 'bet' | 'win' | 'faucet' | 'quest' | 'refund', amount: number) => Promise<WalletActionResult>;
+  persistWalletAction: (action: 'bet' | 'win' | 'faucet' | 'refund', amount: number) => Promise<WalletActionResult>;
 }
 
 export const useCasinoStore = create<CasinoStore>((set, get) => ({
-  balance: 10000,
+  balance: 0,
   xp: 0,
   daily: {
     date: '',
@@ -38,6 +62,27 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
   },
   username: 'Guest',
   isHydrating: false,
+  fetchInitialBalance: async () => {
+    try {
+      const response = await fetch('/api/user/balance', { cache: 'no-store' });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        balance?: number | string;
+      };
+
+      const parsedBalance = parseBalanceValue(payload.balance);
+      if (parsedBalance === null) {
+        return;
+      }
+
+      set({ balance: parsedBalance });
+    } catch {
+      // keep local balance if request fails
+    }
+  },
   hydrateFromSession: async () => {
     set({ isHydrating: true });
     try {
@@ -49,7 +94,7 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
       const data = (await response.json()) as {
         user?: {
           username: string;
-          balance: number;
+          balance: number | string;
           xp: number;
           dailyStatsDate: string;
           dailyBets: number;
@@ -63,9 +108,14 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         return;
       }
 
+      const parsedBalance = parseBalanceValue(data.user.balance);
+      if (parsedBalance === null) {
+        return;
+      }
+
       set({
         username: data.user.username,
-        balance: data.user.balance,
+        balance: parsedBalance,
         xp: data.user.xp,
         daily: {
           date: data.user.dailyStatsDate ?? '',
@@ -75,35 +125,47 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
           questClaimed: data.user.dailyQuestClaimed ?? false,
         },
       });
+
+      await get().fetchInitialBalance();
     } finally {
       set({ isHydrating: false });
     }
   },
   syncBalanceFromServer: async () => {
     try {
-      const response = await fetch('/api/me', { cache: 'no-store' });
-      if (!response.ok) {
+      const [profileResponse, balanceResponse] = await Promise.all([
+        fetch('/api/me', { cache: 'no-store' }),
+        fetch('/api/user/balance', { cache: 'no-store' }),
+      ]);
+
+      if (!profileResponse.ok || !balanceResponse.ok) {
         return;
       }
 
-      const data = (await response.json()) as {
-        user?: {
-          balance: number;
-          xp: number;
-          dailyStatsDate: string;
-          dailyBets: number;
-          dailyWins: number;
-          dailyFaucetClaimed: boolean;
-          dailyQuestClaimed: boolean;
-        };
-      };
+      const [data, balancePayload] = (await Promise.all([
+        profileResponse.json(),
+        balanceResponse.json(),
+      ])) as [
+        {
+          user?: {
+            xp: number;
+            dailyStatsDate: string;
+            dailyBets: number;
+            dailyWins: number;
+            dailyFaucetClaimed: boolean;
+            dailyQuestClaimed: boolean;
+          };
+        },
+        { balance?: number | string }
+      ];
 
-      if (!data.user) {
+      const parsedBalance = parseBalanceValue(balancePayload.balance);
+      if (!data.user || parsedBalance === null) {
         return;
       }
 
       set({
-        balance: data.user.balance,
+        balance: parsedBalance,
         xp: data.user.xp,
         daily: {
           date: data.user.dailyStatsDate ?? '',
@@ -118,14 +180,45 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
     }
   },
   placeBet: (amount) => {
-    const currentBalance = get().balance;
-    if (currentBalance >= amount && amount > 0) {
-      set({ balance: currentBalance - amount });
+    const safeAmount = normalizeCurrency(Number.isFinite(amount) ? amount : 0);
+    const currentBalance = normalizeCurrency(get().balance);
+    if (currentBalance >= safeAmount && safeAmount > 0) {
+      set({ balance: normalizeCurrency(currentBalance - safeAmount) });
+
+      void get()
+        .persistWalletAction('bet', safeAmount)
+        .then(async (result) => {
+          if (!result.ok) {
+            await get().syncBalanceFromServer();
+          }
+        })
+        .catch(async () => {
+          await get().syncBalanceFromServer();
+        });
+
       return true;
     }
     return false;
   },
-  addWin: (amount) => set((state) => ({ balance: state.balance + amount })),
+  addWin: (amount) => {
+    const safeAmount = normalizeCurrency(Number.isFinite(amount) ? amount : 0);
+    if (safeAmount <= 0) {
+      return;
+    }
+
+    set((state) => ({ balance: normalizeCurrency(state.balance + safeAmount) }));
+
+    void get()
+      .persistWalletAction('win', safeAmount)
+      .then(async (result) => {
+        if (!result.ok) {
+          await get().syncBalanceFromServer();
+        }
+      })
+      .catch(async () => {
+        await get().syncBalanceFromServer();
+      });
+  },
   persistWalletAction: async (action, amount) => {
     try {
       const response = await fetch('/api/wallet', {
@@ -135,18 +228,19 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
       });
 
       const payload = (await response.json()) as {
-        balance?: number;
+        balance?: number | string;
         xp?: number;
         error?: string;
         daily?: DailyProgress;
       };
 
-      if (!response.ok || typeof payload.balance !== 'number') {
+      const parsedBalance = parseBalanceValue(payload.balance);
+      if (!response.ok || parsedBalance === null) {
         return { ok: false, error: payload.error ?? 'Wallet action failed.' };
       }
 
       set((state) => ({
-        balance: payload.balance as number,
+        balance: parsedBalance,
         xp: typeof payload.xp === 'number' ? payload.xp : state.xp,
         daily: payload.daily ?? state.daily,
       }));

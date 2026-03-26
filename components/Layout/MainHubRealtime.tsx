@@ -19,16 +19,20 @@ import {
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { signOut } from 'next-auth/react';
+import toast from 'react-hot-toast';
 
 import BlackjackGame from '@/components/games/BlackjackGame';
 import RouletteGame from '@/components/games/RouletteGame';
 import SlotsGame from '@/components/games/SlotsGame';
 import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
+import LeaderboardPanel from '@/components/LeaderboardPanel';
+import QuestsPanel from '@/components/QuestsPanel';
 import { copyToClipboard } from '@/lib/copyToClipboard';
+import { formatMoney } from '@/lib/formatMoney';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
-type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'settings';
+type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'leaderboard' | 'quests' | 'settings';
 type PokerMode = 'solo' | 'friends';
 type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
@@ -37,6 +41,9 @@ interface ChatMessage {
   username: string;
   text: string;
   createdAt: number;
+  rankTag?: string;
+  rankColor?: string;
+  system?: boolean;
 }
 
 interface CrashPlayer {
@@ -78,7 +85,9 @@ type ThemeOption = 'slate' | 'steel' | 'sunset' | 'ocean' | 'matrix';
 
 interface PublicProfileData {
   username: string;
+  balance: number;
   xp: number;
+  favoriteGame: string;
   bio: string;
   theme: string;
   publicProfile: boolean;
@@ -94,8 +103,18 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:4001';
   }
 
+  if (fromEnv === 'same-origin') {
+    return window.location.origin;
+  }
+
   if (!fromEnv) {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 
   try {
@@ -109,7 +128,13 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 }
 
@@ -119,7 +144,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     username,
     xp,
     daily,
+    fetchInitialBalance,
     hydrateFromSession,
+    syncBalanceFromServer,
     placeBet,
     addWin,
     persistWalletAction,
@@ -138,10 +165,12 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     roundStartAt: 0,
   });
 
-  const [betAmount, setBetAmount] = useState(100);
-  const [autoCashOutEnabled, setAutoCashOutEnabled] = useState(true);
-  const [autoCashOut, setAutoCashOut] = useState(2);
+  const [betInput, setBetInput] = useState('100');
+  const [autoCashOutEnabled, setAutoCashOutEnabled] = useState(false);
+  const [autoCashOutInput, setAutoCashOutInput] = useState('2');
+  const [crashCountdownSeconds, setCrashCountdownSeconds] = useState(0);
   const [hasBet, setHasBet] = useState(false);
+  const [isPlacingCrashBet, setIsPlacingCrashBet] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [payoutToast, setPayoutToast] = useState<{ label: string; text: string; tone: 'auto' | 'manual' } | null>(null);
   const [crashRoomId, setCrashRoomId] = useState('global');
@@ -179,6 +208,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [passwordNext, setPasswordNext] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [accountSaving, setAccountSaving] = useState(false);
+  const [accountDeleting, setAccountDeleting] = useState(false);
   const [accountNotice, setAccountNotice] = useState('');
   const [selectedProfile, setSelectedProfile] = useState<PublicProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
@@ -187,7 +217,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const incomingSeenRef = useRef<Set<string>>(new Set());
   const settingsHydratedRef = useRef(false);
   const hasBetRef = useRef(false);
-  const autoCashOutEnabledRef = useRef(true);
+  const autoCashOutEnabledRef = useRef(false);
   const autoCashOutRef = useRef(2);
   const onlineUsersSet = useMemo(() => new Set(onlineUsers), [onlineUsers]);
   const effectiveUsername = useMemo(() => {
@@ -204,17 +234,17 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
   const nextLevelXp = useMemo(() => level * 1000, [level]);
   const levelProgress = useMemo(() => Math.min(100, Math.round(((xp - levelBaseXp) / 1000) * 100)), [xp, levelBaseXp]);
-
-  const questProgress = useMemo(
-    () => ({
-      bets: Math.min(daily.bets, 5),
-      wins: Math.min(daily.wins, 2),
-      faucet: daily.faucetClaimed,
-      complete: daily.bets >= 5 && daily.wins >= 2 && daily.faucetClaimed,
-      claimed: daily.questClaimed,
-    }),
-    [daily]
-  );
+  const autoCashOutValue = useMemo(() => {
+    const parsed = Number(autoCashOutInput);
+    if (!Number.isFinite(parsed)) {
+      return 1;
+    }
+    return Math.max(1, parsed);
+  }, [autoCashOutInput]);
+  const crashActiveBetAmount = useMemo(() => {
+    const active = crashState.players.find((player) => player.username === effectiveUsername && !player.cashedOut);
+    return active?.amount ?? 0;
+  }, [crashState.players, effectiveUsername]);
 
   const themeSurfaceClass = useMemo(() => {
     switch (theme) {
@@ -241,8 +271,29 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   }, [autoCashOutEnabled]);
 
   useEffect(() => {
-    autoCashOutRef.current = autoCashOut;
-  }, [autoCashOut]);
+    autoCashOutRef.current = autoCashOutValue;
+  }, [autoCashOutValue]);
+
+  useEffect(() => {
+    if (crashState.phase !== 'waiting') {
+      setCrashCountdownSeconds(0);
+      return;
+    }
+
+    const updateCountdown = () => {
+      if (!crashState.roundStartAt) {
+        setCrashCountdownSeconds(0);
+        return;
+      }
+
+      const remainingMs = Math.max(0, crashState.roundStartAt - Date.now());
+      setCrashCountdownSeconds(Math.ceil(remainingMs / 1000));
+    };
+
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 250);
+    return () => window.clearInterval(interval);
+  }, [crashState.phase, crashState.roundStartAt]);
 
   useEffect(() => {
     if (compactSidebar) {
@@ -251,7 +302,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   }, [compactSidebar]);
 
   useEffect(() => {
-    setBetAmount(quickBetPreset);
+    setBetInput(String(quickBetPreset));
   }, [quickBetPreset]);
 
   useEffect(() => {
@@ -264,54 +315,83 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const loadFriends = useCallback(async () => {
     setFriendsLoading(true);
     try {
-      const response = await fetch('/api/friends', { cache: 'no-store' });
-      if (!response.ok) {
-        return;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch('/api/friends', { 
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+
+        if (!response.ok) {
+          console.warn(`Friends API returned ${response.status}`);
+          setFriendsAccepted([]);
+          setPendingIncoming([]);
+          setPendingOutgoing([]);
+          setBlockedUsers([]);
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          accepted: FriendSummary[];
+          pendingIncoming: FriendSummary[];
+          pendingOutgoing: FriendSummary[];
+          blocked: BlockSummary[];
+        };
+
+        const nextIncoming = payload.pendingIncoming ?? [];
+        const seen = incomingSeenRef.current;
+        const nextIncomingIds = new Set(nextIncoming.map((request) => request.friendshipId));
+        const hasNewIncoming = seen.size > 0 && nextIncoming.some((request) => !seen.has(request.friendshipId));
+
+        if (hasNewIncoming) {
+          setFriendRealtimeNotice('New friend request received.');
+          toast.success('Neue Freundschaftsanfrage erhalten!', { id: 'friend-request-incoming' });
+        }
+
+        incomingSeenRef.current = nextIncomingIds;
+
+        setFriendsAccepted(payload.accepted ?? []);
+        setPendingIncoming(nextIncoming);
+        setPendingOutgoing(payload.pendingOutgoing ?? []);
+        setBlockedUsers(payload.blocked ?? []);
+      } catch (fetchError) {
+        clearTimeout(timeout);
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          console.warn('Friends API request timed out after 5s');
+        } else {
+          console.error('Failed to fetch friends:', fetchError);
+        }
+        // Don't clear data on error, keep cached friends list
       }
-
-      const payload = (await response.json()) as {
-        accepted: FriendSummary[];
-        pendingIncoming: FriendSummary[];
-        pendingOutgoing: FriendSummary[];
-        blocked: BlockSummary[];
-      };
-
-      const nextIncoming = payload.pendingIncoming ?? [];
-      const seen = incomingSeenRef.current;
-      const nextIncomingIds = new Set(nextIncoming.map((request) => request.friendshipId));
-      const hasNewIncoming = seen.size > 0 && nextIncoming.some((request) => !seen.has(request.friendshipId));
-
-      if (hasNewIncoming) {
-        setFriendRealtimeNotice('New friend request received.');
-      }
-
-      incomingSeenRef.current = nextIncomingIds;
-
-      setFriendsAccepted(payload.accepted ?? []);
-      setPendingIncoming(nextIncoming);
-      setPendingOutgoing(payload.pendingOutgoing ?? []);
-      setBlockedUsers(payload.blocked ?? []);
     } finally {
       setFriendsLoading(false);
     }
   }, []);
 
   const loadSettings = useCallback(async () => {
-    const response = await fetch('/api/settings', { cache: 'no-store' });
-    if (!response.ok) {
-      return;
-    }
+    try {
+      const response = await fetch('/api/settings', { cache: 'no-store' });
+      if (!response.ok) {
+        console.warn(`Settings API returned ${response.status}`);
+        return;
+      }
 
-    const payload = (await response.json()) as { settings?: SettingsPayload };
-    if (!payload.settings) {
-      return;
-    }
+      const payload = (await response.json()) as { settings?: SettingsPayload };
+      if (!payload.settings) {
+        return;
+      }
 
-    setSoundEnabled(payload.settings.soundEnabled);
-    setTheme(payload.settings.theme);
-    setPublicProfile(payload.settings.publicProfile);
-    setBio(payload.settings.bio ?? '');
-    settingsHydratedRef.current = true;
+      setSoundEnabled(payload.settings.soundEnabled);
+      setTheme(payload.settings.theme);
+      setPublicProfile(payload.settings.publicProfile);
+      setBio(payload.settings.bio ?? '');
+      settingsHydratedRef.current = true;
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
   }, []);
 
   useEffect(() => {
@@ -320,7 +400,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
   useEffect(() => {
     void hydrateFromSession();
-  }, [hydrateFromSession]);
+    void fetchInitialBalance();
+  }, [fetchInitialBalance, hydrateFromSession]);
 
   useEffect(() => {
     void loadFriends();
@@ -345,8 +426,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   useEffect(() => {
     const socketUrl = getSocketUrl();
     const socket: Socket = io(socketUrl, {
-      transports: ['websocket'],
-      query: { username: effectiveUsername, crashRoomId: 'global' },
+      path: '/socket.io',
+      query: { username: effectiveUsername, xp: String(xp), crashRoomId: 'global' },
     });
     socketRef.current = socket;
 
@@ -356,7 +437,6 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       }
 
       addWin(payload.payout);
-      await persistWalletAction('win', Math.floor(payload.payout));
       setHasBet(false);
       setPayoutToast({
         label: payload.mode === 'auto' ? 'Auto Cashout' : 'Manual Cashout',
@@ -367,6 +447,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
     socket.on('connect', () => setSocketConnected(true));
     socket.on('disconnect', () => setSocketConnected(false));
+    socket.on('disconnect', () => setIsPlacingCrashBet(false));
 
     socket.on('online_users', (users: string[]) => setOnlineUsers(users));
     socket.on('chat_history', (history: ChatMessage[]) => setChatMessages(history));
@@ -390,13 +471,14 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
     socket.on('crash_state', (state: CrashState) => {
       setCrashState(state);
-      if (state.phase !== 'running') {
-        setHasBet(false);
-      }
+      const activeBet = (state.players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      setHasBet(activeBet);
     });
 
     socket.on('crash_tick', ({ multiplier, players }: { multiplier: number; players: CrashPlayer[] }) => {
       setCrashState((prev) => ({ ...prev, multiplier, players, phase: 'running' }));
+      const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      setHasBet(activeBet);
 
       if (autoCashOutEnabledRef.current && hasBetRef.current && multiplier >= autoCashOutRef.current) {
         socket.emit('crash_cashout', {});
@@ -405,6 +487,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
     socket.on('crash_players', (players: CrashPlayer[]) => {
       setCrashState((prev) => ({ ...prev, players }));
+      const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      setHasBet(activeBet);
     });
 
     socket.on(
@@ -418,7 +502,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           history,
           players,
         }));
-        setHasBet(false);
+        const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+        setHasBet(activeBet);
       }
     );
 
@@ -429,7 +514,19 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [addWin, persistWalletAction, effectiveUsername]);
+  }, [addWin, persistWalletAction, effectiveUsername, xp]);
+
+  useEffect(() => {
+    const socket = socketRef.current;
+    if (!socket || !socket.connected) {
+      return;
+    }
+
+    socket.emit('profile_sync', {
+      username: effectiveUsername,
+      xp,
+    });
+  }, [xp, effectiveUsername, socketConnected]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -490,10 +587,14 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         : 'Waiting for next round';
 
   const handleCrashBet = async () => {
-    const amount = Math.floor(betAmount);
+    if (isPlacingCrashBet) {
+      return;
+    }
+
+    const amount = Math.floor(Number(betInput || 0));
     const socket = socketRef.current;
 
-    if (!socket) {
+    if (!socket || !socket.connected) {
       setErrorMsg('Socket not connected.');
       return;
     }
@@ -507,39 +608,46 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       return;
     }
 
+    setIsPlacingCrashBet(true);
+
     if (!placeBet(amount)) {
+      setIsPlacingCrashBet(false);
       setErrorMsg('Not enough funds');
       return;
     }
 
-    const persisted = await persistWalletAction('bet', amount);
-    if (!persisted.ok) {
-      addWin(amount);
-      setErrorMsg(persisted.error ?? 'Could not persist bet in database.');
-      return;
-    }
-
-    socket.emit(
-      'crash_place_bet',
-      { amount, autoCashOut: autoCashOutEnabled ? autoCashOut : 0 },
-      (response: { ok: boolean; error?: string }) => {
-        if (!response.ok) {
-          addWin(amount);
-          void persistWalletAction('refund', amount);
-          setErrorMsg(response.error ?? 'Unable to place bet.');
-          return;
-        }
-
-        setHasBet(true);
-        setErrorMsg('');
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) {
+        return;
       }
-    );
+
+      addWin(amount);
+      setIsPlacingCrashBet(false);
+      setErrorMsg('Bet request timed out. Your amount was refunded.');
+    }, 2200);
+
+    socket.emit('crash_place_bet', { amount, autoCashOut: autoCashOutEnabled ? autoCashOutValue : 0 }, (response: { ok: boolean; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
+
+      if (!response.ok) {
+        addWin(amount);
+        setIsPlacingCrashBet(false);
+        setErrorMsg(response.error ?? 'Unable to place bet.');
+        return;
+      }
+
+      setHasBet(true);
+      setIsPlacingCrashBet(false);
+      setErrorMsg('');
+    });
   };
 
   const handleCashOut = () => {
     const socket = socketRef.current;
 
-    if (!socket) {
+    if (!socket || !socket.connected) {
       setErrorMsg('Socket not connected.');
       return;
     }
@@ -565,16 +673,6 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     setErrorMsg('Daily faucet claimed: +5000 NVC');
   };
 
-  const handleClaimQuestReward = async () => {
-    const result = await persistWalletAction('quest', 0);
-    if (!result.ok) {
-      setSettingsNotice(result.error ?? 'Quest reward claim failed.');
-      return;
-    }
-
-    setSettingsNotice('Daily quest reward claimed: +3000 NVC');
-  };
-
   const handleJoinCrashRoom = () => {
     const socket = socketRef.current;
     const nextRoom = crashRoomInput.trim().toLowerCase();
@@ -596,7 +694,20 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
     setHasBet(false);
     setJoiningCrashRoom(true);
+
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) {
+        return;
+      }
+
+      setJoiningCrashRoom(false);
+      setErrorMsg('Join room timed out. Please try again.');
+    }, 2200);
+
     socket.emit('join_crash_room', { roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningCrashRoom(false);
       if (!response.ok) {
         setErrorMsg(response.error ?? 'Could not join room.');
@@ -635,13 +746,25 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     setJoiningCrashRoom(true);
 
     const socket = socketRef.current;
-    if (!socket) {
+    if (!socket || !socket.connected) {
       setJoiningCrashRoom(false);
       setErrorMsg('Socket not connected.');
       return;
     }
 
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) {
+        return;
+      }
+
+      setJoiningCrashRoom(false);
+      setErrorMsg('Create room timed out. Please try again.');
+    }, 2200);
+
     socket.emit('join_crash_room', { roomId: room }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningCrashRoom(false);
       if (!response.ok) {
         setErrorMsg(response.error ?? 'Could not create room.');
@@ -667,7 +790,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     const socket = socketRef.current;
 
     const text = chatInput.trim();
-    if (!text || !socket) {
+    if (!text || !socket || !socket.connected) {
+      if (text) {
+        setErrorMsg('Realtime socket is offline.');
+      }
       return;
     }
 
@@ -769,21 +895,58 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     void loadFriends();
   };
 
+  const handleSendMoneyToFriend = async (targetUserId: string, targetUsername: string) => {
+    const rawAmount = window.prompt(`Wie viel NVC möchtest du an ${targetUsername} senden?`, '100');
+    if (!rawAmount) {
+      return;
+    }
+
+    const amount = Math.floor(Number(rawAmount));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setFriendNotice('Please enter a valid amount greater than 0.');
+      return;
+    }
+
+    const response = await fetch('/api/friends/transfer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId, amount }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+
+    if (!response.ok) {
+      setFriendNotice(payload.error ?? 'Could not send money.');
+      return;
+    }
+
+    await syncBalanceFromServer();
+    setFriendNotice(`Sent ${amount} NVC to ${targetUsername}.`);
+    toast.success(`${amount} NVC an ${targetUsername} gesendet!`);
+  };
+
   const handleViewProfile = async (targetUsername: string) => {
     setProfileLoading(true);
     setFriendNotice('');
 
-    const response = await fetch(`/api/profile/${encodeURIComponent(targetUsername)}`, { cache: 'no-store' });
-    const payload = (await response.json()) as { error?: string; profile?: PublicProfileData };
-    setProfileLoading(false);
+    try {
+      const response = await fetch(`/api/profile/${encodeURIComponent(targetUsername)}`, { cache: 'no-store' });
+      const payload = (await response.json()) as { error?: string; profile?: PublicProfileData };
 
-    if (!response.ok || !payload.profile) {
+      if (!response.ok || !payload.profile) {
+        setSelectedProfile(null);
+        setFriendNotice(payload.error ?? 'Could not load profile.');
+        return;
+      }
+
+      setSelectedProfile(payload.profile);
+    } catch (error) {
+      console.error('Failed to load profile:', error);
       setSelectedProfile(null);
-      setFriendNotice(payload.error ?? 'Could not load profile.');
-      return;
+      setFriendNotice('Failed to load profile. Check your connection.');
+    } finally {
+      setProfileLoading(false);
     }
-
-    setSelectedProfile(payload.profile);
   };
 
   const handleChangeUsername = async () => {
@@ -859,6 +1022,35 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     setAccountNotice('Password updated successfully.');
   };
 
+  const handleDeleteAccount = async () => {
+    if (accountDeleting) {
+      return;
+    }
+
+    const confirmed = window.confirm('Delete your account permanently? This cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    setAccountDeleting(true);
+    setAccountNotice('');
+
+    const response = await fetch('/api/user/delete', {
+      method: 'DELETE',
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    setAccountDeleting(false);
+
+    if (!response.ok) {
+      setAccountNotice(payload.error ?? 'Account deletion failed.');
+      return;
+    }
+
+    setAccountNotice('Account deleted. Signing out...');
+    await signOut({ callbackUrl: '/login' });
+  };
+
   const handleSaveSettings = async () => {
     await persistSettings(false);
   };
@@ -884,6 +1076,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           <SidebarButton icon={<CircleDashed size={20} />} label="Roulette" active={activeTab === 'roulette'} onClick={() => setActiveTab('roulette')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Spade size={20} />} label="Poker" active={activeTab === 'poker'} onClick={() => setActiveTab('poker')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Users size={20} />} label="Friends" active={activeTab === 'friends'} onClick={() => setActiveTab('friends')} collapsed={sidebarCollapsed} />
+          <SidebarButton icon={<TrendingUp size={20} />} label="Leaderboard" active={activeTab === 'leaderboard'} onClick={() => setActiveTab('leaderboard')} collapsed={sidebarCollapsed} />
+          <SidebarButton icon={<ShieldCheck size={20} />} label="Quests" active={activeTab === 'quests'} onClick={() => setActiveTab('quests')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
         </nav>
 
@@ -920,7 +1114,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
             </div>
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-4 py-2 rounded-lg">
               <Wallet size={16} className="text-slate-400" />
-              <span className="font-mono text-lg font-bold text-white">{balance.toFixed(2)}</span>
+              <span className="font-mono text-lg font-bold text-white">{formatMoney(balance)}</span>
               <span className="text-sm font-bold text-blue-500">NVC</span>
             </div>
             <button
@@ -948,10 +1142,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
                   <div className="absolute top-4 left-4 right-4 flex items-center justify-between gap-3">
                     <div className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-950/80 text-xs text-slate-300 uppercase tracking-wide">
-                      {hasBet ? `Potential ${(betAmount * crashState.multiplier).toFixed(2)} NVC` : 'No Active Bet'}
+                      {hasBet ? `Potential ${(crashActiveBetAmount * crashState.multiplier).toFixed(2)} NVC` : 'No Active Bet'}
                     </div>
                     <div className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-950/80 text-xs text-slate-300 uppercase tracking-wide">
-                      {autoCashOutEnabled ? `Auto Cashout ${autoCashOut.toFixed(2)}x` : 'Auto Cashout Off'}
+                      {autoCashOutEnabled ? `Auto Cashout ${autoCashOutValue.toFixed(2)}x` : 'Auto Cashout Off'}
                     </div>
                   </div>
 
@@ -978,6 +1172,14 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     {crashState.multiplier.toFixed(2)}x
                   </div>
                   <div className="mt-4 text-slate-400 font-medium uppercase tracking-widest text-lg z-10">{crashLabel}</div>
+                  {crashState.phase === 'waiting' ? (
+                    <div className="mt-3 z-10 text-center">
+                      <div className="text-4xl md:text-5xl font-black font-mono text-cyan-300 leading-none">
+                        {Math.max(0, crashCountdownSeconds)}s
+                      </div>
+                      <div className="mt-1 text-[11px] uppercase tracking-[0.25em] text-slate-500">Round starts soon</div>
+                    </div>
+                  ) : null}
 
                   <div className="absolute bottom-4 left-4 right-4">
                     <div className="mb-2 text-[11px] font-bold text-slate-500 uppercase tracking-wide">Last Crashes</div>
@@ -1042,8 +1244,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                       <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">In room ({crashRoomMembers.length})</p>
                       <div className="mt-1 flex flex-wrap gap-1.5">
                         {crashRoomMembers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
-                        {crashRoomMembers.map((member) => (
-                          <span key={member} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-950 text-[11px] text-slate-200">
+                        {crashRoomMembers.map((member, index) => (
+                          <span key={`${member}-${index}`} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-950 text-[11px] text-slate-200">
                             {member}
                           </span>
                         ))}
@@ -1056,11 +1258,43 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     <div className="flex bg-slate-900 border border-slate-800 rounded-lg overflow-hidden focus-within:border-blue-500 transition-colors">
                       <input
                         type="number"
-                        value={betAmount}
-                        onChange={(event) => setBetAmount(Math.max(1, Number(event.target.value) || 1))}
-                        disabled={crashState.phase === 'running' || hasBet}
+                        value={betInput || ''}
+                        onChange={(event) => setBetInput(event.target.value.replace(/[^0-9]/g, ''))}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
                         className="w-full bg-transparent p-4 outline-none font-mono text-white"
                       />
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      <button
+                        onClick={() => {
+                          const current = Math.max(0, Math.floor(Number(betInput || 0)));
+                          const next = Math.max(1, Math.floor(current / 2));
+                          setBetInput(String(next));
+                        }}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        1/2
+                      </button>
+                      <button
+                        onClick={() => {
+                          const current = Math.max(0, Math.floor(Number(betInput || 0)));
+                          const doubled = current <= 0 ? 2 : current * 2;
+                          const next = Math.min(Math.floor(balance), doubled);
+                          setBetInput(String(Math.max(1, next)));
+                        }}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        2x
+                      </button>
+                      <button
+                        onClick={() => setBetInput(String(Math.max(1, Math.floor(balance))))}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        MAX
+                      </button>
                     </div>
                     {errorMsg && <p className="text-red-500 text-xs mt-2 font-medium">{errorMsg}</p>}
                   </div>
@@ -1082,10 +1316,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     <div className="flex bg-slate-900 border border-slate-800 rounded-lg overflow-hidden focus-within:border-blue-500 transition-colors">
                       <input
                         type="number"
-                        min={1.01}
+                        min={1}
                         step={0.05}
-                        value={autoCashOut}
-                        onChange={(event) => setAutoCashOut(Math.max(1.01, Number(event.target.value) || 1.01))}
+                        value={autoCashOutInput || ''}
+                        onChange={(event) => setAutoCashOutInput(event.target.value)}
                         disabled={crashState.phase === 'running' && hasBet}
                         className="w-full bg-transparent p-4 outline-none font-mono text-white"
                       />
@@ -1098,15 +1332,15 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         onClick={handleCashOut}
                         className="w-full py-5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-lg uppercase transition-colors"
                       >
-                        Cash Out {(betAmount * crashState.multiplier).toFixed(2)}
+                        Cash Out {(crashActiveBetAmount * crashState.multiplier).toFixed(2)}
                       </button>
                     ) : (
                       <button
                         onClick={handleCrashBet}
-                        disabled={crashState.phase !== 'waiting'}
+                        disabled={crashState.phase !== 'waiting' || isPlacingCrashBet}
                         className="w-full py-5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {crashState.phase === 'waiting' ? 'Place Bet' : 'Round Running'}
+                        {isPlacingCrashBet ? 'Placing...' : crashState.phase === 'waiting' ? 'Place Bet' : 'Round Running'}
                       </button>
                     )}
                   </div>
@@ -1214,6 +1448,12 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                               className="h-8 px-3 rounded-md bg-red-600 hover:bg-red-500 text-xs font-semibold text-white"
                             >
                               Block
+                            </button>
+                            <button
+                              onClick={() => handleSendMoneyToFriend(friend.userId, friend.username)}
+                              className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white"
+                            >
+                              Send NVC
                             </button>
                           </div>
                         </div>
@@ -1329,8 +1569,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         <span className="text-xs uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
                       </div>
                       <p className="mt-1 text-xs text-slate-400">
-                        XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
+                        Balance {selectedProfile.balance} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
                       </p>
+                      <p className="mt-1 text-xs text-cyan-300">Favorite: {selectedProfile.favoriteGame}</p>
                       <p className="mt-2 text-sm text-slate-300">{selectedProfile.bio || 'No bio yet.'}</p>
                       <p className="mt-2 text-[11px] text-slate-500">
                         Joined {new Date(selectedProfile.createdAt).toLocaleDateString()}
@@ -1340,6 +1581,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                 </div>
               </div>
             )}
+
+            {activeTab === 'leaderboard' && <LeaderboardPanel />}
+
+            {activeTab === 'quests' && <QuestsPanel />}
 
             {activeTab === 'settings' && (
               <div className="flex-1 p-6 overflow-y-auto">
@@ -1382,28 +1627,6 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                           </div>
                           <div className="mt-3 h-2 rounded-full bg-slate-800 overflow-hidden">
                             <div className="h-full bg-cyan-500" style={{ width: `${levelProgress}%` }} />
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="font-semibold text-slate-100">Daily Quests</p>
-                              <p className="text-xs text-slate-500">Complete all quests for +3000 NVC and +250 XP.</p>
-                            </div>
-                            <button
-                              onClick={handleClaimQuestReward}
-                              disabled={!questProgress.complete || questProgress.claimed}
-                              className="h-9 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white text-xs font-semibold"
-                            >
-                              {questProgress.claimed ? 'Claimed' : 'Claim Reward'}
-                            </button>
-                          </div>
-
-                          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Place Bets: {questProgress.bets}/5</div>
-                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Win Rounds: {questProgress.wins}/2</div>
-                            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs text-slate-300">Faucet: {questProgress.faucet ? 'Done' : 'Pending'}</div>
                           </div>
                         </div>
                       </>
@@ -1596,6 +1819,18 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                             Update Password
                           </button>
                         </div>
+
+                        <div className="rounded-xl border border-red-900/60 bg-red-950/20 p-4">
+                          <p className="font-semibold text-red-200 mb-1">Danger Zone</p>
+                          <p className="text-xs text-red-300/80">Delete your account and all associated data permanently.</p>
+                          <button
+                            onClick={handleDeleteAccount}
+                            disabled={accountDeleting}
+                            className="mt-3 h-10 px-4 rounded-lg bg-red-600 hover:bg-red-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold"
+                          >
+                            {accountDeleting ? 'Deleting...' : 'Delete Account'}
+                          </button>
+                        </div>
                       </>
                     )}
 
@@ -1635,6 +1870,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                 {chatMessages.map((event) => {
                   const hue = Math.abs(event.username.charCodeAt(0) * 7) % 360;
                   const usernameColor = `hsl(${hue}, 70%, 55%)`;
+                  const rankColor = event.rankColor || '#64748b';
                   return (
                     <motion.div
                       key={event.id}
@@ -1644,9 +1880,19 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                       className="p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 transition-all group"
                     >
                       <div className="flex items-baseline justify-between gap-2 mb-1">
-                        <span className="font-bold text-sm" style={{ color: usernameColor }}>
-                          {event.username}
-                        </span>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-bold text-sm" style={{ color: event.system ? '#f87171' : usernameColor }}>
+                            {event.username}
+                          </span>
+                          {event.rankTag ? (
+                            <span
+                              className="px-1.5 py-0.5 rounded border text-[10px] font-black uppercase tracking-wide"
+                              style={{ color: rankColor, borderColor: rankColor }}
+                            >
+                              {event.rankTag}
+                            </span>
+                          ) : null}
+                        </div>
                         {showChatTimestamps ? (
                           <span className="text-[11px] text-slate-500 font-mono group-hover:text-slate-400 transition">
                             {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}

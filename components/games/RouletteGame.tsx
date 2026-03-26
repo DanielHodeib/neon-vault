@@ -1,8 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { io, Socket } from 'socket.io-client';
+import toast from 'react-hot-toast';
 
+import { copyToClipboard } from '@/lib/copyToClipboard';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 type BetType = 'number' | 'color' | 'parity' | 'range' | 'dozen' | 'column';
@@ -23,6 +26,12 @@ interface SpinHistoryItem {
 
 type BetMap = Record<string, ActiveBet>;
 
+interface RouletteWinAnnouncement {
+  roomId: string;
+  username: string;
+  amount: number;
+}
+
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const BOARD_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
@@ -30,6 +39,50 @@ const BOARD_ROWS = [
   [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34],
 ];
 const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const DOZEN_MAP: Record<string, Set<number>> = {
+  '1st': new Set(Array.from({ length: 12 }, (_, index) => index + 1)),
+  '2nd': new Set(Array.from({ length: 12 }, (_, index) => index + 13)),
+  '3rd': new Set(Array.from({ length: 12 }, (_, index) => index + 25)),
+};
+const COLUMN_MAP: Record<string, Set<number>> = {
+  '1': new Set([1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34]),
+  '2': new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]),
+  '3': new Set([3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]),
+};
+
+function getSocketUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+
+  if (typeof window === 'undefined') {
+    return fromEnv ?? 'http://localhost:4001';
+  }
+
+  if (fromEnv === 'same-origin') {
+    return window.location.origin;
+  }
+
+  if (!fromEnv) {
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
+  }
+
+  try {
+    return new URL(fromEnv).toString().replace(/\/$/, '');
+  } catch {
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
+  }
+}
 
 function getNumberColor(value: number): 'red' | 'black' | 'green' {
   if (value === 0) {
@@ -157,7 +210,8 @@ function createBet(type: BetType, value: string, stake: number): ActiveBet {
 
 function doesBetWin(bet: ActiveBet, result: number, resultColor: 'red' | 'black' | 'green') {
   if (bet.type === 'number') {
-    return Number(bet.value) === result;
+    const numberBet = Math.floor(Number(bet.value));
+    return Number.isFinite(numberBet) && numberBet === result;
   }
 
   if (bet.type === 'color') {
@@ -176,30 +230,20 @@ function doesBetWin(bet: ActiveBet, result: number, resultColor: 'red' | 'black'
     if (result === 0) {
       return false;
     }
-    if (bet.value === '1st') {
-      return result >= 1 && result <= 12;
-    }
-    if (bet.value === '2nd') {
-      return result >= 13 && result <= 24;
-    }
-    return result >= 25 && result <= 36;
+    const mappedDozen = DOZEN_MAP[bet.value];
+    return Boolean(mappedDozen?.has(result));
   }
 
   if (result === 0) {
     return false;
   }
 
-  if (bet.value === '1') {
-    return result % 3 === 1;
-  }
-  if (bet.value === '2') {
-    return result % 3 === 2;
-  }
-  return result % 3 === 0;
+  const mappedColumn = COLUMN_MAP[bet.value];
+  return Boolean(mappedColumn?.has(result));
 }
 
 export default function RouletteGame() {
-  const { placeBet, addWin } = useCasinoStore();
+  const { balance, username, placeBet, addWin } = useCasinoStore();
   const [chipValue, setChipValue] = useState(100);
   const [bets, setBets] = useState<BetMap>({});
   const [isSpinning, setIsSpinning] = useState(false);
@@ -208,12 +252,101 @@ export default function RouletteGame() {
   const [spinHistory, setSpinHistory] = useState<SpinHistoryItem[]>([]);
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
   const [errorText, setErrorText] = useState('');
+  const [rouletteRoomId, setRouletteRoomId] = useState('global');
+  const [rouletteRoomInput, setRouletteRoomInput] = useState('global');
+  const [rouletteRoomMembers, setRouletteRoomMembers] = useState<string[]>([]);
+  const [joiningRoom, setJoiningRoom] = useState(false);
+  const socketRef = useRef<Socket | null>(null);
+
+  const effectiveUsername = (username ?? '').trim() || 'Guest';
 
   const activeBets = useMemo(() => Object.values(bets), [bets]);
   const totalBet = useMemo(
     () => activeBets.reduce((sum, bet) => sum + bet.stake, 0),
     [activeBets]
   );
+
+  useEffect(() => {
+    const socket = io(getSocketUrl(), {
+      path: '/socket.io',
+      transports: ['websocket'],
+      query: { username: effectiveUsername, rouletteRoomId: 'global' },
+    });
+
+    socketRef.current = socket;
+
+    socket.on('roulette_room_joined', (payload: { ok: boolean; roomId?: string }) => {
+      if (payload.ok && payload.roomId) {
+        setRouletteRoomId(payload.roomId);
+        setRouletteRoomInput(payload.roomId);
+      }
+    });
+
+    socket.on('roulette_room_members', (payload: { roomId: string; members: string[] }) => {
+      if (!payload?.roomId) {
+        return;
+      }
+
+      setRouletteRoomMembers(payload.members ?? []);
+    });
+
+    socket.on('roulette_win_announcement', (payload: RouletteWinAnnouncement) => {
+      if (payload.username === effectiveUsername || payload.amount <= 0) {
+        return;
+      }
+      toast.success(`${payload.username} hat ${payload.amount} NVC gewonnen!`, {
+        id: `roulette-win-${payload.roomId}`,
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [effectiveUsername]);
+
+  const joinRouletteRoom = (roomId: string) => {
+    const socket = socketRef.current;
+    const nextRoom = roomId.trim().toLowerCase();
+
+    if (!socket || !socket.connected) {
+      setErrorText('Socket not connected');
+      return;
+    }
+
+    if (!nextRoom) {
+      setErrorText('Enter a room name');
+      return;
+    }
+
+    setJoiningRoom(true);
+    socket.emit('joinRoom', { game: 'roulette', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      setJoiningRoom(false);
+      if (!response.ok || !response.roomId) {
+        setErrorText(response.error ?? 'Could not join room');
+        return;
+      }
+
+      setRouletteRoomId(response.roomId);
+      setRouletteRoomInput(response.roomId);
+      setErrorText('');
+    });
+  };
+
+  const createRouletteRoom = () => {
+    const room = `room-${Math.random().toString(36).slice(2, 7)}`;
+    setRouletteRoomInput(room);
+    joinRouletteRoom(room);
+  };
+
+  const copyRouletteInvite = async () => {
+    const copied = await copyToClipboard(rouletteRoomId);
+    if (copied) {
+      toast.success('Roulette room code copied.');
+      return;
+    }
+    setErrorText(`Share this room id: ${rouletteRoomId}`);
+  };
 
   const placeChip = (type: BetType, value: string) => {
     if (isSpinning) {
@@ -247,7 +380,7 @@ export default function RouletteGame() {
     }
   };
 
-  const spin = () => {
+  const spin = async () => {
     if (activeBets.length === 0) {
       setErrorText('Place at least one bet first');
       setTimeout(() => setErrorText(''), 2200);
@@ -265,10 +398,13 @@ export default function RouletteGame() {
     setWinningNumber(null);
     setStatus('Wheel spinning...');
 
-    const result = Math.floor(Math.random() * 37);
-    setRotation((current) => current + 1800 + result * 9.73);
+    const winningIndex = Math.floor(Math.random() * WHEEL_ORDER.length);
+    const result = WHEEL_ORDER[winningIndex];
+    const degreesPerSlot = 360 / WHEEL_ORDER.length;
+    setRotation((current) => current + 1800 + winningIndex * degreesPerSlot);
 
     window.setTimeout(() => {
+      void (async () => {
       const resultColor = getNumberColor(result);
       let payout = 0;
       const winningLabels: string[] = [];
@@ -282,6 +418,10 @@ export default function RouletteGame() {
 
       if (payout > 0) {
         addWin(payout);
+        socketRef.current?.emit('roulette_win_announcement', {
+          roomId: rouletteRoomId,
+          amount: Math.floor(payout),
+        });
         setStatus(`Result ${result} (${resultColor}). Win +${payout.toFixed(2)} on ${winningLabels.join(', ')}`);
       } else {
         setStatus(`Result ${result} (${resultColor}). No active bet hit.`);
@@ -290,6 +430,7 @@ export default function RouletteGame() {
       setSpinHistory((current) => [{ number: result, color: resultColor }, ...current].slice(0, 14));
       setWinningNumber(result);
       setIsSpinning(false);
+      })();
     }, 1800);
   };
 
@@ -304,7 +445,51 @@ export default function RouletteGame() {
           <div className="min-h-0 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
-              <p className="text-sm text-slate-400">Single Zero Table</p>
+              <p className="text-sm text-slate-400">Single Zero Table · Room {rouletteRoomId}</p>
+            </div>
+
+            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+              <p className="text-xs font-bold text-slate-500 uppercase mb-2">Room</p>
+              <div className="flex gap-2">
+                <input
+                  value={rouletteRoomInput}
+                  onChange={(event) => setRouletteRoomInput(event.target.value)}
+                  className="h-10 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none focus:border-cyan-500"
+                  placeholder="global oder room-name"
+                />
+                <button
+                  onClick={() => joinRouletteRoom(rouletteRoomInput)}
+                  disabled={joiningRoom}
+                  className="h-10 px-3 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold disabled:opacity-60"
+                >
+                  {joiningRoom ? 'Joining...' : 'Join'}
+                </button>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  onClick={createRouletteRoom}
+                  className="h-8 px-3 rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 text-xs font-semibold text-slate-200"
+                >
+                  Create Private
+                </button>
+                <button
+                  onClick={copyRouletteInvite}
+                  className="h-8 px-3 rounded-md border border-cyan-700/60 bg-cyan-600/10 hover:bg-cyan-600/20 text-xs font-semibold text-cyan-300"
+                >
+                  Copy Invite
+                </button>
+              </div>
+              <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/70 p-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">At table ({rouletteRoomMembers.length})</p>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {rouletteRoomMembers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
+                  {rouletteRoomMembers.map((member, index) => (
+                    <span key={`${member}-${index}`} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
+                      {member}
+                    </span>
+                  ))}
+                </div>
+              </div>
             </div>
 
             <div className="flex-1 min-h-0 rounded-lg border border-slate-800 bg-slate-900 p-3">
@@ -544,10 +729,26 @@ export default function RouletteGame() {
             type="number"
             min={1}
             value={chipValue}
-            onChange={(event) => setChipValue(Number(event.target.value))}
+            onChange={(event) => setChipValue(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
             disabled={isSpinning}
             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-4 outline-none font-mono text-white focus:border-blue-600"
           />
+          <div className="grid grid-cols-2 gap-2 mt-2">
+            <button
+              onClick={() => setChipValue((value) => Math.max(1, Math.floor(value / 2) || 1))}
+              disabled={isSpinning}
+              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            >
+              1/2
+            </button>
+            <button
+              onClick={() => setChipValue(Math.max(0, Math.floor(balance)))}
+              disabled={isSpinning}
+              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+            >
+              MAX
+            </button>
+          </div>
           <p className="text-xs mt-2 text-slate-500">Total on table: {totalBet.toFixed(0)}</p>
           {errorText ? <p className="text-red-500 text-xs mt-2 font-medium">{errorText}</p> : null}
         </div>
@@ -578,7 +779,7 @@ export default function RouletteGame() {
         </div>
       </div>
       <div className="px-6 pb-4 bg-slate-950">
-        <p className="text-sm text-slate-400">{status}</p>
+        <p className="text-sm text-slate-400">{status} · Room {rouletteRoomId}</p>
       </div>
     </div>
   );
