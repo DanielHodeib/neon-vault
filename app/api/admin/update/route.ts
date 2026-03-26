@@ -403,11 +403,55 @@ export async function POST(request: Request) {
     return access.response;
   }
 
-  let payload: { message?: string };
+  let payload: {
+    message?: string;
+    rain?: {
+      amount?: number;
+      duration?: number;
+      participantsCount?: number;
+    };
+  };
   try {
-    payload = (await request.json()) as { message?: string };
+    payload = (await request.json()) as typeof payload;
   } catch {
     return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
+  }
+
+  const rainAmount = Math.floor(Number(payload.rain?.amount ?? 0));
+  const rainDuration = Math.floor(Number(payload.rain?.duration ?? 0));
+  const rainParticipants = Math.floor(Number(payload.rain?.participantsCount ?? 0));
+  const hasRainPayload = rainAmount > 0 || rainDuration > 0 || rainParticipants > 0;
+
+  if (hasRainPayload) {
+    if (!Number.isFinite(rainAmount) || rainAmount <= 0) {
+      return NextResponse.json({ error: 'Rain amount must be greater than 0.' }, { status: 400 });
+    }
+
+    if (!Number.isFinite(rainDuration) || rainDuration < 5 || rainDuration > 600) {
+      return NextResponse.json({ error: 'Rain duration must be between 5 and 600 seconds.' }, { status: 400 });
+    }
+
+    if (!Number.isFinite(rainParticipants) || rainParticipants < 1 || rainParticipants > 200) {
+      return NextResponse.json({ error: 'Rain participants must be between 1 and 200.' }, { status: 400 });
+    }
+
+    const gameServerUrl = getGameServerUrl();
+    const response = await fetch(`${gameServerUrl}/internal/rain/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        amount: rainAmount,
+        duration: rainDuration,
+        participantsCount: rainParticipants,
+      }),
+      cache: 'no-store',
+    }).catch(() => null);
+
+    if (!response || !response.ok) {
+      return NextResponse.json({ error: 'Failed to start rain.' }, { status: 502 });
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   const message = (payload.message ?? '').trim().slice(0, 240);

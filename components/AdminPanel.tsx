@@ -69,6 +69,9 @@ export default function AdminPanel() {
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState('');
   const [announcement, setAnnouncement] = useState('');
+  const [rainAmount, setRainAmount] = useState('50000');
+  const [rainDuration, setRainDuration] = useState('30');
+  const [rainParticipants, setRainParticipants] = useState('5');
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [roleDrafts, setRoleDrafts] = useState<Record<string, AdminRole>>({});
   const [balanceDrafts, setBalanceDrafts] = useState<Record<string, string>>({});
@@ -309,6 +312,52 @@ export default function AdminPanel() {
     }
   };
 
+  const handleStartRain = async () => {
+    const amount = Math.floor(Number(rainAmount));
+    const duration = Math.floor(Number(rainDuration));
+    const participantsCount = Math.floor(Number(rainParticipants));
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setNotice('Rain amount must be greater than 0.');
+      return;
+    }
+
+    if (!Number.isFinite(duration) || duration < 5 || duration > 600) {
+      setNotice('Rain duration must be between 5 and 600 seconds.');
+      return;
+    }
+
+    if (!Number.isFinite(participantsCount) || participantsCount < 1 || participantsCount > 200) {
+      setNotice('Rain participants must be between 1 and 200.');
+      return;
+    }
+
+    setNotice('');
+    try {
+      const response = await fetch('/api/admin/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rain: {
+            amount,
+            duration,
+            participantsCount,
+          },
+        }),
+      });
+
+      const payload = (await response.json()) as { error?: string; ok?: boolean };
+      if (!response.ok) {
+        setNotice(payload.error ?? 'Failed to start rain.');
+        return;
+      }
+
+      setNotice(`Rain started: ${amount} NVC / ${duration}s / ${participantsCount} users.`);
+    } catch {
+      setNotice('Failed to start rain.');
+    }
+  };
+
   const handleSetPassword = async (userId: string) => {
     const password = (passwordDrafts[userId] ?? '').trim();
     if (password.length < 8) {
@@ -366,6 +415,44 @@ export default function AdminPanel() {
             className="h-10 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold"
           >
             Broadcast
+          </button>
+        </div>
+      </div>
+
+      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Rain Control</p>
+        <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
+          <input
+            type="number"
+            min={1}
+            value={rainAmount}
+            onChange={(event) => setRainAmount(event.target.value)}
+            placeholder="Amount (NVC)"
+            className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+          />
+          <input
+            type="number"
+            min={5}
+            max={600}
+            value={rainDuration}
+            onChange={(event) => setRainDuration(event.target.value)}
+            placeholder="Duration (seconds)"
+            className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+          />
+          <input
+            type="number"
+            min={1}
+            max={200}
+            value={rainParticipants}
+            onChange={(event) => setRainParticipants(event.target.value)}
+            placeholder="Participants"
+            className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+          />
+          <button
+            onClick={handleStartRain}
+            className="h-10 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+          >
+            Start Rain
           </button>
         </div>
       </div>
