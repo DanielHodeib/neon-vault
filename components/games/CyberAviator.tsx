@@ -299,23 +299,27 @@ export default function CyberAviator() {
           {localError ? <span className="text-rose-400">{localError}</span> : null}
         </div>
 
-        <div className="mt-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
-          <span className="text-[11px] uppercase tracking-wide text-slate-500">History</span>
-          {history.length > 0 ? (
-            history.slice(0, 12).map((value, index) => {
-              const crashedLow = value < 2;
-              return (
-                <span
-                  key={`crash-history-${index}-${value}`}
-                  className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-mono ${crashedLow ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'}`}
-                >
-                  {value.toFixed(2)}x
-                </span>
-              );
-            })
-          ) : (
-            <span className="text-[11px] text-slate-500">No rounds yet</span>
-          )}
+        <div className="mt-3 rounded-lg border border-slate-800/90 bg-[linear-gradient(180deg,rgba(15,23,42,0.86)_0%,rgba(2,6,23,0.88)_100%)] px-2 py-2 shadow-[inset_0_1px_0_rgba(148,163,184,0.08),0_0_18px_rgba(34,211,238,0.08)]">
+          <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
+            <span className="shrink-0 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">
+              History
+            </span>
+            {history.length > 0 ? (
+              history.slice(0, 12).map((value, index) => {
+                const crashedLow = value < 2;
+                return (
+                  <span
+                    key={`crash-history-${index}-${value}`}
+                    className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-mono shadow-[0_0_10px_rgba(0,0,0,0.25)] ${crashedLow ? 'border-rose-500/45 bg-rose-500/12 text-rose-300' : 'border-emerald-500/45 bg-emerald-500/12 text-emerald-300'}`}
+                  >
+                    {value.toFixed(2)}x
+                  </span>
+                );
+              })
+            ) : (
+              <span className="text-[11px] text-slate-500">No rounds yet</span>
+            )}
+          </div>
         </div>
       </div>
     </div>
