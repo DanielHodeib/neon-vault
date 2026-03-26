@@ -133,32 +133,51 @@ export default function CyberAviator() {
           transition={{ duration: 0.4 }}
         />
 
-        <motion.div
-          className="absolute inset-0 opacity-45"
-          animate={{ x: [0, -220] }}
-          transition={{ duration: farDuration, ease: 'linear', repeat: Infinity }}
-        >
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(2,132,199,0.15)_55%,rgba(15,23,42,0.95)_100%)]" />
-          <div className="absolute bottom-0 left-0 right-0 h-36 bg-[repeating-linear-gradient(90deg,rgba(30,41,59,0.9)_0_14px,rgba(51,65,85,0.85)_14px_18px)]" />
-        </motion.div>
+        <div className="absolute inset-0 overflow-hidden opacity-45">
+          <motion.div
+            className="absolute inset-y-0 left-0 flex w-[200%]"
+            animate={{ x: ['0%', '-50%'] }}
+            transition={{ duration: farDuration, ease: 'linear', repeat: Infinity }}
+          >
+            {[0, 1].map((index) => (
+              <div key={`far-track-${index}`} className="relative h-full w-1/2">
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_0%,rgba(2,132,199,0.15)_55%,rgba(15,23,42,0.95)_100%)]" />
+                <div className="absolute bottom-0 left-0 right-0 h-36 bg-[repeating-linear-gradient(90deg,rgba(30,41,59,0.9)_0_14px,rgba(51,65,85,0.85)_14px_18px)]" />
+              </div>
+            ))}
+          </motion.div>
+        </div>
 
-        <motion.div
-          className="absolute inset-0 opacity-55"
-          animate={{ x: [0, -280], y: [0, 20] }}
-          transition={{ duration: cloudDuration, ease: 'linear', repeat: Infinity }}
-        >
-          <div className="absolute top-8 left-10 h-20 w-64 rounded-full bg-cyan-500/10 blur-2xl" />
-          <div className="absolute top-24 right-24 h-16 w-52 rounded-full bg-blue-500/10 blur-2xl" />
-          <div className="absolute top-40 left-1/3 h-14 w-40 rounded-full bg-sky-400/10 blur-2xl" />
-        </motion.div>
+        <div className="absolute inset-0 overflow-hidden opacity-55">
+          <motion.div
+            className="absolute inset-y-0 left-0 flex w-[200%]"
+            animate={{ x: ['0%', '-50%'], y: [0, 14, 0] }}
+            transition={{ duration: cloudDuration, ease: 'linear', repeat: Infinity }}
+          >
+            {[0, 1].map((index) => (
+              <div key={`cloud-track-${index}`} className="relative h-full w-1/2">
+                <div className="absolute top-8 left-10 h-20 w-64 rounded-full bg-cyan-500/10 blur-2xl" />
+                <div className="absolute top-24 right-24 h-16 w-52 rounded-full bg-blue-500/10 blur-2xl" />
+                <div className="absolute top-40 left-1/3 h-14 w-40 rounded-full bg-sky-400/10 blur-2xl" />
+              </div>
+            ))}
+          </motion.div>
+        </div>
 
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          animate={{ x: [0, -420] }}
-          transition={{ duration: linesDuration, ease: 'linear', repeat: Infinity }}
-        >
-          <div className="absolute inset-0 bg-[repeating-linear-gradient(110deg,transparent_0_18px,rgba(56,189,248,0.2)_18px_19px,transparent_19px_46px)]" />
-        </motion.div>
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <motion.div
+            className="absolute inset-y-0 left-0 flex w-[200%]"
+            animate={{ x: ['0%', '-50%'] }}
+            transition={{ duration: linesDuration, ease: 'linear', repeat: Infinity }}
+          >
+            {[0, 1].map((index) => (
+              <div
+                key={`line-track-${index}`}
+                className="h-full w-1/2 bg-[repeating-linear-gradient(110deg,transparent_0_18px,rgba(56,189,248,0.2)_18px_19px,transparent_19px_46px)]"
+              />
+            ))}
+          </motion.div>
+        </div>
 
         <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between">
           <div className="px-3 py-1 rounded-md border border-slate-700 bg-slate-950/75 text-xs uppercase tracking-wide text-slate-300">
