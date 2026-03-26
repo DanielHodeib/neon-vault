@@ -31,6 +31,11 @@ function burstOffset(index: number) {
   };
 }
 
+function multiplierToYPercent(value: number) {
+  const progress = Math.min(1, Math.log10(Math.max(1, value)) / Math.log10(45));
+  return Math.max(10, 82 - progress * 70);
+}
+
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
@@ -76,13 +81,13 @@ export default function CrashGame() {
   );
   const activeStake = Number(serverMe?.amount ?? 0);
   const potential = hasBetOnServer ? activeStake * multiplier : Number(betInput || 0) * multiplier;
-  const flightProgress = Math.min(1, Math.log10(Math.max(1, multiplier)) / Math.log10(45));
   const rocketX = 50;
-  const rocketY = Math.max(10, 82 - flightProgress * 70);
+  const rocketY = multiplierToYPercent(multiplier);
   const speedFactor = Math.max(0.8, Math.min(9, multiplier));
   const trailDuration = Math.max(0.45, 4.5 / speedFactor);
   const scanDuration = Math.max(2, 18 / speedFactor);
   const altitudeMeters = Math.floor(multiplier * 100);
+  const scaleMarks = useMemo(() => [1, 1.25, 1.5, 2, 3, 5, 8, 12, 20, 35], []);
 
   const playTone = useCallback((frequency: number, durationMs: number, type: OscillatorType = 'sine', gain = 0.045) => {
     if (!soundEnabled || typeof window === 'undefined') {
@@ -285,6 +290,25 @@ export default function CrashGame() {
           animate={{ opacity: phase === 'crashed' ? [1, 0.88, 1] : 1 }}
           transition={{ duration: 0.42 }}
         />
+
+        <div className="absolute left-3 top-14 bottom-28 z-20 w-20 pointer-events-none">
+          <div className="absolute left-2 top-0 bottom-0 w-px bg-cyan-500/30" />
+          {scaleMarks.map((mark) => {
+            const y = multiplierToYPercent(mark);
+            return (
+              <div
+                key={`scale-${mark}`}
+                className="absolute left-0 right-0"
+                style={{ top: `${y}%`, transform: 'translateY(-50%)' }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-px bg-cyan-400/55" />
+                  <span className="text-[10px] font-mono text-cyan-300/90">{mark.toFixed(mark < 2 ? 2 : 0)}x</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
         <motion.div
           className="absolute inset-0 pointer-events-none"
