@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { useCasinoStore } from '@/store/useCasinoStore';
 
-export default function ProfileRealtimeBalance({ initialBalance }: { initialBalance: number }) {
+export default function ProfileRealtimeBalance({ initialBalance }: { initialBalance: number | string }) {
   const balance = useCasinoStore((state) => state.balance);
   const hydrateFromSession = useCasinoStore((state) => state.hydrateFromSession);
   const syncBalanceFromServer = useCasinoStore((state) => state.syncBalanceFromServer);

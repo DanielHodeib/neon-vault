@@ -18,6 +18,12 @@ const WEEKLY_REWARD = 18000;
 const DAILY_XP = 420;
 const WEEKLY_XP = 1800;
 
+function addBalances(balance: string | number, amount: string | number): string {
+  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
+  const a = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return (b + a).toFixed(2);
+}
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -138,6 +144,7 @@ export async function POST(request: Request) {
         select: {
           dailyBets: true,
           dailyWins: true,
+          balance: true,
         },
       }),
     ]);
@@ -185,7 +192,7 @@ export async function POST(request: Request) {
     const updatedUser = await tx.user.update({
       where: { id: userId },
       data: {
-        balance: { increment: reward },
+        balance: addBalances(user.balance ?? '0.00', reward),
         xp: { increment: xpReward },
       },
       select: { balance: true, xp: true },

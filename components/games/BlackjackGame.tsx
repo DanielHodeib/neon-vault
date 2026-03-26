@@ -711,7 +711,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                   1/2
                 </button>
                 <button
-                  onClick={() => setSoloBet(Math.max(0, Math.floor(balance)))}
+                  onClick={() => setSoloBet(Math.max(0, Math.floor(parseFloat(balance))))}
                   disabled={soloPhase === 'playing'}
                   className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >

@@ -563,7 +563,7 @@ export default function SlotsGame() {
                   x2
                 </button>
                 <button
-                  onClick={() => setBetAmount(Math.max(config.minBet, Math.floor(balance)))}
+                  onClick={() => setBetAmount(Math.max(config.minBet, Math.floor(parseFloat(balance))))}
                   disabled={isSpinning || isCascading}
                   className="h-8 rounded-md border border-slate-800 bg-slate-950 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >

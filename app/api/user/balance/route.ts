@@ -11,20 +11,32 @@ interface BalancePostPayload {
   type?: BalanceActionType;
 }
 
-const MAX_WALLET_AMOUNT = Number.MAX_SAFE_INTEGER / 100;
+const MAX_WALLET_AMOUNT = 999999999999; // 12 digit max
 
-function normalizeAmount(raw: number | string) {
+function normalizeAmount(raw: number | string): string {
   const numeric = Number(raw);
   if (!Number.isFinite(numeric)) {
-    return 0;
+    return '0.00';
   }
 
   const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
   if (rounded <= 0 || rounded > MAX_WALLET_AMOUNT) {
-    return 0;
+    return '0.00';
   }
 
-  return rounded;
+  return rounded.toFixed(2);
+}
+
+function addBalances(balance: string | number, amount: string | number): string {
+  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
+  const a = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return (b + a).toFixed(2);
+}
+
+function subtractBalances(balance: string | number, amount: string | number): string {
+  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
+  const a = typeof amount === 'string' ? parseFloat(amount) : amount;
+  return Math.max(0, b - a).toFixed(2);
 }
 
 export async function GET() {
@@ -63,7 +75,8 @@ export async function POST(request: Request) {
   }
 
   const type = payload.type;
-  const amount = normalizeAmount(payload.amount ?? 0);
+  const amountStr = normalizeAmount(payload.amount ?? 0);
+  const amount = parseFloat(amountStr);
 
   if ((type !== 'bet' && type !== 'win') || amount <= 0) {
     return NextResponse.json({ error: 'Invalid amount or action type' }, { status: 400 });
@@ -79,14 +92,14 @@ export async function POST(request: Request) {
       return { error: 'User not found' as const };
     }
 
-    if (type === 'bet' && current.balance < amount) {
+    if (type === 'bet' && parseFloat(current.balance) < amount) {
       return { error: 'Insufficient balance' as const, balance: current.balance };
     }
 
     const updated = await tx.user.update({
       where: { id: userId },
       data: {
-        balance: { increment: type === 'win' ? amount : -amount },
+        balance: type === 'win' ? addBalances(current.balance, amount) : subtractBalances(current.balance, amount),
       },
       select: { balance: true },
     });

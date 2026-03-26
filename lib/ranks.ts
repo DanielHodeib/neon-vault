@@ -54,22 +54,24 @@ export function isRankTag(value: string): value is RankTag {
   return RANKS.some((rank) => rank.tag === value);
 }
 
-export function canUseRankTag(level: number, balance: number, tag: RankTag) {
+export function canUseRankTag(level: number, balance: number | string, tag: RankTag) {
   const rank = RANKS.find((entry) => entry.tag === tag);
   if (!rank) {
     return false;
   }
 
-  return level >= rank.minLevel && balance >= rank.minBalance;
+  const balanceNum = typeof balance === 'string' ? parseFloat(balance) : balance;
+  return level >= rank.minLevel && balanceNum >= rank.minBalance;
 }
 
 export function getRankColor(tag: RankTag) {
   return RANKS.find((rank) => rank.tag === tag)?.color ?? '#64748b';
 }
 
-export function getRankInfo(rawXp: number, rawBalance: number = Number.MAX_SAFE_INTEGER): RankInfo {
+export function getRankInfo(rawXp: number, rawBalance: number | string = Number.MAX_SAFE_INTEGER): RankInfo {
   const xp = Number.isFinite(rawXp) ? Math.max(0, Math.floor(rawXp)) : 0;
-  const balance = Number.isFinite(rawBalance) ? Math.max(0, Math.floor(rawBalance)) : 0;
+  const balanceNum = typeof rawBalance === 'string' ? parseFloat(rawBalance) : rawBalance;
+  const balance = Number.isFinite(balanceNum) ? Math.max(0, Math.floor(balanceNum)) : 0;
   const level = Math.floor(xp / 1000) + 1;
 
   const highestUnlocked = [...RANKS].reverse().find((rank) => level >= rank.minLevel && balance >= rank.minBalance) ?? RANKS[0];

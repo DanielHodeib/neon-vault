@@ -69,7 +69,7 @@ export default function CrashGame() {
   const socketRef = useRef<Socket | null>(null);
   const processedCashoutRef = useRef<string | null>(null);
 
-  const safeBalance = Math.max(0, Math.floor(balance));
+  const safeBalance = Math.max(0, Math.floor(parseFloat(balance)));
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
   const activePlayer = useMemo(
     () => players.find((player) => player.username === effectiveUsername && !player.cashedOut) ?? null,

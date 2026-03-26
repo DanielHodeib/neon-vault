@@ -742,7 +742,7 @@ export default function RouletteGame() {
               1/2
             </button>
             <button
-              onClick={() => setChipValue(Math.max(0, Math.floor(balance)))}
+              onClick={() => setChipValue(Math.max(0, Math.floor(parseFloat(balance))))}
               disabled={isSpinning}
               className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
             >

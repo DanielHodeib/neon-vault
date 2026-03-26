@@ -1298,7 +1298,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         onClick={() => {
                           const current = Math.max(0, Math.floor(Number(betInput || 0)));
                           const doubled = current <= 0 ? 2 : current * 2;
-                          const next = Math.min(Math.floor(balance), doubled);
+                          const next = Math.min(Math.floor(parseFloat(balance)), doubled);
                           setBetInput(String(Math.max(1, next)));
                         }}
                         disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
@@ -1307,7 +1307,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         2x
                       </button>
                       <button
-                        onClick={() => setBetInput(String(Math.max(1, Math.floor(balance))))}
+                        onClick={() => setBetInput(String(Math.max(1, Math.floor(parseFloat(balance)))))}
                         disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
                         className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >

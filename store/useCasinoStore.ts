@@ -1,14 +1,15 @@
 import { create } from 'zustand';
 
-function normalizeCurrency(value: number) {
-  if (!Number.isFinite(value)) {
-    return 0;
+function normalizeCurrency(value: number | string): string {
+  const numeric = typeof value === 'string' ? parseFloat(value) : value;
+  if (!Number.isFinite(numeric)) {
+    return '0.00';
   }
 
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+  return (Math.round((numeric + Number.EPSILON) * 100) / 100).toFixed(2);
 }
 
-function parseBalanceValue(value: unknown) {
+function parseBalanceValue(value: unknown): string | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return normalizeCurrency(value);
   }
@@ -37,7 +38,7 @@ interface WalletActionResult {
 }
 
 interface CasinoStore {
-  balance: number;
+  balance: string;
   xp: number;
   daily: DailyProgress;
   username: string;
@@ -51,7 +52,7 @@ interface CasinoStore {
 }
 
 export const useCasinoStore = create<CasinoStore>((set, get) => ({
-  balance: 0,
+  balance: '0.00',
   xp: 0,
   daily: {
     date: '',
