@@ -516,11 +516,17 @@ function getCrashRoom(roomId) {
     history: [],
     players: new Map(),
     sockets: new Set(),
-    roundStartAt: Date.now() + CRASH_ROUND_WAIT_MS,
+    roundStartAt: 0,
   };
 
   crashRooms.set(id, room);
   return room;
+}
+
+function getActiveCrashBetCount(room) {
+  return Array.from(room.players.values()).filter(
+    (player) => player.roundId === room.roundId && !player.cashedOut
+  ).length;
 }
 
 function getPokerRoom(roomId) {
@@ -1048,10 +1054,16 @@ function startCrashRound(roomId) {
     return;
   }
 
+  if (getActiveCrashBetCount(room) === 0) {
+    room.roundStartAt = 0;
+    return;
+  }
+
   room.resolvingCrash = false;
   room.phase = 'running';
   room.multiplier = 1;
   room.crashPoint = generateCrashPoint();
+  room.roundStartAt = 0;
 
   emitToCrashRoom(room.id, 'crash_round_started', {
     roomId: room.id,
@@ -1093,7 +1105,7 @@ function crashRoundNow(roomId) {
     room.phase = 'waiting';
     room.roundId += 1;
     room.resolvingCrash = false;
-    room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+    room.roundStartAt = 0;
     room.crashResetTimer = null;
     broadcastCrashState(room.id);
     io.to(roomChannel(room.id)).emit('crash_players', publicCrashPlayers(room));
@@ -1112,6 +1124,9 @@ function detachSocketFromRoom(socket, roomId) {
 
   room.sockets.delete(socket.id);
   room.players.delete(socket.id);
+  if (room.phase === 'waiting' && getActiveCrashBetCount(room) === 0) {
+    room.roundStartAt = 0;
+  }
   socket.leave(roomChannel(roomId));
   io.to(roomChannel(roomId)).emit('crash_players', publicCrashPlayers(room));
 
@@ -1308,6 +1323,18 @@ setInterval(() => {
 
   rooms.forEach((room) => {
     if (room.phase === 'waiting') {
+      const activeBetCount = getActiveCrashBetCount(room);
+      if (activeBetCount === 0) {
+        room.roundStartAt = 0;
+        return;
+      }
+
+      if (!room.roundStartAt) {
+        room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+        broadcastCrashState(room.id);
+        return;
+      }
+
       if (Date.now() >= room.roundStartAt) {
         startCrashRound(room.id);
       }
@@ -2130,6 +2157,11 @@ io.on('connection', (socket) => {
 
     emitToCrashRoom(roomState.id, 'crash_players', publicCrashPlayers(roomState));
 
+    if (roomState.phase === 'waiting' && !roomState.roundStartAt) {
+      roomState.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+      broadcastCrashState(roomState.id);
+    }
+
     callback?.({ ok: true, roomId });
   });
 
@@ -2144,6 +2176,11 @@ io.on('connection', (socket) => {
 
     const hadBet = roomState.players.delete(socket.id);
     console.warn(`[crash_cancel_bet] user=${username} room=${roomId} canceled=${hadBet}`);
+
+    if (roomState.phase === 'waiting' && getActiveCrashBetCount(roomState) === 0) {
+      roomState.roundStartAt = 0;
+      broadcastCrashState(roomState.id);
+    }
 
     emitToCrashRoom(roomState.id, 'crash_players', publicCrashPlayers(roomState));
 

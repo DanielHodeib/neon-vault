@@ -12,7 +12,7 @@ export interface CrashPlayer {
   cashedAt: number | null;
 }
 
-const ACK_TIMEOUT_MS = 5000;
+const ACK_TIMEOUT_MS = 12000;
 
 interface CrashStatePayload {
   roomId?: string;
