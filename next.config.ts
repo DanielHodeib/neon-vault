@@ -1,6 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Hide Next.js on-screen dev indicators for all users.
+  devIndicators: false,
   // Allow all dev origins including LAN IPs and tunnel domains.
   allowedDevOrigins: [
     "10.0.7.60",

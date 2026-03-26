@@ -3,6 +3,19 @@ import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 
+function getGameServerUrl() {
+  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  if (!fromEnv || fromEnv === 'same-origin') {
+    return 'http://localhost:4001';
+  }
+
+  try {
+    return new URL(fromEnv).toString().replace(/\/$/, '');
+  } catch {
+    return 'http://localhost:4001';
+  }
+}
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ username: string }> }
@@ -72,12 +85,31 @@ export async function GET(
     },
   });
 
+  let favoriteGame = 'Unknown';
+  try {
+    const gameServerUrl = getGameServerUrl();
+    const favoriteResponse = await fetch(
+      `${gameServerUrl}/favorite-game/${encodeURIComponent(target.username)}`,
+      { cache: 'no-store' }
+    );
+
+    if (favoriteResponse.ok) {
+      const favoritePayload = (await favoriteResponse.json()) as { game?: string };
+      const nextFavorite = typeof favoritePayload.game === 'string' ? favoritePayload.game.trim() : '';
+      if (nextFavorite) {
+        favoriteGame = nextFavorite;
+      }
+    }
+  } catch {
+    // Keep a stable fallback if game-server is unavailable.
+  }
+
   return NextResponse.json({
     profile: {
       username: target.username,
-      balance: target.balance,
+      balance: Number.isFinite(Number(target.balance)) ? Number(target.balance) : 0,
       xp: target.xp,
-      favoriteGame: 'Crash (v1 placeholder)',
+      favoriteGame,
       bio: target.settings?.bio ?? '',
       theme: target.settings?.theme ?? 'slate',
       publicProfile,

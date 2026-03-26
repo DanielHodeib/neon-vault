@@ -29,6 +29,13 @@ interface ModeConfig {
   hasCascading?: boolean;
 }
 
+type OutcomeTier = 'lose' | 'small' | 'medium' | 'jackpot';
+
+interface WeightedOutcome {
+  tier: OutcomeTier;
+  multiplier: number;
+}
+
 const SYMBOLS: SlotSymbol[] = [
   { icon: '🍒', name: 'Cherry', baseMulti: 2.2, weight: 46 },
   { icon: '🍋', name: 'Lemon', baseMulti: 2.8, weight: 34 },
@@ -38,6 +45,13 @@ const SYMBOLS: SlotSymbol[] = [
 ];
 
 const RTP_ADJUSTMENT = 0.92;
+
+const SLOT_OUTCOME_WEIGHTS: Array<{ tier: OutcomeTier; probability: number; multiplier: number }> = [
+  { tier: 'lose', probability: 0.7, multiplier: 0 },
+  { tier: 'small', probability: 0.2, multiplier: 1.5 },
+  { tier: 'medium', probability: 0.09, multiplier: 3 },
+  { tier: 'jackpot', probability: 0.01, multiplier: 12 },
+];
 
 const BOOK_SYMBOLS: SlotSymbol[] = [
   { icon: '🏺', name: 'Vase', baseMulti: 2, weight: 38 },
@@ -181,6 +195,60 @@ function getWeightedSymbol(mode: SlotMode) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+function rollWeightedOutcome(): WeightedOutcome {
+  const roll = Math.random();
+  let cumulative = 0;
+
+  for (const entry of SLOT_OUTCOME_WEIGHTS) {
+    cumulative += entry.probability;
+    if (roll <= cumulative) {
+      return { tier: entry.tier, multiplier: entry.multiplier };
+    }
+  }
+
+  return { tier: 'lose', multiplier: 0 };
+}
+
+function buildReelsForOutcome(mode: SlotMode, reelCount: number, symbolSet: SlotSymbol[], tier: OutcomeTier): SlotSymbol[] {
+  const reels = Array(reelCount)
+    .fill(null)
+    .map(() => getWeightedSymbol(mode));
+
+  const sortedByBase = [...symbolSet].sort((a, b) => a.baseMulti - b.baseMulti);
+  const lowSymbol = sortedByBase[0] ?? symbolSet[0];
+  const midSymbol = sortedByBase[Math.floor(sortedByBase.length / 2)] ?? symbolSet[0];
+  const highSymbol = sortedByBase[sortedByBase.length - 1] ?? symbolSet[0];
+
+  if (tier === 'small' && reelCount >= 2) {
+    reels[0] = lowSymbol;
+    reels[1] = lowSymbol;
+    return reels;
+  }
+
+  if (tier === 'medium') {
+    const matchCount = Math.min(3, reelCount);
+    for (let index = 0; index < matchCount; index += 1) {
+      reels[index] = midSymbol;
+    }
+    return reels;
+  }
+
+  if (tier === 'jackpot') {
+    return Array(reelCount).fill(highSymbol);
+  }
+
+  // Keep losses visually mixed and avoid accidental full-line jackpots.
+  let guard = 0;
+  while (new Set(reels.map((symbol) => symbol.icon)).size <= 1 && guard < 5) {
+    for (let index = 0; index < reels.length; index += 1) {
+      reels[index] = getWeightedSymbol(mode);
+    }
+    guard += 1;
+  }
+
+  return reels;
+}
+
 function trackSlotsQuestProgress() {
   void fetch('/api/quests/progress', {
     method: 'POST',
@@ -261,63 +329,41 @@ export default function SlotsGame() {
     }
   };
 
-  const evaluateWin = (finalReels: SlotSymbol[], wager: number): { payout: number; message: string; willCascade: boolean } => {
+  const evaluateWin = (
+    _finalReels: SlotSymbol[],
+    wager: number,
+    forcedOutcome?: WeightedOutcome
+  ): { payout: number; message: string; willCascade: boolean; outcome: WeightedOutcome } => {
+    const outcome = forcedOutcome ?? rollWeightedOutcome();
     const streakMulti = 1 + Math.min(winStreak * config.streakBonusPerWin, 0.9);
     let payout = 0;
     let message = 'No matches this spin.';
     let willCascade = false;
-
-    // Check for all matching symbols
-    const symbolCounts: Record<string, number> = {};
-    finalReels.forEach((s) => {
-      symbolCounts[s.icon] = (symbolCounts[s.icon] || 0) + 1;
-    });
-
-    // Find best match
-    let bestMatch: { icon: string; count: number; symbol: SlotSymbol } | null = null;
-    for (const [icon, count] of Object.entries(symbolCounts)) {
-      if (count >= 3) {
-        const symbol = symbolSet.find((s) => s.icon === icon)!;
-        if (!bestMatch || count > bestMatch.count || (count === bestMatch.count && symbol.baseMulti > bestMatch.symbol.baseMulti)) {
-          bestMatch = { icon, count, symbol };
-        }
-      }
-    }
 
     let chaosMulti = 1;
     if (mode === 'chaos') {
       chaosMulti = 0.8 + Math.random() * 1.6;
     }
 
-    if (bestMatch) {
-      const multiplier = bestMatch.count >= finalReels.length ? config.jackpotMulti : bestMatch.symbol.baseMulti * config.tripleBoost;
-      payout = wager * multiplier * streakMulti * chaosMulti * RTP_ADJUSTMENT;
-      message = `${bestMatch.symbol.name.toUpperCase()} ×${bestMatch.count}! +${payout.toFixed(2)}`;
-      
-      if (config.hasCascading && bestMatch.count === finalReels.length) {
-        willCascade = true;
-        message += ' - CASCADING!';
-      }
-    } else {
-      // Consolation wins are intentionally rarer to keep RTP realistic.
-      const minConsolationMatch = config.reelCount >= 4 ? 3 : 2;
-      for (const [, count] of Object.entries(symbolCounts)) {
-        if (count >= minConsolationMatch) {
-          const chance = minConsolationMatch === 2 ? 0.42 : 0.28;
-          if (Math.random() <= chance) {
-            payout = wager * config.pairMulti * streakMulti * chaosMulti * RTP_ADJUSTMENT;
-            message = `Match found! +${payout.toFixed(2)}`;
-          }
-          break;
-        }
-      }
+    if (outcome.tier === 'small') {
+      payout = wager * outcome.multiplier * streakMulti * chaosMulti * RTP_ADJUSTMENT;
+      message = `Small hit! +${payout.toFixed(2)} (${outcome.multiplier.toFixed(1)}x)`;
+    } else if (outcome.tier === 'medium') {
+      payout = wager * outcome.multiplier * streakMulti * chaosMulti * RTP_ADJUSTMENT;
+      message = `Medium win! +${payout.toFixed(2)} (${outcome.multiplier.toFixed(1)}x)`;
+      willCascade = Boolean(config.hasCascading && Math.random() < 0.35);
+    } else if (outcome.tier === 'jackpot') {
+      const jackpotMulti = Math.max(outcome.multiplier, config.jackpotMulti);
+      payout = wager * jackpotMulti * streakMulti * chaosMulti * RTP_ADJUSTMENT;
+      message = `JACKPOT! +${payout.toFixed(2)} (${jackpotMulti.toFixed(1)}x)`;
+      willCascade = Boolean(config.hasCascading);
     }
 
     if (mode === 'chaos') {
       message += ` | Chaos ×${chaosMulti.toFixed(2)}`;
     }
 
-    return { payout, message, willCascade };
+    return { payout, message, willCascade, outcome };
   };
 
   const spin = () => {
@@ -342,11 +388,12 @@ export default function SlotsGame() {
     setExpandedReels(new Set());
 
     setTimeout(() => {
-      const newReels = Array(config.reelCount).fill(null).map(() => getWeightedSymbol(mode));
+      const outcome = rollWeightedOutcome();
+      const newReels = buildReelsForOutcome(mode, config.reelCount, symbolSet, outcome.tier);
       setReels(newReels);
       setIsSpinning(false);
 
-      const { payout, message, willCascade } = evaluateWin(newReels, safeBet);
+      const { payout, message, willCascade, outcome: winningOutcome } = evaluateWin(newReels, safeBet, outcome);
 
       if (config.hasExpanding) {
         const expanded = new Set<number>();
@@ -359,7 +406,11 @@ export default function SlotsGame() {
       }
 
       if (payout > 0) {
-        addWin(payout);
+        addWin(payout, {
+          source: 'slots',
+          tier: winningOutcome.tier,
+          multiplier: winningOutcome.multiplier,
+        });
         setWinStreak((current) => current + 1);
         setLastWin(payout);
         setResultMsg(message);
@@ -391,22 +442,27 @@ export default function SlotsGame() {
     setIsCascading(true);
     let cascadeCount = 0;
 
-    const doCascade = (sourceReels: SlotSymbol[]) => {
+    const doCascade = (_sourceReels: SlotSymbol[]) => {
       setTimeout(() => {
-        const cascadedReels = sourceReels.map(() => getWeightedSymbol(mode));
-        setReels(cascadedReels);
+        const cascadeOutcome = rollWeightedOutcome();
+        const weightedCascadeReels = buildReelsForOutcome(mode, config.reelCount, symbolSet, cascadeOutcome.tier);
+        setReels(weightedCascadeReels);
 
-        const { payout, willCascade } = evaluateWin(cascadedReels, wager);
+        const { payout, willCascade } = evaluateWin(weightedCascadeReels, wager, cascadeOutcome);
         cascadeCount += 1;
         setTotalCascades(cascadeCount);
 
         if (payout > 0) {
-          addWin(payout);
+          addWin(payout, {
+            source: 'slots',
+            tier: cascadeOutcome.tier,
+            multiplier: cascadeOutcome.multiplier,
+          });
           setLastWin((prev) => prev + payout);
           setResultMsg(`CASCADE x${cascadeCount}! +${payout.toFixed(2)}`);
 
           if (willCascade && cascadeCount < 5) {
-            doCascade(cascadedReels);
+            doCascade(weightedCascadeReels);
             return;
           }
 

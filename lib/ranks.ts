@@ -6,6 +6,7 @@ export interface RankInfo {
 }
 
 export type RankTag =
+  | 'BALLER'
   | 'BRONZE'
   | 'IRON'
   | 'COPPER'
@@ -27,7 +28,8 @@ export type RankTag =
   | 'CASINO_EMPEROR'
   | 'NEON_OVERLORD';
 
-export const RANKS: Array<{ tag: RankTag; color: string; minLevel: number; minBalance: number }> = [
+export const RANKS: Array<{ tag: RankTag; color: string; minLevel: number; minBalance: number; requiresDanielFriend?: boolean }> = [
+  { tag: 'BALLER', color: '#fb923c', minLevel: 1, minBalance: 0, requiresDanielFriend: true },
   { tag: 'BRONZE', color: '#d97706', minLevel: 1, minBalance: 0 },
   { tag: 'IRON', color: '#9ca3af', minLevel: 2, minBalance: 2500 },
   { tag: 'COPPER', color: '#b45309', minLevel: 3, minBalance: 5000 },
@@ -54,9 +56,18 @@ export function isRankTag(value: string): value is RankTag {
   return RANKS.some((rank) => rank.tag === value);
 }
 
-export function canUseRankTag(level: number, balance: number | string, tag: RankTag) {
+export function canUseRankTag(
+  level: number,
+  balance: number | string,
+  tag: RankTag,
+  options?: { hasDanielFriend?: boolean }
+) {
   const rank = RANKS.find((entry) => entry.tag === tag);
   if (!rank) {
+    return false;
+  }
+
+  if (rank.requiresDanielFriend && !options?.hasDanielFriend) {
     return false;
   }
 
@@ -74,6 +85,7 @@ export function getRankInfo(rawXp: number, rawBalance: number | string = Number.
   const balance = Number.isFinite(balanceNum) ? Math.max(0, Math.floor(balanceNum)) : 0;
   const level = Math.floor(xp / 1000) + 1;
 
-  const highestUnlocked = [...RANKS].reverse().find((rank) => level >= rank.minLevel && balance >= rank.minBalance) ?? RANKS[0];
+  const progressionRanks = RANKS.filter((rank) => !rank.requiresDanielFriend);
+  const highestUnlocked = [...progressionRanks].reverse().find((rank) => level >= rank.minLevel && balance >= rank.minBalance) ?? progressionRanks[0];
   return { xp, level, tag: highestUnlocked.tag, color: highestUnlocked.color };
 }

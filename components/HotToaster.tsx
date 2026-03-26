@@ -9,9 +9,9 @@ export default function HotToaster() {
       toastOptions={{
         duration: 3200,
         style: {
-          background: '#0f172a',
-          color: '#e2e8f0',
-          border: '1px solid #1e293b',
+          background: '#1e293b',
+          color: '#fff',
+          border: '1px solid #334155',
           fontSize: '13px',
         },
       }}

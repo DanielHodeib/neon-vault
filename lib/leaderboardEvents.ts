@@ -29,6 +29,9 @@ export async function notifyLeaderboardRefresh(payload: {
 export async function notifyGlobalWinMessage(payload: {
   username: string;
   amount: number;
+  source?: string;
+  tier?: string;
+  multiplier?: number;
 }) {
   const base = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 

@@ -87,6 +87,19 @@ function getSocketUrl() {
   }
 }
 
+function shouldForcePolling(socketUrl: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(socketUrl);
+    return window.location.protocol === 'https:' && parsed.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 function createDeck() {
   const deck: string[] = [];
 
@@ -204,9 +217,11 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
-      const socket = io(socketUrl, {
+    const forcePolling = shouldForcePolling(socketUrl);
+    const socket = io(socketUrl, {
       path: '/socket.io',
-      transports: ['websocket'],
+      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      upgrade: !forcePolling,
       query: { username, blackjackRoomId: 'global' },
     });
 
@@ -490,23 +505,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     }
 
     const socket = socketRef.current;
-    if (!socket) {
+    if (!socket || !socket.connected) {
       setFriendsNotice('Socket disconnected.');
       return;
     }
 
     setJoiningRoom(true);
-    
-    let ackReceived = false;
-    const ackTimeout = window.setTimeout(() => {
-      if (ackReceived) return;
-      setJoiningRoom(false);
-      setFriendsNotice('Join room timed out. Please try again.');
-    }, 2200);
 
     socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
-      ackReceived = true;
-      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not join room.');
@@ -528,23 +534,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     setFriendsNotice('Private room created. Share room id with your friends.');
 
     const socket = socketRef.current;
-    if (!socket) {
+    if (!socket || !socket.connected) {
       setFriendsNotice('Socket disconnected.');
       return;
     }
 
     setJoiningRoom(true);
-    
-    let ackReceived = false;
-    const ackTimeout = window.setTimeout(() => {
-      if (ackReceived) return;
-      setJoiningRoom(false);
-      setFriendsNotice('Create room timed out. Please try again.');
-    }, 2200);
 
     socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
-      ackReceived = true;
-      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not create room.');

@@ -52,6 +52,9 @@ async function ensureQuestTable(tx: Prisma.TransactionClient) {
 interface WalletRequestBody {
   action?: WalletAction;
   amount?: number | string;
+  source?: string;
+  tier?: string;
+  multiplier?: number | string;
 }
 
 const MAX_WALLET_AMOUNT = 999999999999; // 12 digit max
@@ -101,6 +104,9 @@ export async function POST(request: Request) {
     const action = body.action;
     const amountStr = normalizeAmount(body.amount ?? 0);
     const amount = parseFloat(amountStr);
+    const source = typeof body.source === 'string' ? body.source.trim().toLowerCase() : '';
+    const tier = typeof body.tier === 'string' ? body.tier.trim().toLowerCase() : '';
+    const multiplier = Number.isFinite(Number(body.multiplier)) ? Number(body.multiplier) : 0;
 
     if (!action || !['bet', 'win', 'faucet', 'refund'].includes(action)) {
       return NextResponse.json({ error: 'Invalid wallet action' }, { status: 400 });
@@ -138,6 +144,8 @@ export async function POST(request: Request) {
         today,
         today,
         today,
+        week,
+        week,
         week,
         week,
         week,
@@ -306,6 +314,17 @@ export async function POST(request: Request) {
     });
 
     if ('error' in result) {
+      const status =
+        result.error === 'User not found'
+          ? 404
+          : result.error === 'Insufficient balance' || result.error.includes('Daily faucet')
+            ? 400
+            : 400;
+
+      if (status === 400) {
+        console.warn(`[wallet] 400 action=${action} amount=${amount} userId=${userId} reason=${result.error}`);
+      }
+
       return NextResponse.json(
         {
           error: result.error,
@@ -313,7 +332,7 @@ export async function POST(request: Request) {
           xp: result.xp,
           daily: result.daily,
         },
-        { status: 400 }
+        { status }
       );
     }
 
@@ -324,16 +343,26 @@ export async function POST(request: Request) {
       });
     }
 
-    if (action === 'win' && amount >= 5000 && result.username) {
+    const shouldBroadcastWinToChat =
+      action === 'win' &&
+      Boolean(result.username) &&
+      source === 'slots' &&
+      (tier === 'jackpot' || multiplier >= 10);
+
+    if (shouldBroadcastWinToChat && result.username) {
       void notifyGlobalWinMessage({
         username: result.username,
         amount,
+        source,
+        tier,
+        multiplier,
       });
     }
 
     return NextResponse.json({ balance: result.balance, xp: result.xp, daily: result.daily });
   } catch (error) {
     console.error('Wallet POST error:', error);
-    return NextResponse.json({ error: 'Failed to process wallet action.' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Failed to process wallet action.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

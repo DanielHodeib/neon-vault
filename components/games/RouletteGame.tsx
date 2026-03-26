@@ -32,13 +32,34 @@ interface RouletteWinAnnouncement {
   amount: number;
 }
 
+interface RouletteSpinResultPayload {
+  roomId: string;
+  roundId: string;
+  winningNumber: number;
+  winningIndex?: number;
+  wheelSize?: number;
+  emittedAt?: number;
+  initiatedBy?: string;
+}
+
+interface RouletteSpinRequestResponse {
+  ok: boolean;
+  error?: string;
+  roundId?: string;
+  winningNumber?: number;
+}
+
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const BOARD_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
   [2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35],
   [1, 4, 7, 10, 13, 16, 19, 22, 25, 28, 31, 34],
 ];
-const WHEEL_ORDER = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const WHEEL_NUMBERS = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const WHEEL_SEGMENT_DEGREES = 360 / WHEEL_NUMBERS.length;
+const POINTER_OFFSET_DEGREES = 0;
+const EXTRA_SPIN_ROTATIONS = 5;
+const SPIN_ANIMATION_MS = 4200;
 const DOZEN_MAP: Record<string, Set<number>> = {
   '1st': new Set(Array.from({ length: 12 }, (_, index) => index + 1)),
   '2nd': new Set(Array.from({ length: 12 }, (_, index) => index + 13)),
@@ -81,6 +102,19 @@ function getSocketUrl() {
       return `${window.location.protocol}//${window.location.hostname}:4001`;
     }
     return window.location.origin;
+  }
+}
+
+function shouldForcePolling(socketUrl: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(socketUrl);
+    return window.location.protocol === 'https:' && parsed.origin === window.location.origin;
+  } catch {
+    return false;
   }
 }
 
@@ -242,8 +276,22 @@ function doesBetWin(bet: ActiveBet, result: number, resultColor: 'red' | 'black'
   return Boolean(mappedColumn?.has(result));
 }
 
+function getTargetRotationForWinningNumber(winningNumber: number, currentRotation: number) {
+  const index = WHEEL_NUMBERS.indexOf(winningNumber);
+  if (index < 0) {
+    return currentRotation + EXTRA_SPIN_ROTATIONS * 360;
+  }
+
+  const normalizedCurrentRotation = ((currentRotation % 360) + 360) % 360;
+  const segmentCenterDegrees = index * WHEEL_SEGMENT_DEGREES;
+  const targetDegrees = ((360 - (segmentCenterDegrees + POINTER_OFFSET_DEGREES)) % 360 + 360) % 360;
+  const deltaToTarget = ((targetDegrees - normalizedCurrentRotation) % 360 + 360) % 360;
+
+  return currentRotation + EXTRA_SPIN_ROTATIONS * 360 + deltaToTarget;
+}
+
 export default function RouletteGame() {
-  const { balance, username, placeBet, addWin } = useCasinoStore();
+  const { balance, username, placeBet, addWin, persistWalletAction, syncBalanceFromServer } = useCasinoStore();
   const [chipValue, setChipValue] = useState(100);
   const [bets, setBets] = useState<BetMap>({});
   const [isSpinning, setIsSpinning] = useState(false);
@@ -257,6 +305,10 @@ export default function RouletteGame() {
   const [rouletteRoomMembers, setRouletteRoomMembers] = useState<string[]>([]);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const rouletteRoomIdRef = useRef('global');
+  const pendingSpinStakeRef = useRef(0);
+  const pendingSpinBetsRef = useRef<ActiveBet[]>([]);
+  const settleSpinTimerRef = useRef<number | null>(null);
 
   const effectiveUsername = (username ?? '').trim() || 'Guest';
 
@@ -267,43 +319,119 @@ export default function RouletteGame() {
   );
 
   useEffect(() => {
-    const socket = io(getSocketUrl(), {
+    rouletteRoomIdRef.current = rouletteRoomId;
+  }, [rouletteRoomId]);
+
+  useEffect(() => {
+    const socketUrl = getSocketUrl();
+    const forcePolling = shouldForcePolling(socketUrl);
+
+    const socket = io(socketUrl, {
       path: '/socket.io',
-      transports: ['websocket'],
+      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      upgrade: !forcePolling,
       query: { username: effectiveUsername, rouletteRoomId: 'global' },
     });
 
     socketRef.current = socket;
 
-    socket.on('roulette_room_joined', (payload: { ok: boolean; roomId?: string }) => {
+    const rouletteRoomJoinedHandler = (payload: { ok: boolean; roomId?: string }) => {
       if (payload.ok && payload.roomId) {
         setRouletteRoomId(payload.roomId);
         setRouletteRoomInput(payload.roomId);
       }
-    });
+    };
 
-    socket.on('roulette_room_members', (payload: { roomId: string; members: string[] }) => {
+    const rouletteRoomMembersHandler = (payload: { roomId: string; members: string[] }) => {
       if (!payload?.roomId) {
         return;
       }
 
       setRouletteRoomMembers(payload.members ?? []);
-    });
+    };
 
-    socket.on('roulette_win_announcement', (payload: RouletteWinAnnouncement) => {
+    const rouletteWinAnnouncementHandler = (payload: RouletteWinAnnouncement) => {
       if (payload.username === effectiveUsername || payload.amount <= 0) {
         return;
       }
       toast.success(`${payload.username} hat ${payload.amount} NVC gewonnen!`, {
         id: `roulette-win-${payload.roomId}`,
       });
-    });
+    };
+
+    const rouletteSpinResultHandler = (payload: RouletteSpinResultPayload) => {
+      if (!payload || payload.roomId !== rouletteRoomIdRef.current) {
+        return;
+      }
+
+      const result = Number(payload.winningNumber);
+      if (!Number.isFinite(result)) {
+        return;
+      }
+
+      if (settleSpinTimerRef.current) {
+        window.clearTimeout(settleSpinTimerRef.current);
+      }
+
+      setWinningNumber(result);
+      setIsSpinning(true);
+      setStatus(`Server result locked: ${result}. Wheel spinning...`);
+      setRotation((current) => getTargetRotationForWinningNumber(result, current));
+
+      settleSpinTimerRef.current = window.setTimeout(() => {
+        const resultColor = getNumberColor(result);
+        setSpinHistory((current) => [{ number: result, color: resultColor }, ...current].slice(0, 14));
+
+        const pendingStake = pendingSpinStakeRef.current;
+        if (pendingStake > 0) {
+          let payout = 0;
+          const winningLabels: string[] = [];
+
+          pendingSpinBetsRef.current.forEach((bet) => {
+            if (doesBetWin(bet, result, resultColor)) {
+              payout += bet.stake * bet.multiplier;
+              winningLabels.push(bet.label);
+            }
+          });
+
+          if (payout > 0) {
+            addWin(payout);
+            socketRef.current?.emit('roulette_win_announcement', {
+              roomId: rouletteRoomIdRef.current,
+              amount: Math.floor(payout),
+            });
+            setStatus(`Result ${result} (${resultColor}). Win +${payout.toFixed(2)} on ${winningLabels.join(', ')}`);
+          } else {
+            setStatus(`Result ${result} (${resultColor}). No active bet hit.`);
+          }
+
+          pendingSpinStakeRef.current = 0;
+          pendingSpinBetsRef.current = [];
+        } else {
+          setStatus(`Table result ${result} (${resultColor}).`);
+        }
+
+        setIsSpinning(false);
+      }, SPIN_ANIMATION_MS);
+    };
+
+    socket.on('roulette_room_joined', rouletteRoomJoinedHandler);
+    socket.on('roulette_room_members', rouletteRoomMembersHandler);
+    socket.on('roulette_win_announcement', rouletteWinAnnouncementHandler);
+    socket.on('roulette_spin_result', rouletteSpinResultHandler);
 
     return () => {
+      if (settleSpinTimerRef.current) {
+        window.clearTimeout(settleSpinTimerRef.current);
+      }
+      socket.off('roulette_room_joined', rouletteRoomJoinedHandler);
+      socket.off('roulette_room_members', rouletteRoomMembersHandler);
+      socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
+      socket.off('roulette_spin_result', rouletteSpinResultHandler);
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [effectiveUsername]);
+  }, [addWin, effectiveUsername]);
 
   const joinRouletteRoom = (roomId: string) => {
     const socket = socketRef.current;
@@ -381,6 +509,14 @@ export default function RouletteGame() {
   };
 
   const spin = async () => {
+    const socket = socketRef.current;
+
+    if (!socket || !socket.connected) {
+      setErrorText('Socket not connected');
+      setTimeout(() => setErrorText(''), 2200);
+      return;
+    }
+
     if (activeBets.length === 0) {
       setErrorText('Place at least one bet first');
       setTimeout(() => setErrorText(''), 2200);
@@ -396,42 +532,29 @@ export default function RouletteGame() {
     setErrorText('');
     setIsSpinning(true);
     setWinningNumber(null);
-    setStatus('Wheel spinning...');
+    setStatus('Waiting for server roulette result...');
+    pendingSpinStakeRef.current = totalBet;
+    pendingSpinBetsRef.current = activeBets.map((bet) => ({ ...bet }));
 
-    const winningIndex = Math.floor(Math.random() * WHEEL_ORDER.length);
-    const result = WHEEL_ORDER[winningIndex];
-    const degreesPerSlot = 360 / WHEEL_ORDER.length;
-    setRotation((current) => current + 1800 + winningIndex * degreesPerSlot);
-
-    window.setTimeout(() => {
-      void (async () => {
-      const resultColor = getNumberColor(result);
-      let payout = 0;
-      const winningLabels: string[] = [];
-
-      activeBets.forEach((bet) => {
-        if (doesBetWin(bet, result, resultColor)) {
-          payout += bet.stake * bet.multiplier;
-          winningLabels.push(bet.label);
-        }
-      });
-
-      if (payout > 0) {
-        addWin(payout);
-        socketRef.current?.emit('roulette_win_announcement', {
-          roomId: rouletteRoomId,
-          amount: Math.floor(payout),
-        });
-        setStatus(`Result ${result} (${resultColor}). Win +${payout.toFixed(2)} on ${winningLabels.join(', ')}`);
-      } else {
-        setStatus(`Result ${result} (${resultColor}). No active bet hit.`);
+    socket.emit('roulette_spin_request', { roomId: rouletteRoomId }, (response: RouletteSpinRequestResponse) => {
+      if (response?.ok) {
+        return;
       }
 
-      setSpinHistory((current) => [{ number: result, color: resultColor }, ...current].slice(0, 14));
-      setWinningNumber(result);
+      const refundAmount = pendingSpinStakeRef.current;
+      pendingSpinStakeRef.current = 0;
+      pendingSpinBetsRef.current = [];
       setIsSpinning(false);
+      setStatus('Roulette spin canceled. Refunding stake...');
+
+      void (async () => {
+        if (refundAmount > 0) {
+          await persistWalletAction('refund', refundAmount);
+          await syncBalanceFromServer();
+        }
+        setStatus(response?.error ?? 'Spin request failed. Stake refunded.');
       })();
-    }, 1800);
+    });
   };
 
   const hasBet = (type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]);
@@ -653,8 +776,8 @@ export default function RouletteGame() {
                   <svg viewBox="0 0 300 300" className="w-full h-full">
                     <circle cx="150" cy="150" r="146" fill="#0f172a" />
                     <circle cx="150" cy="150" r="141" fill="none" stroke="#64748b" strokeWidth="3" />
-                    {WHEEL_ORDER.map((num, index) => {
-                      const step = 360 / WHEEL_ORDER.length;
+                    {WHEEL_NUMBERS.map((num, index) => {
+                      const step = WHEEL_SEGMENT_DEGREES;
                       const startAngle = index * step - step / 2;
                       const endAngle = startAngle + step;
                       const midAngle = startAngle + step / 2;

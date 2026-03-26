@@ -3,9 +3,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { io } from 'socket.io-client';
 
+import { formatUserBalance } from '@/lib/formatMoney';
+
 interface LeaderboardEntry {
   username: string;
-  balance: number;
+  balance: number | string;
   xp: number;
 }
 
@@ -84,7 +86,7 @@ export default function LeaderboardPanel() {
           <div key={entry.username} className="rounded-xl border border-slate-800 bg-slate-900 p-4">
             <p className="text-xs uppercase tracking-wider text-slate-500">#{index + 1}</p>
             <p className="mt-1 text-lg font-semibold text-slate-100">{entry.username}</p>
-            <p className="mt-1 font-mono text-cyan-300">{entry.balance.toLocaleString()} NVC</p>
+            <p className="mt-1 font-mono text-cyan-300">{formatUserBalance(entry.balance, true)} NVC</p>
           </div>
         ))}
       </div>
@@ -101,7 +103,7 @@ export default function LeaderboardPanel() {
           <div key={`${entry.username}-${index}`} className="grid grid-cols-[70px_1fr_150px_100px] gap-2 px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
             <span className="text-slate-400">#{index + 1}</span>
             <span className="text-slate-200 font-medium">{entry.username}</span>
-            <span className="font-mono text-cyan-300">{entry.balance.toLocaleString()}</span>
+            <span className="font-mono text-cyan-300">{formatUserBalance(entry.balance, true)}</span>
             <span className="text-slate-400">{entry.xp}</span>
           </div>
         ))}

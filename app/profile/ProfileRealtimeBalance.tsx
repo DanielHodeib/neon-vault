@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
+import { formatCompactNumber } from '@/lib/formatMoney';
 import { useCasinoStore } from '@/store/useCasinoStore';
 
 export default function ProfileRealtimeBalance({ initialBalance }: { initialBalance: number | string }) {
@@ -30,6 +31,8 @@ export default function ProfileRealtimeBalance({ initialBalance }: { initialBala
   }, [hydrateFromSession, syncBalanceFromServer]);
 
   const displayed = hydrated ? balance : initialBalance;
+  const displayedNumber = typeof displayed === 'string' ? parseFloat(displayed) : displayed;
+  const safeDisplayed = Number.isFinite(displayedNumber) ? displayedNumber : 0;
 
-  return <span className="mt-2 text-2xl font-mono font-bold text-cyan-300">{displayed.toLocaleString()} NVC</span>;
+  return <span className="mt-2 text-2xl font-mono font-bold text-cyan-300">{formatCompactNumber(safeDisplayed)} NVC</span>;
 }

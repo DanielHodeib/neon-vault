@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+const COMPACT_BALANCE_STORAGE_KEY = 'nvc_use_compact_balance';
+
 function normalizeCurrency(value: number | string): string {
   const numeric = typeof value === 'string' ? parseFloat(value) : value;
   if (!Number.isFinite(numeric)) {
@@ -24,6 +26,19 @@ function parseBalanceValue(value: unknown): string | null {
   return null;
 }
 
+function getInitialCompactBalance(): boolean {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+
+  const stored = window.localStorage.getItem(COMPACT_BALANCE_STORAGE_KEY);
+  if (stored === null) {
+    return true;
+  }
+
+  return stored === 'true';
+}
+
 export interface DailyProgress {
   date: string;
   bets: number;
@@ -37,23 +52,39 @@ interface WalletActionResult {
   error?: string;
 }
 
+interface WinMeta {
+  source?: string;
+  tier?: string;
+  multiplier?: number;
+}
+
 interface CasinoStore {
   balance: string;
   xp: number;
+  announcement: string | null;
+  useCompactBalance: boolean;
   daily: DailyProgress;
   username: string;
   isHydrating: boolean;
+  setAnnouncement: (msg: string | null) => void;
+  toggleCompactBalance: (value: boolean) => void;
   fetchInitialBalance: () => Promise<void>;
   hydrateFromSession: () => Promise<void>;
   syncBalanceFromServer: () => Promise<void>;
   placeBet: (amount: number) => boolean;
-  addWin: (amount: number) => void;
-  persistWalletAction: (action: 'bet' | 'win' | 'faucet' | 'refund', amount: number) => Promise<WalletActionResult>;
+  addWin: (amount: number, winMeta?: WinMeta) => void;
+  persistWalletAction: (
+    action: 'bet' | 'win' | 'faucet' | 'refund',
+    amount: number,
+    metadata?: WinMeta
+  ) => Promise<WalletActionResult>;
 }
 
 export const useCasinoStore = create<CasinoStore>((set, get) => ({
   balance: '0.00',
   xp: 0,
+  announcement: null,
+  useCompactBalance: getInitialCompactBalance(),
   daily: {
     date: '',
     bets: 0,
@@ -63,6 +94,13 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
   },
   username: 'Guest',
   isHydrating: false,
+  setAnnouncement: (msg) => set({ announcement: msg }),
+  toggleCompactBalance: (value) => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(COMPACT_BALANCE_STORAGE_KEY, value ? 'true' : 'false');
+    }
+    set({ useCompactBalance: value });
+  },
   fetchInitialBalance: async () => {
     try {
       const response = await fetch('/api/user/balance', { cache: 'no-store' });
@@ -202,7 +240,7 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
     }
     return false;
   },
-  addWin: (amount) => {
+  addWin: (amount, winMeta) => {
     const safeAmount = normalizeCurrency(Number.isFinite(amount) ? amount : 0);
     if (safeAmount <= 0) {
       return;
@@ -215,7 +253,7 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
     });
 
     void get()
-      .persistWalletAction('win', safeAmount)
+      .persistWalletAction('win', safeAmount, winMeta)
       .then(async (result) => {
         if (!result.ok) {
           await get().syncBalanceFromServer();
@@ -225,12 +263,12 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         await get().syncBalanceFromServer();
       });
   },
-  persistWalletAction: async (action, amount) => {
+  persistWalletAction: async (action, amount, metadata) => {
     try {
       const response = await fetch('/api/wallet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action, amount }),
+        body: JSON.stringify({ action, amount, ...(metadata ?? {}) }),
       });
 
       const payload = (await response.json()) as {

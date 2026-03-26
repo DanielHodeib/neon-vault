@@ -32,3 +32,28 @@ export function formatMoneyCompact(amount: number): string {
   }
   return amount.toFixed(2);
 }
+
+export function formatCompactNumber(number: number): string {
+  const safeNumber = Number.isFinite(number) ? number : 0;
+  return new Intl.NumberFormat('en-US', {
+    notation: 'compact',
+    maximumFractionDigits: 1,
+  }).format(safeNumber);
+}
+
+export function formatUserBalance(balance: number | string, useCompact: boolean): string {
+  const numeric = typeof balance === 'string' ? Number(balance) : balance;
+  const safeBalance = Number.isFinite(numeric) ? numeric : 0;
+
+  if (useCompact) {
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(safeBalance);
+  }
+
+  return new Intl.NumberFormat('en-US', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(safeBalance);
+}

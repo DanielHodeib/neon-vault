@@ -12,6 +12,7 @@
     "dev:game-server": "cd game-server && HOST=0.0.0.0 npm run dev",
     "dev:game-server:lan": "npm run dev:game-server",
     "dev:all": "sh -c 'npm run dev & web=$!; npm run dev:game-server & game=$!; trap \"kill $web $game\" INT TERM EXIT; wait'",
+    "restart:all": "sh -c 'npm run free-port:web && npm run free-port:game && npm run dev:all'",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",

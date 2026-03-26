@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
@@ -14,130 +14,103 @@ interface CrashPlayer {
 }
 
 interface CrashStatePayload {
-  roomId: string;
+  roomId?: string;
   phase: 'waiting' | 'running' | 'crashed';
   multiplier: number;
-  crashPoint: number | null;
-  history: number[];
   players: CrashPlayer[];
-  roundStartAt: number;
 }
 
+// Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-
-  if (typeof window === 'undefined') {
-    return fromEnv ?? 'http://localhost:4001';
-  }
-
-  if (fromEnv === 'same-origin') {
-    return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:4001`;
-    }
-    return window.location.origin;
-  }
-
-  try {
-    return new URL(fromEnv).toString().replace(/\/$/, '');
-  } catch {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:4001`;
-    }
-    return window.location.origin;
-  }
+  if (typeof window === 'undefined') return fromEnv ?? 'http://localhost:4001';
+  if (fromEnv === 'same-origin') return window.location.origin;
+  return fromEnv ?? (window.location.hostname === 'localhost' ? 'http://localhost:4001' : window.location.origin);
 }
 
 export default function CrashGame() {
   const { balance, username, placeBet, addWin } = useCasinoStore();
+  
+  // States
   const [phase, setPhase] = useState<'waiting' | 'running' | 'crashed'>('waiting');
   const [multiplier, setMultiplier] = useState(1.0);
   const [betInput, setBetInput] = useState('100');
+  const [crashRoomId, setCrashRoomId] = useState('global');
   const [players, setPlayers] = useState<CrashPlayer[]>([]);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncingCashOut, setIsSyncingCashOut] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  
   const socketRef = useRef<Socket | null>(null);
-  const processedCashoutRef = useRef<string | null>(null);
 
-  const safeBalance = Math.max(0, Math.floor(parseFloat(balance)));
+  // Memoized Values
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
-  const activePlayer = useMemo(
-    () => players.find((player) => player.username === effectiveUsername && !player.cashedOut) ?? null,
-    [effectiveUsername, players]
+  
+  // Findet den aktuellen User in der Spielerliste vom Server
+  const serverMe = useMemo(() => 
+    players.find(p => p.username === effectiveUsername),
+    [players, effectiveUsername]
   );
-  const hasBet = Boolean(activePlayer);
-  const canEditBet = phase !== 'running' && !isPlacingBet && !hasBet;
-  const roundBet = activePlayer?.amount ?? 0;
 
-  const showError = (message: string) => {
-    setErrorMsg(message);
-    window.setTimeout(() => setErrorMsg(''), 3000);
-  };
+  const hasBetOnServer = Boolean(serverMe && !serverMe.cashedOut);
+  const hasBet = hasBetOnServer;
+  const canEditBet = phase === 'waiting' && !isPlacingBet && !hasBetOnServer;
 
-  const normalizeBet = (value: number) => {
-    const numeric = Number.isFinite(value) ? Math.floor(value) : 0;
-    return Math.max(0, numeric);
-  };
+  const showError = useCallback((msg: string) => {
+    setErrorMsg(msg);
+    setTimeout(() => setErrorMsg(''), 4000);
+  }, []);
 
+  // Socket Connection & Events
   useEffect(() => {
-    const socket = io(getSocketUrl(), {
+    const url = getSocketUrl();
+    const socket = io(url, {
       path: '/socket.io',
-      transports: ['websocket'],
+      transports: ['polling', 'websocket'], // Polling zuerst für stabilere Tunnel-Verbindungen
       query: { username: effectiveUsername, crashRoomId: 'global' },
+      reconnectionAttempts: 5,
+      timeout: 10000,
     });
 
     socketRef.current = socket;
 
+    socket.on('connect', () => console.log('Crash Socket Connected'));
+
+    socket.on('crash_room_joined', (payload: { ok?: boolean; roomId?: string }) => {
+      if (payload?.ok && payload.roomId) {
+        setCrashRoomId(payload.roomId);
+      }
+    });
+
     socket.on('crash_state', (payload: CrashStatePayload) => {
+      if (payload?.roomId) {
+        setCrashRoomId(payload.roomId);
+      }
       setPhase(payload.phase);
       setMultiplier(payload.multiplier);
-      setPlayers(payload.players ?? []);
-      if (payload.phase !== 'running') {
-        setIsSyncingCashOut(false);
-      }
+      setPlayers(payload.players || []);
+      if (payload.phase !== 'running') setIsSyncingCashOut(false);
     });
 
-    socket.on('crash_tick', (payload: { multiplier: number; players: CrashPlayer[] }) => {
-      setPhase('running');
+    socket.on('crash_tick', (payload: { roomId?: string; multiplier: number; players: CrashPlayer[] }) => {
+      if (payload?.roomId) {
+        setCrashRoomId(payload.roomId);
+      }
       setMultiplier(payload.multiplier);
-      setPlayers(payload.players ?? []);
+      setPlayers(payload.players || []);
+      setPhase('running');
     });
 
-    socket.on('crash_players', (payload: CrashPlayer[]) => {
-      setPlayers(payload ?? []);
-    });
-
-    socket.on('crash_crashed', () => {
+    socket.on('crash_crashed', (data: { multiplier: number }) => {
       setPhase('crashed');
+      setMultiplier(data.multiplier);
       setIsSyncingCashOut(false);
+      setIsPlacingBet(false);
     });
 
-    socket.on('crash_cashout_result', async (payload: { ok: boolean; payout?: number; multiplier?: number; error?: string }) => {
-      if (!payload.ok || typeof payload.payout !== 'number') {
-        showError(payload.error ?? 'Cashout failed');
-        setIsSyncingCashOut(false);
-        return;
-      }
-
-      const payout = Math.floor(payload.payout);
-      const signature = `${payout}:${payload.multiplier ?? 0}`;
-      if (processedCashoutRef.current === signature) {
-        return;
-      }
-      processedCashoutRef.current = signature;
-
-      addWin(payout);
-
+    // WICHTIG: Wenn der Server uns sagt, wir haben gecashed, Guthaben updaten
+    socket.on('crash_cashout_success', (data: { payout: number }) => {
+      addWin(Math.floor(data.payout));
       setIsSyncingCashOut(false);
     });
 
@@ -145,151 +118,135 @@ export default function CrashGame() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [addWin, effectiveUsername]);
+  }, [effectiveUsername, addWin]);
 
+  // Bet status is driven by server players list (crash_state/crash_tick), not local toggles.
   const handleBet = async () => {
-    if (phase === 'running' || isPlacingBet || hasBet) {
-      return;
-    }
+    if (isPlacingBet || hasBetOnServer || phase !== 'waiting') return;
 
-    const safeBet = normalizeBet(Number(betInput || 0));
-    if (safeBet < MIN_BET) {
-      showError('Bet must be at least 1');
-      return;
-    }
-
-    if (safeBet > safeBalance) {
-      showError('Not enough funds');
-      return;
-    }
-
-    if (!placeBet(safeBet)) {
-      showError('Not enough funds');
-      return;
-    }
-
-    const socket = socketRef.current;
-    if (!socket || !socket.connected) {
-      addWin(safeBet);
-      showError('Socket not connected');
-      return;
-    }
-
+    const safeBet = Math.floor(Number(betInput));
+    if (isNaN(safeBet) || safeBet < MIN_BET) return showError(`Min. Bet is ${MIN_BET}`);
+    if (safeBet > Number(balance)) return showError("Not enough NVC");
     setIsPlacingBet(true);
 
-    socket.emit('crash_place_bet', { amount: safeBet, autoCashOut: 0 }, async (response: { ok: boolean; error?: string }) => {
-      if (!response.ok) {
+    // 1. Geld im Frontend abziehen (Optimistisch)
+    if (!placeBet(safeBet)) {
+      setIsPlacingBet(false);
+      return showError("Failed to deduct balance");
+    }
+
+    // 2. Server informieren
+    const socket = socketRef.current;
+    if (!socket || !socket.connected) {
+      addWin(safeBet); // Rollback Geld
+      setIsPlacingBet(false);
+      return showError("Server not reachable");
+    }
+
+    socket.emit('crash_place_bet', { amount: safeBet, roomId: crashRoomId }, (res: { ok: boolean; error?: string }) => {
+      if (!res.ok) {
+        // 3. Rollback bei Fehler
         addWin(safeBet);
-        showError(response.error ?? 'Could not place crash bet');
-        setIsPlacingBet(false);
-        return;
+        showError(res.error || "Bet rejected by server");
       }
 
-      setBetInput(String(safeBet));
-      setErrorMsg('');
+      // On success, active-bet UI flips when server state includes this player.
       setIsPlacingBet(false);
     });
   };
 
-  const handleCashOut = async () => {
-    if (phase !== 'running' || !hasBet || isSyncingCashOut) {
-      return;
-    }
+  // CASHOUT HANDLER
+  const handleCashOut = () => {
+    if (phase !== 'running' || !hasBetOnServer || isSyncingCashOut) return;
 
     const socket = socketRef.current;
-    if (!socket || !socket.connected) {
-      showError('Socket not connected');
-      return;
-    }
+    if (!socket?.connected) return showError("Connection lost");
 
     setIsSyncingCashOut(true);
-    socket.emit('crash_cashout', {}, (response: { ok: boolean; error?: string }) => {
-      if (!response.ok) {
-        showError(response.error ?? 'Cashout failed');
+    socket.emit('crash_cashout', {}, (res: { ok: boolean; error?: string }) => {
+      if (!res.ok) {
+        showError(res.error || "Cashout failed");
         setIsSyncingCashOut(false);
       }
+      // Erfolg wird über das Socket-Event 'crash_cashout_success' oder den nächsten Tick verarbeitet
     });
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full">
-      {/* MASSIVE GRAPH AREA */}
-      <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden">
-        <div className={`text-[120px] md:text-[160px] font-black font-mono leading-none tracking-tighter transition-colors ${
-          phase === 'crashed' ? 'text-red-500' : 'text-white'
+    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
+      {/* GRAPH DISPLAY */}
+      <div className="flex-1 flex flex-col items-center justify-center p-4 relative">
+        <div className={`text-8xl md:text-[140px] font-black tabular-nums transition-all duration-75 ${
+          phase === 'crashed' ? 'text-red-500 scale-95 opacity-80' : 'text-white drop-shadow-[0_0_30px_rgba(255,255,255,0.2)]'
         }`}>
-          {multiplier.toFixed(2)}x
+          {multiplier.toFixed(2)}<span className="text-4xl md:text-6xl">x</span>
         </div>
-        <div className="mt-4 text-slate-400 font-medium uppercase tracking-widest text-lg">
-          {phase === 'crashed' ? 'Crashed' : phase === 'running' ? 'Flying...' : 'Waiting for next round'}
+        
+        <div className="mt-8 px-6 py-2 rounded-full bg-slate-900 border border-slate-800 text-slate-400 uppercase tracking-[0.2em] text-sm font-bold animate-pulse">
+          {phase === 'waiting' ? 'Accepting Bets...' : phase === 'running' ? 'To the moon!' : 'Crashed!'}
         </div>
+
+        {/* ERROR TOAST INSIDE GAME */}
+        {errorMsg && (
+          <div className="absolute top-10 bg-red-500 text-white px-6 py-3 rounded-lg font-bold shadow-2xl animate-bounce">
+            {errorMsg}
+          </div>
+        )}
       </div>
 
-      {/* CONTROLS */}
-      <div className="bg-slate-950 border-t border-slate-800 p-6 flex items-center gap-6">
-        <div className="w-1/3">
-          <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Bet Amount</label>
-          <div className="flex bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-            <input 
-              type="number" value={betInput || ''} min={0} onChange={(e) => setBetInput(e.target.value.replace(/[^0-9]/g, ''))}
-              disabled={!canEditBet}
-              className="w-full bg-transparent p-4 outline-none font-mono text-white"
-            />
+      {/* FOOTER CONTROLS */}
+      <div className="bg-slate-900/50 border-t border-white/5 p-6 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto flex flex-col md:flex-row gap-6">
+          
+          {/* INPUT GROUP */}
+          <div className="flex-1">
+            <div className="flex justify-between mb-2">
+              <span className="text-xs font-bold text-slate-500 uppercase">Bet Amount</span>
+              <span className="text-xs font-bold text-slate-400">Balance: {balance.toLocaleString()} NVC</span>
+            </div>
+            <div className="relative">
+              <input 
+                type="number" 
+                value={betInput}
+                onChange={(e) => setBetInput(e.target.value)}
+                disabled={!canEditBet}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 font-mono text-xl outline-none focus:border-blue-500 transition-all disabled:opacity-50"
+              />
+              <div className="absolute right-2 top-2 bottom-2 flex gap-1">
+                <button onClick={() => setBetInput(String(Math.floor(Number(betInput)/2)))} disabled={!canEditBet} className="px-3 bg-slate-800 rounded-lg text-xs hover:bg-slate-700">1/2</button>
+                <button onClick={() => setBetInput(String(Number(betInput)*2))} disabled={!canEditBet} className="px-3 bg-slate-800 rounded-lg text-xs hover:bg-slate-700">2x</button>
+              </div>
+            </div>
           </div>
-          <div className="grid grid-cols-3 gap-2 mt-2">
-            <button
-              onClick={() => {
-                const normalized = normalizeBet(Number(betInput || 0));
-                if (normalized <= MIN_BET) {
-                  setBetInput(String(MIN_BET));
-                  return;
-                }
-                setBetInput(String(Math.max(MIN_BET, Math.floor(normalized / 2))));
-              }}
-              disabled={!canEditBet}
-              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
-            >
-              1/2
-            </button>
-            <button
-              onClick={() => {
-                const normalized = normalizeBet(Number(betInput || 0));
-                const doubled = normalized <= 0 ? 2 : normalized * 2;
-                setBetInput(String(Math.min(safeBalance, Math.max(MIN_BET, doubled))));
-              }}
-              disabled={!canEditBet}
-              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
-            >
-              2x
-            </button>
-            <button
-              onClick={() => setBetInput(String(Math.max(MIN_BET, safeBalance)))}
-              disabled={!canEditBet}
-              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
-            >
-              MAX
-            </button>
-          </div>
-          {errorMsg && <p className="text-red-500 text-xs mt-2 font-medium">{errorMsg}</p>}
-        </div>
 
-        <div className="flex-1">
-          {phase !== 'running' ? (
-            <button onClick={() => void handleBet()}
-              disabled={isPlacingBet || hasBet}
-              className="w-full py-5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg uppercase transition-colors"
-            >
-              {isPlacingBet ? 'Syncing Bet...' : 'Place Bet'}
-            </button>
-          ) : (
-            <button onClick={() => void handleCashOut()} disabled={!hasBet || isSyncingCashOut}
-              className={`w-full py-5 rounded-lg font-bold text-lg uppercase transition-colors ${
-                !hasBet || isSyncingCashOut ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'
-              }`}
-            >
-              {hasBet ? `Cash Out ${(roundBet * multiplier).toFixed(2)}` : isSyncingCashOut ? 'Syncing Win...' : 'Spectating'}
-            </button>
-          )}
+          {/* ACTION BUTTON */}
+          <div className="flex-1 flex flex-col justify-end">
+            {phase !== 'running' ? (
+              <button 
+                onClick={handleBet}
+                disabled={isPlacingBet || hasBetOnServer}
+                className={`h-[62px] w-full rounded-xl font-black text-xl uppercase tracking-wider transition-all shadow-lg ${
+                  hasBetOnServer 
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed' 
+                    : 'bg-blue-600 hover:bg-blue-500 text-white active:scale-95 shadow-blue-900/20'
+                }`}
+              >
+                {isPlacingBet ? 'Syncing...' : hasBet ? 'Bet Active' : 'Place Bet'}
+              </button>
+            ) : (
+              <button 
+                onClick={handleCashOut}
+                disabled={!hasBetOnServer || isSyncingCashOut}
+                className={`h-[62px] w-full rounded-xl font-black text-xl uppercase tracking-wider transition-all shadow-lg ${
+                  !hasBetOnServer || isSyncingCashOut
+                    ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                    : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 active:scale-95 shadow-emerald-900/20'
+                }`}
+              >
+                {isSyncingCashOut ? 'Syncing...' : hasBetOnServer ? `Cash Out ${(Number(serverMe?.amount || 0) * multiplier).toFixed(2)}` : 'Waiting...'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

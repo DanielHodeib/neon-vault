@@ -10,6 +10,19 @@ interface TransferPayload {
   amount?: number;
 }
 
+function toNumericBalance(raw: string | number): number {
+  const parsed = typeof raw === 'string' ? parseFloat(raw) : raw;
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function addBalance(balance: string | number, amount: number): string {
+  return (toNumericBalance(balance) + amount).toFixed(2);
+}
+
+function subtractBalance(balance: string | number, amount: number): string {
+  return Math.max(0, toNumericBalance(balance) - amount).toFixed(2);
+}
+
 export async function POST(request: Request) {
   const session = await auth();
   const userId = session?.user?.id;
@@ -41,7 +54,7 @@ export async function POST(request: Request) {
   }
 
   const [targetExists, friendship] = await Promise.all([
-    prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true } }),
+    prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true, username: true } }),
     prisma.friendship.findFirst({
       where: {
         status: 'accepted',
@@ -63,29 +76,39 @@ export async function POST(request: Request) {
   }
 
   const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const sender = await tx.user.findUnique({
-      where: { id: userId },
-      select: { id: true, balance: true },
-    });
+    const [sender, receiver] = await Promise.all([
+      tx.user.findUnique({
+        where: { id: userId },
+        select: { id: true, balance: true },
+      }),
+      tx.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, balance: true },
+      }),
+    ]);
 
     if (!sender) {
       return { error: 'Sender not found.' as const };
     }
 
-    if (sender.balance < amount) {
+    if (!receiver) {
+      return { error: 'Target user not found.' as const };
+    }
+
+    if (toNumericBalance(sender.balance) < amount) {
       return { error: 'Insufficient balance.' as const, balance: sender.balance };
     }
 
     const [updatedSender] = await Promise.all([
       tx.user.update({
         where: { id: userId },
-        data: { balance: { decrement: amount } },
+        data: { balance: subtractBalance(sender.balance, amount) },
         select: { balance: true },
       }),
       tx.user.update({
         where: { id: targetUserId },
-        data: { balance: { increment: amount } },
-        select: { id: true },
+        data: { balance: addBalance(receiver.balance, amount) },
+        select: { id: true, balance: true },
       }),
     ]);
 
@@ -103,5 +126,5 @@ export async function POST(request: Request) {
     });
   }
 
-  return NextResponse.json({ ok: true, balance: result.balance });
+  return NextResponse.json({ ok: true, balance: result.balance, receiverUsername: targetExists.username });
 }

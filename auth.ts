@@ -35,6 +35,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        const banRows = (await prisma.$queryRawUnsafe(
+          `SELECT is_banned FROM users WHERE id = ? LIMIT 1`,
+          user.id
+        )) as Array<{ is_banned: number | boolean | null }>;
+        const bannedValue = banRows[0]?.is_banned;
+        const isBanned = bannedValue === true || bannedValue === 1;
+        if (isBanned) {
+          return null;
+        }
+
         return {
           id: user.id,
           name: user.username,

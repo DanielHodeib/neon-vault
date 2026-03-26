@@ -11,15 +11,17 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const top = await prisma.user.findMany({
-    orderBy: { balance: 'desc' },
-    take: 50,
+  const users = await prisma.user.findMany({
     select: {
       username: true,
       balance: true,
       xp: true,
     },
   });
+
+  const top = users
+    .sort((a, b) => Number(b.balance) - Number(a.balance))
+    .slice(0, 50);
 
   return NextResponse.json({ leaderboard: top });
 }

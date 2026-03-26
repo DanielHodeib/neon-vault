@@ -37,7 +37,12 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ settings });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { clanTag: true },
+  });
+
+  return NextResponse.json({ settings: { ...settings, clanTag: user?.clanTag ?? null } });
 }
 
 export async function PATCH(request: Request) {
@@ -49,7 +54,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    let payload: { soundEnabled?: boolean; theme?: Theme; selectedRankTag?: RankTag; publicProfile?: boolean; bio?: string };
+    let payload: {
+      soundEnabled?: boolean;
+      theme?: Theme;
+      selectedRankTag?: RankTag;
+      publicProfile?: boolean;
+      bio?: string;
+      clanTag?: string | null;
+    };
     try {
       payload = (await request.json()) as {
         soundEnabled?: boolean;
@@ -57,6 +69,7 @@ export async function PATCH(request: Request) {
         selectedRankTag?: RankTag;
         publicProfile?: boolean;
         bio?: string;
+        clanTag?: string | null;
       };
     } catch {
       return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
@@ -69,6 +82,12 @@ export async function PATCH(request: Request) {
 
     const bio = typeof payload.bio === 'string' ? payload.bio.trim().slice(0, 240) : undefined;
     const selectedRankTag = typeof payload.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
+    const clanTag =
+      payload.clanTag === null
+        ? null
+        : typeof payload.clanTag === 'string'
+          ? payload.clanTag.trim().slice(0, 5).toUpperCase() || null
+          : undefined;
 
     const user = await prisma.user.findUnique({
       where: { id: userId },
@@ -84,8 +103,26 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: 'Invalid rank tag.' }, { status: 400 });
       }
 
+      const hasDanielFriend = selectedRankTag === 'BALLER'
+        ? Boolean(
+            await prisma.friendship.findFirst({
+              where: {
+                status: 'accepted',
+                OR: [
+                  { userId, friend: { username: 'Daniel' } },
+                  { friendId: userId, user: { username: 'Daniel' } },
+                ],
+              },
+              select: { id: true },
+            })
+          )
+        : false;
+
       const { level } = getRankInfo(user.xp, user.balance);
-      if (!canUseRankTag(level, user.balance, selectedRankTag)) {
+      if (!canUseRankTag(level, user.balance, selectedRankTag, { hasDanielFriend })) {
+        if (selectedRankTag === 'BALLER') {
+          return NextResponse.json({ error: 'BALLER is only available if you are friends with Daniel.' }, { status: 400 });
+        }
         return NextResponse.json({ error: 'Rank is still locked for your level.' }, { status: 400 });
       }
     }
@@ -117,7 +154,19 @@ export async function PATCH(request: Request) {
       },
     });
 
-    return NextResponse.json({ settings });
+    const updatedUser =
+      clanTag === undefined
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: { clanTag: true },
+          })
+        : await prisma.user.update({
+            where: { id: userId },
+            data: { clanTag },
+            select: { clanTag: true },
+          });
+
+    return NextResponse.json({ settings: { ...settings, clanTag: updatedUser?.clanTag ?? null } });
   } catch (error) {
     console.error('Settings PATCH error:', error);
     return NextResponse.json({ error: 'Failed to update settings.' }, { status: 500 });
