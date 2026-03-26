@@ -62,6 +62,8 @@ export default function CrashGame() {
   const [history, setHistory] = useState<number[]>([]);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncingCashOut, setIsSyncingCashOut] = useState(false);
+  const [autoCashOutEnabled, setAutoCashOutEnabled] = useState(false);
+  const [autoCashOutInput, setAutoCashOutInput] = useState('2.00');
   const [errorMsg, setErrorMsg] = useState('');
   const [launchPulse, setLaunchPulse] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -96,6 +98,14 @@ export default function CrashGame() {
   const scanDuration = Math.max(2, 18 / speedFactor);
   const altitudeMeters = Math.floor(multiplier * 100);
   const scaleMarks = useMemo(() => [1, 1.25, 1.5, 2, 3, 5, 8, 12, 20, 35], []);
+  const autoCashOutValue = useMemo(() => {
+    const parsed = Number(autoCashOutInput);
+    if (!Number.isFinite(parsed)) {
+      return 2;
+    }
+    return Math.max(1.05, Math.min(100, parsed));
+  }, [autoCashOutInput]);
+  const flameTier = multiplier >= 10 ? 3 : multiplier >= 5 ? 2 : multiplier >= 2 ? 1 : 0;
 
   const playTone = useCallback((frequency: number, durationMs: number, type: OscillatorType = 'sine', gain = 0.045) => {
     if (!soundEnabled || typeof window === 'undefined') {
@@ -239,6 +249,9 @@ export default function CrashGame() {
     const safeBet = Math.floor(Number(betInput));
     if (isNaN(safeBet) || safeBet < MIN_BET) return showError(`Min. Bet is ${MIN_BET}`);
     if (safeBet > Number(balance)) return showError("Not enough NVC");
+    if (autoCashOutEnabled && autoCashOutValue <= 1) {
+      return showError('Auto cashout must be above 1.00x');
+    }
     setIsPlacingBet(true);
 
     // 1. Geld im Frontend abziehen (Optimistisch)
@@ -255,7 +268,14 @@ export default function CrashGame() {
       return showError("Server not reachable");
     }
 
-    socket.emit('crash_place_bet', { amount: safeBet, roomId: GLOBAL_CRASH_ROOM_ID }, (res: { ok: boolean; error?: string }) => {
+    socket.emit(
+      'crash_place_bet',
+      {
+        amount: safeBet,
+        roomId: GLOBAL_CRASH_ROOM_ID,
+        autoCashOut: autoCashOutEnabled ? autoCashOutValue : 0,
+      },
+      (res: { ok: boolean; error?: string }) => {
       if (!res.ok) {
         // 3. Rollback bei Fehler
         addWin(safeBet);
@@ -264,7 +284,8 @@ export default function CrashGame() {
 
       // On success, active-bet UI flips when server state includes this player.
       setIsPlacingBet(false);
-    });
+      }
+    );
   };
 
   // CASHOUT HANDLER
@@ -371,6 +392,9 @@ export default function CrashGame() {
           <div className="px-3 py-1 rounded-md border border-slate-700 bg-slate-950/75 text-xs uppercase tracking-wide text-slate-300">
             Mode: Neon Rocket
           </div>
+          <div className="px-3 py-1 rounded-md border border-slate-700 bg-slate-950/75 text-xs uppercase tracking-wide text-slate-300">
+            {autoCashOutEnabled ? `Auto ${autoCashOutValue.toFixed(2)}x` : 'Auto Off'}
+          </div>
           <div className={`px-3 py-1 rounded-md border text-xs uppercase tracking-wide ${phase === 'crashed' ? 'border-rose-500/50 text-rose-300 bg-rose-500/10' : 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'}`}>
             {phase === 'waiting' ? 'Armed' : phase === 'running' ? 'In Flight' : 'Crashed'}
           </div>
@@ -383,7 +407,7 @@ export default function CrashGame() {
           transition={phase === 'running' ? { duration: 0.42, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.24 }}
         >
           <motion.div
-            className={`relative h-24 w-16 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
+            className={`relative h-28 w-20 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
             animate={phase === 'crashed' ? { filter: ['drop-shadow(0 0 9px rgba(251,113,133,0.72))', 'drop-shadow(0 0 24px rgba(251,113,133,1))', 'drop-shadow(0 0 9px rgba(251,113,133,0.72))'] } : { filter: 'drop-shadow(0 0 15px rgba(34,211,238,0.86))' }}
             transition={{ duration: 0.55 }}
           >
@@ -397,13 +421,27 @@ export default function CrashGame() {
             </svg>
             <motion.div
               className="absolute left-1/2 -bottom-8 h-10 w-4 -translate-x-1/2 rounded-full bg-rose-500/70 blur-md"
-              animate={{ scaleY: phase === 'running' ? [0.7, 1.45, 0.82] : 0.55, opacity: phase === 'crashed' ? 0 : [0.45, 1, 0.45] }}
+              animate={{
+                scaleY: phase === 'running' ? [0.8 + flameTier * 0.06, 1.45 + flameTier * 0.24, 0.86 + flameTier * 0.08] : 0.55,
+                opacity: phase === 'crashed' ? 0 : [0.45, 1, 0.45],
+              }}
               transition={{ duration: trailDuration, repeat: Infinity, ease: 'linear' }}
             />
             <motion.div
               className="absolute left-1/2 -bottom-11 h-8 w-8 -translate-x-1/2 rounded-full bg-orange-400/40 blur-lg"
-              animate={{ scale: phase === 'running' ? [0.85, 1.2, 0.9] : 0.72, opacity: phase === 'crashed' ? 0 : [0.35, 0.9, 0.35] }}
+              animate={{
+                scale: phase === 'running' ? [0.88 + flameTier * 0.06, 1.24 + flameTier * 0.14, 0.92 + flameTier * 0.08] : 0.72,
+                opacity: phase === 'crashed' ? 0 : [0.35, 0.9, 0.35],
+              }}
               transition={{ duration: 0.36, repeat: Infinity, ease: 'easeInOut' }}
+            />
+            <motion.div
+              className="absolute left-1/2 -bottom-14 h-10 w-10 -translate-x-1/2 rounded-full bg-red-500/35 blur-xl"
+              animate={{
+                scale: phase === 'running' ? [0.9 + flameTier * 0.08, 1.16 + flameTier * 0.18, 0.95 + flameTier * 0.1] : 0.78,
+                opacity: phase === 'crashed' ? 0 : [0.2, 0.62, 0.22],
+              }}
+              transition={{ duration: 0.44, repeat: Infinity, ease: 'easeInOut' }}
             />
           </motion.div>
         </motion.div>
@@ -539,6 +577,33 @@ export default function CrashGame() {
                   </span>
                 ))}
               </div>
+            </div>
+          </div>
+
+          <div className="flex-1 md:max-w-[260px]">
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500 mb-2">Auto Cashout</p>
+              <button
+                type="button"
+                onClick={() => setAutoCashOutEnabled((current) => !current)}
+                disabled={phase === 'running' && hasBetOnServer}
+                className={`mb-2 w-full h-9 rounded-lg border text-xs font-bold uppercase transition-colors ${
+                  autoCashOutEnabled
+                    ? 'border-cyan-500/50 bg-cyan-500/10 text-cyan-300'
+                    : 'border-slate-700 bg-slate-900 text-slate-400'
+                } ${(phase === 'running' && hasBetOnServer) ? 'opacity-60 cursor-not-allowed' : 'hover:border-cyan-400 hover:text-cyan-200'}`}
+              >
+                {autoCashOutEnabled ? 'On' : 'Off'}
+              </button>
+              <input
+                type="number"
+                min={1.05}
+                step={0.05}
+                value={autoCashOutInput}
+                onChange={(event) => setAutoCashOutInput(event.target.value)}
+                disabled={(phase === 'running' && hasBetOnServer) || !autoCashOutEnabled}
+                className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-slate-100 outline-none focus:border-cyan-500 disabled:opacity-50"
+              />
             </div>
           </div>
         </div>
