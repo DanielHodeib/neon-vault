@@ -37,6 +37,7 @@ import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
 import CoinflipGame from '@/components/games/CoinflipGame';
 import CyberAviator from '@/components/games/CyberAviator';
+import Sidebar from '@/components/Layout/Sidebar';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
@@ -1811,58 +1812,13 @@ export default function MainHubRealtime({
   return (
     <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
       <AnnouncementOverlay message={announcement} />
-      <aside className={`hub-sidebar ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-all duration-300`}>
-        <div className={`h-16 flex items-center ${sidebarCollapsed ? 'px-3 justify-center' : 'px-6'} border-b border-slate-800`}>
-          <button
-            onClick={() => setSidebarCollapsed((current) => !current)}
-            className={`w-8 h-8 bg-blue-600 rounded flex items-center justify-center ${sidebarCollapsed ? '' : 'mr-3'} hover:bg-blue-500 transition-colors`}
-            aria-label="Toggle sidebar"
-          >
-            <Menu size={18} className="text-white" />
-          </button>
-          {!sidebarCollapsed ? (
-            <button
-              type="button"
-              onClick={() => router.push('/')}
-              className="text-lg font-bold text-white tracking-wide hover:text-cyan-200 transition-colors"
-            >
-              NEON VAULT
-            </button>
-          ) : null}
-        </div>
-
-        <nav className={`flex-1 ${sidebarCollapsed ? 'p-3' : 'p-4'} space-y-2 overflow-y-auto custom-scrollbar`}>
-          <SidebarButton icon={<House size={20} />} label="Home" active={false} onClick={() => router.push('/')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<TrendingUp size={20} />} label="Neon Rocket" active={activeTab === 'crash'} onClick={() => setActiveTab('crash')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<TrendingUp size={20} />} label="Cyber Aviator" active={activeTab === 'crash-aviator'} onClick={() => setActiveTab('crash-aviator')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Coins size={20} />} label="Slots" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Hand size={20} />} label="Blackjack" active={activeTab === 'blackjack'} onClick={() => setActiveTab('blackjack')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<CircleDashed size={20} />} label="Roulette" active={activeTab === 'roulette'} onClick={() => setActiveTab('roulette')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Spade size={20} />} label="Poker" active={activeTab === 'poker'} onClick={() => setActiveTab('poker')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Coins size={20} />} label="Coinflip" active={activeTab === 'coinflip'} onClick={() => setActiveTab('coinflip')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Users size={20} />} label="Friends" active={activeTab === 'friends'} onClick={() => setActiveTab('friends')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<TrendingUp size={20} />} label="Leaderboard" active={activeTab === 'leaderboard'} onClick={() => setActiveTab('leaderboard')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<ShieldCheck size={20} />} label="Quests" active={activeTab === 'quests'} onClick={() => setActiveTab('quests')} collapsed={sidebarCollapsed} />
-          <SidebarButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
-          {isDanielAdmin ? (
-            <SidebarButton icon={<ShieldCheck size={20} />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} collapsed={sidebarCollapsed} />
-          ) : null}
-        </nav>
-
-        <div className={`${sidebarCollapsed ? 'p-3' : 'p-4'} border-t border-slate-800`}>
-          <button
-            onClick={handleFaucet}
-            disabled={daily.faucetClaimed}
-            className={`w-full py-3 rounded text-sm font-medium transition-colors text-slate-300 active:scale-95 ${
-              daily.faucetClaimed
-                ? 'bg-slate-800/60 cursor-not-allowed opacity-70'
-                : 'bg-slate-800 hover:bg-slate-700'
-            } ${sidebarCollapsed ? 'px-0' : ''}`}
-          >
-            {sidebarCollapsed ? 'F' : daily.faucetClaimed ? 'Faucet Claimed' : 'Claim Daily Faucet (+5000)'}
-          </button>
-        </div>
-      </aside>
+      <Sidebar
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((current) => !current)}
+        isAdmin={isDanielAdmin}
+        dailyFaucetClaimed={daily.faucetClaimed}
+        onClaimFaucet={handleFaucet}
+      />
 
       <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0">
         <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 z-10 gap-3">
