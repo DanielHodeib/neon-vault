@@ -71,7 +71,7 @@ export async function PATCH(request: Request) {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { xp: true },
+    select: { xp: true, balance: true },
   });
 
   if (!user) {
@@ -83,8 +83,8 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Invalid rank tag.' }, { status: 400 });
     }
 
-    const { level } = getRankInfo(user.xp);
-    if (!canUseRankTag(level, selectedRankTag)) {
+    const { level } = getRankInfo(user.xp, user.balance);
+    if (!canUseRankTag(level, user.balance, selectedRankTag)) {
       return NextResponse.json({ error: 'Rank is still locked for your level.' }, { status: 400 });
     }
   }

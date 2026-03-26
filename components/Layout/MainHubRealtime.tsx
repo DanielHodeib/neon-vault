@@ -529,9 +529,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     socket.emit('profile_sync', {
       username: effectiveUsername,
       xp,
+      balance,
       selectedRankTag,
     });
-  }, [xp, effectiveUsername, selectedRankTag, socketConnected]);
+  }, [xp, balance, effectiveUsername, selectedRankTag, socketConnected]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -1640,14 +1641,16 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                           <p className="text-xs text-slate-500 mb-3">Alle Ränge sind sichtbar, aber erst ab dem jeweiligen Level freischaltbar.</p>
                           <div className="grid gap-2 sm:grid-cols-2">
                             {RANKS.map((rank) => {
-                              const unlocked = canUseRankTag(level, rank.tag);
+                              const unlocked = canUseRankTag(level, balance, rank.tag);
                               const selected = selectedRankTag === rank.tag;
                               return (
                                 <button
                                   key={rank.tag}
                                   onClick={() => {
                                     if (!unlocked) {
-                                      setSettingsNotice(`Rank ${rank.tag} unlockt ab Level ${rank.minLevel}.`);
+                                      setSettingsNotice(
+                                        `Rank ${rank.tag} unlockt ab Level ${rank.minLevel} und ${rank.minBalance.toLocaleString()} NVC.`
+                                      );
                                       return;
                                     }
                                     setSelectedRankTag(rank.tag);
@@ -1660,9 +1663,11 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                                 >
                                   <div className="flex items-center justify-between gap-2">
                                     <span className="text-xs font-black uppercase" style={{ color: getRankColor(rank.tag) }}>
-                                      {rank.tag}
+                                      {rank.tag.replace(/_/g, ' ')}
                                     </span>
-                                    <span className="text-[11px] text-slate-500">{unlocked ? 'Unlocked' : `Locked L${rank.minLevel}`}</span>
+                                    <span className="text-[11px] text-slate-500">
+                                      {unlocked ? 'Unlocked' : `Locked L${rank.minLevel} · ${rank.minBalance.toLocaleString()} NVC`}
+                                    </span>
                                   </div>
                                   <p className="mt-1 text-[11px] text-slate-400">Wird als Tag neben deinem Namen im Live-Chat angezeigt.</p>
                                 </button>

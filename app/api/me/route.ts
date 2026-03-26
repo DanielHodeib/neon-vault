@@ -31,6 +31,6 @@ export async function GET() {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  const rank = getRankInfo(user.xp);
+  const rank = getRankInfo(user.xp, user.balance);
   return NextResponse.json({ user: { ...user, level: rank.level, rankTag: rank.tag, rankColor: rank.color } });
 }

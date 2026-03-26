@@ -13,6 +13,42 @@ function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function weekKey() {
+  const now = new Date();
+  const day = now.getUTCDay();
+  const diffToMonday = day === 0 ? -6 : 1 - day;
+  now.setUTCDate(now.getUTCDate() + diffToMonday);
+  return now.toISOString().slice(0, 10);
+}
+
+async function ensureQuestTable(tx: Prisma.TransactionClient) {
+  await tx.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS quest_progress (
+      user_id TEXT PRIMARY KEY,
+      daily_date TEXT NOT NULL,
+      daily_slots_rounds INTEGER NOT NULL DEFAULT 0,
+      daily_claimed INTEGER NOT NULL DEFAULT 0,
+      weekly_date TEXT NOT NULL,
+      weekly_slots_rounds INTEGER NOT NULL DEFAULT 0,
+      weekly_bet_actions INTEGER NOT NULL DEFAULT 0,
+      weekly_win_actions INTEGER NOT NULL DEFAULT 0,
+      weekly_claimed INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  const columns = (await tx.$queryRawUnsafe(`PRAGMA table_info(quest_progress)`)) as Array<{ name: string }>;
+  const names = new Set(columns.map((col) => col.name));
+
+  if (!names.has('weekly_bet_actions')) {
+    await tx.$executeRawUnsafe(`ALTER TABLE quest_progress ADD COLUMN weekly_bet_actions INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  if (!names.has('weekly_win_actions')) {
+    await tx.$executeRawUnsafe(`ALTER TABLE quest_progress ADD COLUMN weekly_win_actions INTEGER NOT NULL DEFAULT 0`);
+  }
+}
+
 interface WalletRequestBody {
   action?: WalletAction;
   amount?: number | string;
@@ -62,6 +98,38 @@ export async function POST(request: Request) {
 
   const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
     const today = todayKey();
+    const week = weekKey();
+
+    await ensureQuestTable(tx);
+    await tx.$executeRawUnsafe(
+      `INSERT OR IGNORE INTO quest_progress (user_id, daily_date, weekly_date) VALUES (?, ?, ?)`,
+      userId,
+      today,
+      week
+    );
+
+    await tx.$executeRawUnsafe(
+      `UPDATE quest_progress
+       SET daily_slots_rounds = CASE WHEN daily_date <> ? THEN 0 ELSE daily_slots_rounds END,
+           daily_claimed = CASE WHEN daily_date <> ? THEN 0 ELSE daily_claimed END,
+           daily_date = CASE WHEN daily_date <> ? THEN ? ELSE daily_date END,
+           weekly_slots_rounds = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_slots_rounds END,
+           weekly_bet_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_bet_actions END,
+           weekly_win_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_win_actions END,
+           weekly_claimed = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_claimed END,
+           weekly_date = CASE WHEN weekly_date <> ? THEN ? ELSE weekly_date END,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = ?`,
+      today,
+      today,
+      today,
+      today,
+      week,
+      week,
+      week,
+      week,
+      userId
+    );
 
     let current = await tx.user.findUnique({
       where: { id: userId },
@@ -193,6 +261,19 @@ export async function POST(request: Request) {
         dailyQuestClaimed: true,
       },
     });
+
+    if (action === 'bet' || action === 'win') {
+      await tx.$executeRawUnsafe(
+        `UPDATE quest_progress
+         SET weekly_bet_actions = weekly_bet_actions + ?,
+             weekly_win_actions = weekly_win_actions + ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?`,
+        action === 'bet' ? 1 : 0,
+        action === 'win' ? 1 : 0,
+        userId
+      );
+    }
 
     return {
       username: updated.username,

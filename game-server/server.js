@@ -77,32 +77,42 @@ const socketProfiles = new Map();
 
 const BIG_WIN_THRESHOLD = 5000;
 const RANK_RULES = [
-  { tag: 'BRONZE', color: '#d97706', minLevel: 1 },
-  { tag: 'SILBER', color: '#cbd5e1', minLevel: 10 },
-  { tag: 'GOLD', color: '#fbbf24', minLevel: 20 },
-  { tag: 'NEON', color: '#22d3ee', minLevel: 40 },
+  { tag: 'BRONZE', color: '#d97706', minLevel: 1, minBalance: 0 },
+  { tag: 'COPPER', color: '#b45309', minLevel: 3, minBalance: 5000 },
+  { tag: 'SILVER', color: '#cbd5e1', minLevel: 6, minBalance: 25000 },
+  { tag: 'GOLD', color: '#fbbf24', minLevel: 10, minBalance: 100000 },
+  { tag: 'PLATINUM', color: '#93c5fd', minLevel: 14, minBalance: 250000 },
+  { tag: 'DIAMOND', color: '#60a5fa', minLevel: 18, minBalance: 500000 },
+  { tag: 'MASTER', color: '#8b5cf6', minLevel: 22, minBalance: 1000000 },
+  { tag: 'ELITE', color: '#ec4899', minLevel: 26, minBalance: 2500000 },
+  { tag: 'TYCOON', color: '#22c55e', minLevel: 30, minBalance: 5000000 },
+  { tag: 'MILLIONAIRE', color: '#14b8a6', minLevel: 34, minBalance: 10000000 },
+  { tag: 'BILLIONAIRE', color: '#eab308', minLevel: 40, minBalance: 50000000 },
+  { tag: 'NEON_OVERLORD', color: '#22d3ee', minLevel: 48, minBalance: 150000000 },
 ];
 
-function rankFromXp(rawXp) {
+function rankFromXp(rawXp, rawBalance = Number.MAX_SAFE_INTEGER) {
   const xp = Number.isFinite(Number(rawXp)) ? Math.max(0, Math.floor(Number(rawXp))) : 0;
+  const balance = Number.isFinite(Number(rawBalance)) ? Math.max(0, Math.floor(Number(rawBalance))) : 0;
   const level = Math.floor(xp / 1000) + 1;
-  const unlocked = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel) || RANK_RULES[0];
+  const unlocked = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel && balance >= rank.minBalance) || RANK_RULES[0];
   return { xp, level, rankTag: unlocked.tag, rankColor: unlocked.color };
 }
 
-function rankFromSelection(level, selectedRankTag) {
+function rankFromSelection(level, balance, selectedRankTag) {
   const selected = typeof selectedRankTag === 'string' ? RANK_RULES.find((rule) => rule.tag === selectedRankTag) : null;
-  if (selected && level >= selected.minLevel) {
+  if (selected && level >= selected.minLevel && balance >= selected.minBalance) {
     return { rankTag: selected.tag, rankColor: selected.color };
   }
 
-  const fallback = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel) || RANK_RULES[0];
+  const fallback = [...RANK_RULES].reverse().find((rank) => level >= rank.minLevel && balance >= rank.minBalance) || RANK_RULES[0];
   return { rankTag: fallback.tag, rankColor: fallback.color };
 }
 
-function upsertSocketProfile(socketId, username, rawXp, selectedRankTag) {
-  const rank = rankFromXp(rawXp);
-  const displayed = rankFromSelection(rank.level, selectedRankTag);
+function upsertSocketProfile(socketId, username, rawXp, selectedRankTag, rawBalance = Number.MAX_SAFE_INTEGER) {
+  const rank = rankFromXp(rawXp, rawBalance);
+  const balance = Number.isFinite(Number(rawBalance)) ? Math.max(0, Math.floor(Number(rawBalance))) : 0;
+  const displayed = rankFromSelection(rank.level, balance, selectedRankTag);
   const profile = {
     username,
     xp: rank.xp,
@@ -121,7 +131,7 @@ function getSocketProfile(socketId, usernameFallback) {
     return existing;
   }
 
-  return upsertSocketProfile(socketId, usernameFallback, 0, undefined);
+  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER);
 }
 
 function emitSystemBigWin(username, amount) {
@@ -1008,7 +1018,8 @@ io.on('connection', (socket) => {
 
   onlineUsers.set(socket.id, username);
   const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
-  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag);
+  const initialBalance = Number.isFinite(Number(socket.handshake.query.balance)) ? Number(socket.handshake.query.balance) : Number.MAX_SAFE_INTEGER;
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
 
@@ -1115,9 +1126,10 @@ io.on('connection', (socket) => {
 
   socket.on('profile_sync', (payload, callback) => {
     const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
+    const balance = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Number.MAX_SAFE_INTEGER;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
     const selectedRankTag = typeof payload?.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
-    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag);
+    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance);
     callback?.({ ok: true, level: profile.level, rankTag: profile.rankTag, rankColor: profile.rankColor });
   });
 
