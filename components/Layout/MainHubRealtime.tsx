@@ -16,9 +16,15 @@ import {
   Settings,
   Send,
   LogOut,
+  Eye,
+  Trash2,
+  Ban,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
 import { signOut } from 'next-auth/react';
+import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 
 import BlackjackGame from '@/components/games/BlackjackGame';
@@ -28,12 +34,15 @@ import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
+import AnnouncementOverlay from '@/components/AnnouncementOverlay';
 import { copyToClipboard } from '@/lib/copyToClipboard';
-import { formatMoney } from '@/lib/formatMoney';
+import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
 import { canUseRankTag, getRankColor, RANKS, type RankTag } from '@/lib/ranks';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
-type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'leaderboard' | 'quests' | 'settings';
+const AdminPanel = dynamic(() => import('@/components/AdminPanel'));
+
+type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
 type PokerMode = 'solo' | 'friends';
 type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
@@ -42,6 +51,8 @@ interface ChatMessage {
   username: string;
   text: string;
   createdAt: number;
+  role?: string;
+  clanTag?: string | null;
   rankTag?: string;
   rankColor?: string;
   system?: boolean;
@@ -81,9 +92,11 @@ interface SettingsPayload {
   selectedRankTag: RankTag;
   publicProfile: boolean;
   bio: string;
+  clanTag?: string | null;
 }
 
 type ThemeOption = 'slate' | 'steel' | 'sunset' | 'ocean' | 'matrix';
+type SuggestionType = 'mention' | 'emoji';
 
 interface PublicProfileData {
   username: string;
@@ -96,6 +109,54 @@ interface PublicProfileData {
   isFriend: boolean;
   createdAt: string;
   friendsCount: number;
+}
+
+const EMOJI_MAP: Record<string, string> = {
+  ':cry:': '😢',
+  ':smile:': '😊',
+  ':fire:': '🔥',
+  ':nvc:': '💎',
+  ':rocket:': '🚀',
+  ':skull:': '💀',
+};
+
+const ENABLE_RENDER_PROFILING = process.env.NODE_ENV === 'development';
+
+function replaceEmojiShortcodes(text: string) {
+  return text.replace(/:[a-z0-9_+-]+:/gi, (match) => EMOJI_MAP[match.toLowerCase()] ?? match);
+}
+
+function RenderChatMessage({ text, onMentionClick }: { text: string; onMentionClick: (username: string) => void }) {
+  const parts = text.split(/(@\w+|:\w+:)/g);
+
+  return (
+    <>
+      {parts.map((part, index) => {
+        if (/^:\w+:$/.test(part)) {
+          const emoji = EMOJI_MAP[part.toLowerCase()];
+          if (emoji) {
+            return <React.Fragment key={`emoji-${index}-${part}`}>{emoji}</React.Fragment>;
+          }
+        }
+
+        if (/^@\w+$/.test(part)) {
+          const mentionedUsername = part.substring(1);
+          return (
+            <button
+              key={`mention-${index}-${part}`}
+              type="button"
+              onClick={() => onMentionClick(mentionedUsername)}
+              className="cursor-pointer text-cyan-400 font-bold hover:underline bg-cyan-500/10 px-1 rounded transition-all"
+            >
+              {part}
+            </button>
+          );
+        }
+
+        return <React.Fragment key={`text-${index}`}>{replaceEmojiShortcodes(part)}</React.Fragment>;
+      })}
+    </>
+  );
 }
 
 function getSocketUrl() {
@@ -140,23 +201,40 @@ function getSocketUrl() {
   }
 }
 
+function shouldForcePolling(socketUrl: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(socketUrl);
+    return window.location.protocol === 'https:' && parsed.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
 export default function MainHubRealtime({ initialUsername }: { initialUsername?: string }) {
   const {
     balance,
     username,
     xp,
+    useCompactBalance,
     daily,
+    toggleCompactBalance,
     fetchInitialBalance,
     hydrateFromSession,
     syncBalanceFromServer,
-    placeBet,
     addWin,
     persistWalletAction,
+    announcement,
+    setAnnouncement,
   } = useCasinoStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('crash');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
+  const [hadSocketConnection, setHadSocketConnection] = useState(false);
 
   const [crashState, setCrashState] = useState<CrashState>({
     phase: 'waiting',
@@ -173,6 +251,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [crashCountdownSeconds, setCrashCountdownSeconds] = useState(0);
   const [hasBet, setHasBet] = useState(false);
   const [isPlacingCrashBet, setIsPlacingCrashBet] = useState(false);
+  const [isCrashBetCooldown, setIsCrashBetCooldown] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [payoutToast, setPayoutToast] = useState<{ label: string; text: string; tone: 'auto' | 'manual' } | null>(null);
   const [crashRoomId, setCrashRoomId] = useState('global');
@@ -184,6 +263,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
+  const [chatInputCaret, setChatInputCaret] = useState(0);
+  const [suggestionType, setSuggestionType] = useState<SuggestionType | null>(null);
+  const [suggestionQuery, setSuggestionQuery] = useState('');
   const [friendSearch, setFriendSearch] = useState('');
   const [friendNotice, setFriendNotice] = useState('');
   const [friendsAccepted, setFriendsAccepted] = useState<FriendSummary[]>([]);
@@ -205,6 +287,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [selectedRankTag, setSelectedRankTag] = useState<RankTag>('BRONZE');
   const [publicProfile, setPublicProfile] = useState(true);
   const [bio, setBio] = useState('');
+  const [clanDraft, setClanDraft] = useState('');
+  const [incomingOpen, setIncomingOpen] = useState(true);
+  const [outgoingOpen, setOutgoingOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
   const [usernameDraft, setUsernameDraft] = useState('');
   const [usernamePassword, setUsernamePassword] = useState('');
   const [passwordCurrent, setPasswordCurrent] = useState('');
@@ -215,14 +301,68 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [accountNotice, setAccountNotice] = useState('');
   const [selectedProfile, setSelectedProfile] = useState<PublicProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [chatRole, setChatRole] = useState('USER');
+  const [chatClanTag, setChatClanTag] = useState<string | null>(null);
+  const [serverAdminAccess, setServerAdminAccess] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
   const socketRef = useRef<Socket | null>(null);
+  const hubRenderCountRef = useRef(0);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
   const incomingSeenRef = useRef<Set<string>>(new Set());
   const settingsHydratedRef = useRef(false);
   const hasBetRef = useRef(false);
+  const isPlacingCrashBetRef = useRef(false);
+  const crashBetAckTimeoutRef = useRef<number | null>(null);
+  const crashBetCooldownTimerRef = useRef<number | null>(null);
+  const crashBetCommittedRef = useRef(false);
+  const committedCrashBetAmountRef = useRef<number>(0);
+  const announcementTimeoutRef = useRef<number | null>(null);
+
+  hubRenderCountRef.current += 1;
+
+  useEffect(() => {
+    if (!ENABLE_RENDER_PROFILING) {
+      return;
+    }
+
+    if (hubRenderCountRef.current % 25 === 0) {
+      console.debug(`[perf] MainHubRealtime renders=${hubRenderCountRef.current}`);
+    }
+  });
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+  const pendingCrashBetAmountRef = useRef<number | null>(null);
   const autoCashOutEnabledRef = useRef(false);
   const autoCashOutRef = useRef(2);
-  const onlineUsersSet = useMemo(() => new Set(onlineUsers), [onlineUsers]);
+  const uniqueOnlineUsers = useMemo(() => {
+    const seen = new Set<string>();
+    const deduped: string[] = [];
+
+    for (const rawName of onlineUsers) {
+      const cleanName = String(rawName ?? '').trim();
+      if (!cleanName) {
+        continue;
+      }
+
+      const key = cleanName.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      deduped.push(cleanName);
+    }
+
+    return deduped;
+  }, [onlineUsers]);
+  const onlineUsersSet = useMemo(() => new Set(uniqueOnlineUsers.map((name) => name.toLowerCase())), [uniqueOnlineUsers]);
+  const hasDanielFriend = useMemo(
+    () => friendsAccepted.some((friend) => friend.username.trim().toLowerCase() === 'daniel'),
+    [friendsAccepted]
+  );
   const effectiveUsername = useMemo(() => {
     const trimmedStore = (username ?? '').trim();
     if (trimmedStore && trimmedStore !== 'Guest') {
@@ -232,11 +372,64 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     const trimmedInitial = (initialUsername ?? '').trim();
     return trimmedInitial || 'Guest';
   }, [username, initialUsername]);
+  const isDanielAdmin = useMemo(
+    () => effectiveUsername === 'Daniel' && chatRole === 'ADMIN' && serverAdminAccess,
+    [effectiveUsername, chatRole, serverAdminAccess]
+  );
+  const normalizedEffectiveUsername = useMemo(() => effectiveUsername.trim().toLowerCase(), [effectiveUsername]);
+  const isCurrentCrashPlayer = useCallback(
+    (player: CrashPlayer) => String(player.username ?? '').trim().toLowerCase() === normalizedEffectiveUsername,
+    [normalizedEffectiveUsername]
+  );
+
+  useEffect(() => {
+    if (activeTab === 'admin' && !isDanielAdmin) {
+      setActiveTab('settings');
+    }
+  }, [activeTab, isDanielAdmin]);
 
   const level = useMemo(() => Math.floor(xp / 1000) + 1, [xp]);
   const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
   const nextLevelXp = useMemo(() => level * 1000, [level]);
   const levelProgress = useMemo(() => Math.min(100, Math.round(((xp - levelBaseXp) / 1000) * 100)), [xp, levelBaseXp]);
+  const mentionSuggestions = useMemo(() => {
+    if (suggestionType !== 'mention') {
+      return [];
+    }
+
+    const query = suggestionQuery;
+    const normalizedSelf = normalizedEffectiveUsername;
+    const uniqueUsers = uniqueOnlineUsers;
+
+    return uniqueUsers
+      .filter((name) => name.toLowerCase() !== normalizedSelf)
+      .filter((name) => {
+        if (!query) {
+          return true;
+        }
+        return name.toLowerCase().startsWith(query) || name.toLowerCase().includes(query);
+      })
+      .slice(0, 6);
+  }, [suggestionType, suggestionQuery, uniqueOnlineUsers, normalizedEffectiveUsername]);
+  const emojiSuggestions = useMemo(() => {
+    if (suggestionType !== 'emoji') {
+      return [];
+    }
+
+    const query = suggestionQuery.toLowerCase();
+    const emojiCodes = Object.keys(EMOJI_MAP);
+
+    return emojiCodes
+      .filter((code) => {
+        const keyword = code.slice(1, -1).toLowerCase();
+        if (!query) {
+          return true;
+        }
+
+        return keyword.startsWith(query) || keyword.includes(query);
+      })
+      .slice(0, 8);
+  }, [suggestionType, suggestionQuery]);
   const autoCashOutValue = useMemo(() => {
     const parsed = Number(autoCashOutInput);
     if (!Number.isFinite(parsed)) {
@@ -245,9 +438,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     return Math.max(1, parsed);
   }, [autoCashOutInput]);
   const crashActiveBetAmount = useMemo(() => {
-    const active = crashState.players.find((player) => player.username === effectiveUsername && !player.cashedOut);
+    const active = crashState.players.find((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
     return active?.amount ?? 0;
-  }, [crashState.players, effectiveUsername]);
+  }, [crashState.players, isCurrentCrashPlayer]);
 
   const themeSurfaceClass = useMemo(() => {
     switch (theme) {
@@ -276,6 +469,77 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   useEffect(() => {
     autoCashOutRef.current = autoCashOutValue;
   }, [autoCashOutValue]);
+
+  useEffect(
+    () => () => {
+      if (crashBetCooldownTimerRef.current !== null) {
+        window.clearTimeout(crashBetCooldownTimerRef.current);
+      }
+    },
+    []
+  );
+
+  const startCrashBetCooldown = () => {
+    if (crashBetCooldownTimerRef.current !== null) {
+      window.clearTimeout(crashBetCooldownTimerRef.current);
+    }
+
+    setIsCrashBetCooldown(true);
+    crashBetCooldownTimerRef.current = window.setTimeout(() => {
+      setIsCrashBetCooldown(false);
+      crashBetCooldownTimerRef.current = null;
+    }, 1500);
+  };
+
+  const commitPendingCrashBet = useCallback(async () => {
+    const pendingAmount = pendingCrashBetAmountRef.current;
+    if (!pendingAmount || pendingAmount <= 0) {
+      return true;
+    }
+
+    if (crashBetCommittedRef.current) {
+      return true;
+    }
+
+    crashBetCommittedRef.current = true;
+    const result = await persistWalletAction('bet', pendingAmount);
+    if (result.ok) {
+      committedCrashBetAmountRef.current = pendingAmount;
+      pendingCrashBetAmountRef.current = null;
+      return true;
+    }
+
+    crashBetCommittedRef.current = false;
+    pendingCrashBetAmountRef.current = null;
+    setHasBet(false);
+    setErrorMsg(result.error ?? 'Bet booking failed.');
+
+    const socket = socketRef.current;
+    if (socket?.connected) {
+      socket.emit('crash_cancel_bet', {}, () => {
+        void syncBalanceFromServer();
+      });
+    } else {
+      void syncBalanceFromServer();
+    }
+
+    return false;
+  }, [persistWalletAction, syncBalanceFromServer]);
+
+  const refundCommittedCrashBet = useCallback(async () => {
+    const amount = committedCrashBetAmountRef.current;
+    if (!amount || amount <= 0) {
+      return;
+    }
+
+    committedCrashBetAmountRef.current = 0;
+    crashBetCommittedRef.current = false;
+
+    const result = await persistWalletAction('refund', amount);
+    if (!result.ok) {
+      void syncBalanceFromServer();
+    }
+  }, [persistWalletAction, syncBalanceFromServer]);
 
   useEffect(() => {
     if (crashState.phase !== 'waiting') {
@@ -392,6 +656,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       setSelectedRankTag(payload.settings.selectedRankTag ?? 'BRONZE');
       setPublicProfile(payload.settings.publicProfile);
       setBio(payload.settings.bio ?? '');
+      setClanDraft(payload.settings.clanTag ?? '');
       settingsHydratedRef.current = true;
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -428,11 +693,58 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   }, [friendRealtimeNotice]);
 
   useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/me', { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          user?: {
+            role?: string;
+            clanTag?: string | null;
+          };
+        };
+
+        if (!isActive || !payload.user) {
+          return;
+        }
+
+        setChatRole((payload.user.role ?? 'USER').toUpperCase());
+        setChatClanTag(payload.user.clanTag ?? null);
+
+        const adminResponse = await fetch('/api/admin/me', { cache: 'no-store' });
+        if (adminResponse.ok) {
+          const adminPayload = (await adminResponse.json()) as { isAdmin?: boolean };
+          setServerAdminAccess(Boolean(adminPayload.isAdmin));
+        } else {
+          setServerAdminAccess(false);
+        }
+      } catch {
+        // Keep defaults if profile fetch fails.
+        setServerAdminAccess(false);
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, []);
+
+  useEffect(() => {
     const socketUrl = getSocketUrl();
+    const forcePolling = shouldForcePolling(socketUrl);
     const socket: Socket = io(socketUrl, {
       path: '/socket.io',
+      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      upgrade: !forcePolling,
       query: { 
         username: effectiveUsername, 
+        role: chatRole,
+        clanTag: chatClanTag ?? '',
         xp: String(xp),
         balance: String(balance),
         selectedRankTag: selectedRankTag,
@@ -446,7 +758,13 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         return;
       }
 
-      addWin(payload.payout);
+      committedCrashBetAmountRef.current = 0;
+      crashBetCommittedRef.current = false;
+      pendingCrashBetAmountRef.current = null;
+      addWin(payload.payout, {
+        source: 'crash',
+        multiplier: payload.multiplier,
+      });
       setHasBet(false);
       setPayoutToast({
         label: payload.mode === 'auto' ? 'Auto Cashout' : 'Manual Cashout',
@@ -455,17 +773,90 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       });
     };
 
-    socket.on('connect', () => setSocketConnected(true));
-    socket.on('disconnect', () => setSocketConnected(false));
-    socket.on('disconnect', () => setIsPlacingCrashBet(false));
+    const connectHandler = () => {
+      setSocketConnected(true);
+      setHadSocketConnection(true);
+    };
+    const disconnectStatusHandler = () => setSocketConnected(false);
+    const disconnectRecoveryHandler = async () => {
+      if (crashBetAckTimeoutRef.current !== null) {
+        window.clearTimeout(crashBetAckTimeoutRef.current);
+        crashBetAckTimeoutRef.current = null;
+      }
 
-    socket.on('online_users', (users: string[]) => setOnlineUsers(users));
-    socket.on('chat_history', (history: ChatMessage[]) => setChatMessages(history));
-    socket.on('chat_message', (message: ChatMessage) => {
+      if (hasBetRef.current && crashBetCommittedRef.current && committedCrashBetAmountRef.current > 0) {
+        await refundCommittedCrashBet();
+        setErrorMsg('Connection lost. Active bet refunded.');
+      }
+
+      if (pendingCrashBetAmountRef.current && !crashBetCommittedRef.current) {
+        setErrorMsg('Connection lost while placing bet.');
+      }
+
+      pendingCrashBetAmountRef.current = null;
+      crashBetCommittedRef.current = false;
+      committedCrashBetAmountRef.current = 0;
+      isPlacingCrashBetRef.current = false;
+      setIsPlacingCrashBet(false);
+      setHasBet(false);
+    };
+
+    const onlineUsersHandler = (users: string[]) => setOnlineUsers(users ?? []);
+    const chatHistoryHandler = (history: ChatMessage[]) => setChatMessages(history);
+    const chatMessageHandler = (message: ChatMessage) => {
       setChatMessages((prev) => [...prev, message].slice(-60));
-    });
+    };
 
-    socket.on('crash_room_joined', (payload: { ok: boolean; roomId?: string }) => {
+    const chatMentionHandler = (payload: { sender?: string; message?: string; mentioned?: string }) => {
+      const sender = typeof payload?.sender === 'string' ? payload.sender.trim() : '';
+      if (!sender) {
+        return;
+      }
+
+      toast.success(`@${sender} hat dich im Chat erwähnt!`, { icon: '💬' });
+
+      try {
+        const ping = new Audio('/sounds/mention.mp3');
+        ping.volume = 0.4;
+        void ping.play();
+      } catch {
+        // Optional audio ping should never break chat UX.
+      }
+    };
+
+    const notificationHandler = (payload: { message?: string }) => {
+      const message = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      if (!message) {
+        return;
+      }
+      toast.success(message, { id: `notify-${message}` });
+    };
+
+    const globalNotificationHandler = (payload: { message?: string }) => {
+      const message = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      if (!message) {
+        return;
+      }
+      toast(message, { id: `global-${message}` });
+    };
+
+    const adminBroadcastHandler = (payload: { message?: string }) => {
+      const message = typeof payload?.message === 'string' ? payload.message.trim() : '';
+      if (!message) {
+        return;
+      }
+
+      setAnnouncement(message);
+      if (announcementTimeoutRef.current !== null) {
+        window.clearTimeout(announcementTimeoutRef.current);
+      }
+      announcementTimeoutRef.current = window.setTimeout(() => {
+        setAnnouncement(null);
+        announcementTimeoutRef.current = null;
+      }, 10000);
+    };
+
+    const crashRoomJoinedHandler = (payload: { ok: boolean; roomId?: string }) => {
       if (!payload.ok || !payload.roomId) {
         return;
       }
@@ -473,58 +864,160 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       setCrashRoomId(payload.roomId);
       setCrashRoomInput(payload.roomId);
       setJoiningCrashRoom(false);
-    });
+    };
 
-    socket.on('crash_room_members', (payload: { roomId: string; members: string[] }) => {
+    const crashRoomMembersHandler = (payload: { roomId: string; members: string[] }) => {
       setCrashRoomMembers(payload.members ?? []);
-    });
+    };
 
-    socket.on('crash_state', (state: CrashState) => {
+    const crashStateHandler = (state: CrashState) => {
       setCrashState(state);
-      const activeBet = (state.players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      const activeBet = (state.players ?? []).some((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
       setHasBet(activeBet);
-    });
 
-    socket.on('crash_tick', ({ multiplier, players }: { multiplier: number; players: CrashPlayer[] }) => {
+      if (!activeBet && state.phase === 'waiting') {
+        committedCrashBetAmountRef.current = 0;
+        crashBetCommittedRef.current = false;
+      }
+
+      if (activeBet && state.phase === 'running' && !crashBetCommittedRef.current && pendingCrashBetAmountRef.current) {
+        void commitPendingCrashBet();
+      }
+
+      if (activeBet && isPlacingCrashBetRef.current) {
+        if (crashBetAckTimeoutRef.current !== null) {
+          window.clearTimeout(crashBetAckTimeoutRef.current);
+          crashBetAckTimeoutRef.current = null;
+        }
+        isPlacingCrashBetRef.current = false;
+        setIsPlacingCrashBet(false);
+        setErrorMsg('');
+      }
+    };
+
+    const crashTickHandler = ({ multiplier, players }: { multiplier: number; players: CrashPlayer[] }) => {
       setCrashState((prev) => ({ ...prev, multiplier, players, phase: 'running' }));
-      const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      const activeBet = (players ?? []).some((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
       setHasBet(activeBet);
+
+      if (activeBet && !crashBetCommittedRef.current && pendingCrashBetAmountRef.current) {
+        void commitPendingCrashBet();
+      }
+
+      if (!activeBet && pendingCrashBetAmountRef.current && !crashBetCommittedRef.current) {
+        pendingCrashBetAmountRef.current = null;
+      }
+
+      if (activeBet && isPlacingCrashBetRef.current) {
+        if (crashBetAckTimeoutRef.current !== null) {
+          window.clearTimeout(crashBetAckTimeoutRef.current);
+          crashBetAckTimeoutRef.current = null;
+        }
+        isPlacingCrashBetRef.current = false;
+        setIsPlacingCrashBet(false);
+        setErrorMsg('');
+      }
 
       if (autoCashOutEnabledRef.current && hasBetRef.current && multiplier >= autoCashOutRef.current) {
         socket.emit('crash_cashout', {});
       }
-    });
+    };
 
-    socket.on('crash_players', (players: CrashPlayer[]) => {
+    const crashPlayersHandler = (players: CrashPlayer[]) => {
       setCrashState((prev) => ({ ...prev, players }));
-      const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
+      const activeBet = (players ?? []).some((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
       setHasBet(activeBet);
-    });
-
-    socket.on(
-      'crash_crashed',
-      ({ crashPoint, history, players }: { crashPoint: number; history: number[]; players: CrashPlayer[] }) => {
-        setCrashState((prev) => ({
-          ...prev,
-          phase: 'crashed',
-          multiplier: crashPoint,
-          crashPoint,
-          history,
-          players,
-        }));
-        const activeBet = (players ?? []).some((player) => player.username === effectiveUsername && !player.cashedOut);
-        setHasBet(activeBet);
+      if (activeBet && isPlacingCrashBetRef.current) {
+        if (crashBetAckTimeoutRef.current !== null) {
+          window.clearTimeout(crashBetAckTimeoutRef.current);
+          crashBetAckTimeoutRef.current = null;
+        }
+        isPlacingCrashBetRef.current = false;
+        setIsPlacingCrashBet(false);
+        setErrorMsg('');
       }
-    );
+    };
 
+    const crashBetRegisteredHandler = (payload: { ok: boolean; amount?: number }) => {
+      if (!payload?.ok || !isPlacingCrashBetRef.current) {
+        return;
+      }
+
+      if (crashBetAckTimeoutRef.current !== null) {
+        window.clearTimeout(crashBetAckTimeoutRef.current);
+        crashBetAckTimeoutRef.current = null;
+      }
+
+      setHasBet(true);
+      isPlacingCrashBetRef.current = false;
+      setIsPlacingCrashBet(false);
+      setErrorMsg('');
+    };
+
+    const crashCrashedHandler = ({ crashPoint, history, players }: { crashPoint: number; history: number[]; players: CrashPlayer[] }) => {
+      setCrashState((prev) => ({
+        ...prev,
+        phase: 'crashed',
+        multiplier: crashPoint,
+        crashPoint,
+        history,
+        players,
+      }));
+      const activeBet = (players ?? []).some((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
+      setHasBet(activeBet);
+      if (!activeBet) {
+        committedCrashBetAmountRef.current = 0;
+        crashBetCommittedRef.current = false;
+        pendingCrashBetAmountRef.current = null;
+      }
+    };
+
+    socket.on('connect', connectHandler);
+    socket.on('disconnect', disconnectStatusHandler);
+    socket.on('disconnect', disconnectRecoveryHandler);
+    socket.on('online_users', onlineUsersHandler);
+    socket.on('chat_history', chatHistoryHandler);
+    socket.on('chat_message', chatMessageHandler);
+    socket.on('chat_mention', chatMentionHandler);
+    socket.on('notification', notificationHandler);
+    socket.on('global_notification', globalNotificationHandler);
+    socket.on('admin_broadcast', adminBroadcastHandler);
+    socket.on('crash_room_joined', crashRoomJoinedHandler);
+    socket.on('crash_room_members', crashRoomMembersHandler);
+    socket.on('crash_state', crashStateHandler);
+    socket.on('crash_tick', crashTickHandler);
+    socket.on('crash_players', crashPlayersHandler);
+    socket.on('crash_bet_registered', crashBetRegisteredHandler);
+    socket.on('crash_crashed', crashCrashedHandler);
     socket.on('crash_cashout_result', cashoutHandler);
 
     return () => {
+      socket.off('connect', connectHandler);
+      socket.off('disconnect', disconnectStatusHandler);
+      socket.off('disconnect', disconnectRecoveryHandler);
+      socket.off('online_users', onlineUsersHandler);
+      socket.off('chat_history', chatHistoryHandler);
+      socket.off('chat_message', chatMessageHandler);
+      socket.off('chat_mention', chatMentionHandler);
+      socket.off('notification', notificationHandler);
+      socket.off('global_notification', globalNotificationHandler);
+      socket.off('admin_broadcast', adminBroadcastHandler);
+      socket.off('crash_room_joined', crashRoomJoinedHandler);
+      socket.off('crash_room_members', crashRoomMembersHandler);
+      socket.off('crash_state', crashStateHandler);
+      socket.off('crash_tick', crashTickHandler);
+      socket.off('crash_players', crashPlayersHandler);
+      socket.off('crash_bet_registered', crashBetRegisteredHandler);
+      socket.off('crash_crashed', crashCrashedHandler);
       socket.off('crash_cashout_result', cashoutHandler);
       socket.disconnect();
       socketRef.current = null;
+      if (announcementTimeoutRef.current !== null) {
+        window.clearTimeout(announcementTimeoutRef.current);
+        announcementTimeoutRef.current = null;
+      }
     };
-  }, [addWin, persistWalletAction, effectiveUsername, xp]);
+  }, [addWin, chatClanTag, chatRole, commitPendingCrashBet, isCurrentCrashPlayer, refundCommittedCrashBet, setAnnouncement]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -534,11 +1027,13 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
     socket.emit('profile_sync', {
       username: effectiveUsername,
+      role: chatRole,
+      clanTag: chatClanTag,
       xp,
       balance,
       selectedRankTag,
     });
-  }, [xp, balance, effectiveUsername, selectedRankTag, socketConnected]);
+  }, [xp, balance, chatClanTag, chatRole, effectiveUsername, selectedRankTag, socketConnected]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -560,7 +1055,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         const response = await fetch('/api/settings', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ soundEnabled, theme, selectedRankTag, publicProfile, bio }),
+          body: JSON.stringify({ soundEnabled, theme, selectedRankTag, publicProfile, bio, clanTag: clanDraft }),
         });
 
         const payload = (await response.json()) as { error?: string; settings?: SettingsPayload };
@@ -571,6 +1066,11 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           return;
         }
 
+        if (payload.settings) {
+          setClanDraft(payload.settings.clanTag ?? '');
+          setChatClanTag(payload.settings.clanTag ?? null);
+        }
+
         setSettingsNotice(silent ? 'Settings autosaved.' : 'Settings saved.');
       } catch (error) {
         console.error('Settings save error:', error);
@@ -578,7 +1078,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         setSettingsNotice('Settings save failed.');
       }
     },
-    [soundEnabled, theme, selectedRankTag, publicProfile, bio]
+    [soundEnabled, theme, selectedRankTag, publicProfile, bio, clanDraft]
   );
 
   useEffect(() => {
@@ -591,7 +1091,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     }, 850);
 
     return () => window.clearTimeout(timeout);
-  }, [soundEnabled, theme, selectedRankTag, publicProfile, bio, persistSettings]);
+  }, [soundEnabled, theme, selectedRankTag, publicProfile, bio, clanDraft, persistSettings]);
 
   const crashLabel =
     crashState.phase === 'crashed'
@@ -605,7 +1105,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         : 'Waiting for next round';
 
   const handleCrashBet = async () => {
-    if (isPlacingCrashBet) {
+    if (isPlacingCrashBetRef.current || hasBetRef.current || isCrashBetCooldown) {
       return;
     }
 
@@ -621,42 +1121,58 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       return;
     }
 
+    const currentBalance = Math.max(0, Math.floor(parseFloat(balance)));
+    if (amount > currentBalance) {
+      setErrorMsg('Not enough funds');
+      return;
+    }
+
     if (crashState.phase !== 'waiting') {
       setErrorMsg('Round already started. Wait for next round.');
       return;
     }
 
+    startCrashBetCooldown();
+    isPlacingCrashBetRef.current = true;
+    crashBetCommittedRef.current = false;
     setIsPlacingCrashBet(true);
-
-    if (!placeBet(amount)) {
-      setIsPlacingCrashBet(false);
-      setErrorMsg('Not enough funds');
-      return;
-    }
+    pendingCrashBetAmountRef.current = amount;
 
     let ackReceived = false;
-    const ackTimeout = window.setTimeout(() => {
+    crashBetAckTimeoutRef.current = window.setTimeout(() => {
       if (ackReceived) {
         return;
       }
 
-      addWin(amount);
+      pendingCrashBetAmountRef.current = null;
+      crashBetCommittedRef.current = false;
+      committedCrashBetAmountRef.current = 0;
+      crashBetAckTimeoutRef.current = null;
+      isPlacingCrashBetRef.current = false;
       setIsPlacingCrashBet(false);
-      setErrorMsg('Bet request timed out. Your amount was refunded.');
-    }, 2200);
+      setErrorMsg('Bet request timed out.');
+    }, 6000);
 
-    socket.emit('crash_place_bet', { amount, autoCashOut: autoCashOutEnabled ? autoCashOutValue : 0 }, (response: { ok: boolean; error?: string }) => {
+    socket.emit('crash_place_bet', { roomId: crashRoomId, amount, autoCashOut: autoCashOutEnabled ? autoCashOutValue : 0 }, (response: { ok: boolean; error?: string }) => {
       ackReceived = true;
-      window.clearTimeout(ackTimeout);
+      if (crashBetAckTimeoutRef.current !== null) {
+        window.clearTimeout(crashBetAckTimeoutRef.current);
+        crashBetAckTimeoutRef.current = null;
+      }
 
       if (!response.ok) {
-        addWin(amount);
+        pendingCrashBetAmountRef.current = null;
+        crashBetCommittedRef.current = false;
+        committedCrashBetAmountRef.current = 0;
+        isPlacingCrashBetRef.current = false;
         setIsPlacingCrashBet(false);
         setErrorMsg(response.error ?? 'Unable to place bet.');
         return;
       }
 
       setHasBet(true);
+      void commitPendingCrashBet();
+      isPlacingCrashBetRef.current = false;
       setIsPlacingCrashBet(false);
       setErrorMsg('');
     });
@@ -803,21 +1319,87 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     setErrorMsg('');
   };
 
-  const submitChat = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const socket = socketRef.current;
+  const handleChatInputChange = useCallback((value: string, caretPosition: number) => {
+    setChatInput(value);
+    setChatInputCaret(caretPosition);
 
-    const text = chatInput.trim();
-    if (!text || !socket || !socket.connected) {
-      if (text) {
-        setErrorMsg('Realtime socket is offline.');
-      }
+    const safeCaret = Math.max(0, Math.min(caretPosition, value.length));
+    const beforeCaret = value.slice(0, safeCaret);
+    const tokenMatch = beforeCaret.match(/(^|\s)([@:])([a-zA-Z0-9_+-]*)$/);
+
+    if (!tokenMatch) {
+      setSuggestionType(null);
+      setSuggestionQuery('');
       return;
     }
 
-    socket.emit('send_chat_message', { text });
-    setChatInput('');
-  };
+    const trigger = tokenMatch[2];
+    const query = (tokenMatch[3] ?? '').toLowerCase();
+
+    if (trigger === '@') {
+      setSuggestionType('mention');
+      setSuggestionQuery(query);
+      return;
+    }
+
+    setSuggestionType('emoji');
+    setSuggestionQuery(query);
+  }, []);
+
+  const handleSuggestionSelect = useCallback((selection: string) => {
+    setChatInput((current) => {
+      const safeCaret = Math.max(0, Math.min(chatInputCaret, current.length));
+      let tokenStart = safeCaret;
+      while (tokenStart > 0 && !/\s/.test(current[tokenStart - 1])) {
+        tokenStart -= 1;
+      }
+
+      let tokenEnd = safeCaret;
+      while (tokenEnd < current.length && !/\s/.test(current[tokenEnd])) {
+        tokenEnd += 1;
+      }
+
+      const token = current.slice(tokenStart, tokenEnd);
+      let replacement = selection;
+
+      if (suggestionType === 'mention') {
+        replacement = `@${selection} `;
+      } else if (suggestionType === 'emoji') {
+        replacement = `${selection} `;
+      }
+
+      if (token.startsWith('@') || token.startsWith(':')) {
+        return `${current.slice(0, tokenStart)}${replacement}${current.slice(tokenEnd)}`;
+      }
+
+      const insertionPrefix = current && !/\s$/.test(current) ? ' ' : '';
+      return `${current}${insertionPrefix}${replacement}`;
+    });
+    setSuggestionType(null);
+    setSuggestionQuery('');
+  }, [chatInputCaret, suggestionType]);
+
+  const submitChat = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const socket = socketRef.current;
+
+      const text = chatInput.trim();
+      if (!text || !socket || !socket.connected) {
+        if (text) {
+          setErrorMsg('Realtime socket is offline.');
+        }
+        return;
+      }
+
+      socket.emit('send_chat_message', { text });
+      setChatInput('');
+      setSuggestionType(null);
+      setSuggestionQuery('');
+      setChatInputCaret(0);
+    },
+    [chatInput]
+  );
 
   useEffect(() => {
     if (chatScrollRef.current) {
@@ -838,7 +1420,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       body: JSON.stringify({ username: usernameToAdd }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as { error?: string; receiverUsername?: string };
     if (!response.ok) {
       setFriendNotice(payload.error ?? 'Could not send request.');
       return;
@@ -941,9 +1523,17 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     await syncBalanceFromServer();
     setFriendNotice(`Sent ${amount} NVC to ${targetUsername}.`);
     toast.success(`${amount} NVC an ${targetUsername} gesendet!`);
+
+    const socket = socketRef.current;
+    if (socket?.connected && payload.receiverUsername) {
+      socket.emit('friend_transfer_notification', {
+        receiverUsername: payload.receiverUsername,
+        message: 'Du hast NVC erhalten!',
+      });
+    }
   };
 
-  const handleViewProfile = async (targetUsername: string) => {
+  const handleViewProfile = useCallback(async (targetUsername: string) => {
     setProfileLoading(true);
     setFriendNotice('');
 
@@ -965,7 +1555,33 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     } finally {
       setProfileLoading(false);
     }
-  };
+  }, []);
+
+  const openProfileModal = useCallback(
+    (targetUsername: string) => {
+      const trimmedUsername = String(targetUsername ?? '').trim();
+      if (!trimmedUsername) {
+        return;
+      }
+
+      setProfileModalOpen(true);
+      void handleViewProfile(trimmedUsername);
+    },
+    [handleViewProfile]
+  );
+
+  const handleMentionClick = useCallback(
+    (targetUsername: string) => {
+      const trimmedUsername = String(targetUsername ?? '').trim();
+      if (!trimmedUsername) {
+        return;
+      }
+
+      setProfileModalOpen(true);
+      void handleViewProfile(trimmedUsername);
+    },
+    [handleViewProfile]
+  );
 
   const handleChangeUsername = async () => {
     const nextUsername = usernameDraft.trim();
@@ -1075,7 +1691,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
 
   return (
     <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
-      <aside className={`hub-sidebar ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col z-20 transition-all duration-300`}>
+      <AnnouncementOverlay message={announcement} />
+      <aside className={`hub-sidebar ${sidebarCollapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-all duration-300`}>
         <div className={`h-16 flex items-center ${sidebarCollapsed ? 'px-3 justify-center' : 'px-6'} border-b border-slate-800`}>
           <button
             onClick={() => setSidebarCollapsed((current) => !current)}
@@ -1097,6 +1714,9 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           <SidebarButton icon={<TrendingUp size={20} />} label="Leaderboard" active={activeTab === 'leaderboard'} onClick={() => setActiveTab('leaderboard')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<ShieldCheck size={20} />} label="Quests" active={activeTab === 'quests'} onClick={() => setActiveTab('quests')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Settings size={20} />} label="Settings" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} collapsed={sidebarCollapsed} />
+          {isDanielAdmin ? (
+            <SidebarButton icon={<ShieldCheck size={20} />} label="Admin" active={activeTab === 'admin'} onClick={() => setActiveTab('admin')} collapsed={sidebarCollapsed} />
+          ) : null}
         </nav>
 
         <div className={`${sidebarCollapsed ? 'p-3' : 'p-4'} border-t border-slate-800`}>
@@ -1114,40 +1734,60 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         </div>
       </aside>
 
-      <main className="hub-main flex-1 flex flex-col min-w-0">
-        <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-8 z-10">
+      <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0">
+        <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 z-10 gap-3">
           <div className="flex items-center gap-2 text-slate-400">
             <ShieldCheck size={18} className="text-emerald-500" />
             <span className="text-sm font-medium">{socketConnected ? 'Realtime Connected' : 'Realtime Offline'}</span>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-xs uppercase tracking-wide text-slate-500">{effectiveUsername}</p>
-              <p className="font-mono text-xs text-slate-400">Level {level} · XP {xp}</p>
-              <p className="font-mono text-[10px] text-slate-500">
-                {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
-              </p>
-              <p className="font-mono text-[10px] uppercase text-cyan-400">Crash Room {crashRoomId}</p>
-            </div>
-            <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-4 py-2 rounded-lg">
+          <div className="flex items-center gap-3 lg:gap-4 min-w-0">
+            {isMounted ? (
+              <div className="text-right min-w-0">
+                <div className="flex items-center justify-end gap-2">
+                  <p className="text-xs uppercase tracking-wide text-slate-500 truncate">{effectiveUsername}</p>
+                  {isDanielAdmin ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-200 shadow-[0_0_10px_rgba(244,63,94,0.25)]">
+                      <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
+                      Admin Verified
+                    </span>
+                  ) : null}
+                </div>
+                <p className="font-mono text-xs text-slate-400 whitespace-nowrap">Level {level} · XP {xp}</p>
+                <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden xl:block">
+                  {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
+                </p>
+                <p className="font-mono text-[10px] uppercase text-cyan-400 whitespace-nowrap hidden lg:block">Crash Room {crashRoomId}</p>
+              </div>
+            ) : (
+              <div className="h-10 w-32 bg-slate-800 animate-pulse rounded shrink-0" />
+            )}
+            <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-3 lg:px-4 py-2 rounded-lg shrink-0">
               <Wallet size={16} className="text-slate-400" />
-              <span className="font-mono text-lg font-bold text-white">{formatMoney(balance)}</span>
+              <span suppressHydrationWarning className="font-mono text-lg font-bold text-white">
+                {isMounted ? formatUserBalance(balance, useCompactBalance) : '0'}
+              </span>
               <span className="text-sm font-bold text-blue-500">NVC</span>
             </div>
             <button
               onClick={() => signOut({ callbackUrl: '/login' })}
-              className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold uppercase tracking-wide inline-flex items-center gap-1.5"
+              className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-semibold uppercase tracking-wide inline-flex items-center gap-1.5 shrink-0 whitespace-nowrap"
             >
               <LogOut size={14} /> Logout
             </button>
           </div>
         </header>
 
-        <div className="flex-1 flex p-4 lg:p-6 gap-4 overflow-hidden">
-          <div className="hub-panel flex-1 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+        {hadSocketConnection && !socketConnected ? (
+          <div className="mx-4 lg:mx-6 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200">
+            Verbindung zum Server verloren. Versuche neu zu verbinden...
+          </div>
+        ) : null}
+
+        <div className="flex-1 min-h-0 min-w-0 flex p-4 lg:p-6 gap-4 overflow-hidden">
+          <div className="hub-panel relative flex-1 min-h-0 min-w-0 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
-              <>
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto flex flex-col">
                 <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden px-6 py-6">
                   <div className="absolute inset-0 opacity-40 pointer-events-none">
                     <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-blue-600/15 to-transparent" />
@@ -1278,7 +1918,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         type="number"
                         value={betInput || ''}
                         onChange={(event) => setBetInput(event.target.value.replace(/[^0-9]/g, ''))}
-                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet || isCrashBetCooldown}
                         className="w-full bg-transparent p-4 outline-none font-mono text-white"
                       />
                     </div>
@@ -1289,7 +1929,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                           const next = Math.max(1, Math.floor(current / 2));
                           setBetInput(String(next));
                         }}
-                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet || isCrashBetCooldown}
                         className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         1/2
@@ -1301,14 +1941,14 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                           const next = Math.min(Math.floor(parseFloat(balance)), doubled);
                           setBetInput(String(Math.max(1, next)));
                         }}
-                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet || isCrashBetCooldown}
                         className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         2x
                       </button>
                       <button
                         onClick={() => setBetInput(String(Math.max(1, Math.floor(parseFloat(balance)))))}
-                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet}
+                        disabled={crashState.phase === 'running' || hasBet || isPlacingCrashBet || isCrashBetCooldown}
                         className="h-8 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-semibold text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         MAX
@@ -1355,22 +1995,40 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     ) : (
                       <button
                         onClick={handleCrashBet}
-                        disabled={crashState.phase !== 'waiting' || isPlacingCrashBet}
+                        disabled={crashState.phase !== 'waiting' || hasBet || isPlacingCrashBet || isCrashBetCooldown}
                         className="w-full py-5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-lg uppercase transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        {isPlacingCrashBet ? 'Placing...' : crashState.phase === 'waiting' ? 'Place Bet' : 'Round Running'}
+                        {isPlacingCrashBet
+                          ? 'Placing...'
+                          : isCrashBetCooldown
+                            ? 'Locked...'
+                            : crashState.phase === 'waiting'
+                              ? 'Place Bet'
+                              : 'Round Running'}
                       </button>
                     )}
                   </div>
                 </div>
-              </>
+              </div>
             )}
 
-            {activeTab === 'blackjack' && <BlackjackGame username={effectiveUsername} />}
-            {activeTab === 'roulette' && <RouletteGame />}
-            {activeTab === 'slots' && <SlotsGame />}
+            {activeTab === 'blackjack' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <BlackjackGame username={effectiveUsername} />
+              </div>
+            )}
+            {activeTab === 'roulette' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <RouletteGame />
+              </div>
+            )}
+            {activeTab === 'slots' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <SlotsGame />
+              </div>
+            )}
             {activeTab === 'poker' && (
-              <div className="h-full min-h-0 flex flex-col">
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto flex flex-col">
                 <div className="h-14 shrink-0 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-500">Poker Mode</p>
@@ -1405,7 +2063,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
             )}
 
             {activeTab === 'friends' && (
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="flex-1 min-h-0 min-w-0 p-6 overflow-y-auto">
                 <h2 className="text-2xl font-bold text-slate-100">Friends & Presence</h2>
                 <p className="text-sm text-slate-400 mt-1">Send requests, accept invites, and track online status in real time.</p>
                 {friendRealtimeNotice ? (
@@ -1432,162 +2090,243 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                   {friendNotice ? <p className="mt-2 text-xs text-slate-400">{friendNotice}</p> : null}
                 </div>
 
-                <div className="mt-5 grid gap-5 lg:grid-cols-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Friends</p>
-                    <div className="space-y-2">
-                      {friendsLoading ? <p className="text-sm text-slate-500">Loading...</p> : null}
-                      {!friendsLoading && friendsAccepted.length === 0 ? (
-                        <p className="text-sm text-slate-500">No accepted friends yet.</p>
-                      ) : null}
-                      {friendsAccepted.map((friend) => (
-                        <div key={friend.friendshipId} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-slate-200">{friend.username}</span>
-                            <span className={`text-xs uppercase tracking-wide ${onlineUsersSet.has(friend.username) ? 'text-emerald-400' : 'text-slate-500'}`}>
-                              {showOnlinePresence ? (onlineUsersSet.has(friend.username) ? 'Online' : 'Offline') : 'Hidden'}
-                            </span>
-                          </div>
-                          <div className="mt-2 flex gap-2">
-                            <button
-                              onClick={() => handleViewProfile(friend.username)}
-                              className="h-8 px-3 rounded-md bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white"
+                <div className="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Friends</p>
+                    {friendsLoading ? <p className="text-sm text-slate-500">Loading...</p> : null}
+                    {!friendsLoading && friendsAccepted.length === 0 ? (
+                      <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg">No accepted friends yet.</p>
+                    ) : null}
+                    {friendsAccepted.length > 0 ? (
+                      <div className="rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+                        {friendsAccepted.map((friend) => {
+                          const isOnline = showOnlinePresence && onlineUsersSet.has(friend.username.trim().toLowerCase());
+                          const displayName = (friend.username ?? '').trim() || 'Unknown Friend';
+                          return (
+                            <div
+                              key={friend.friendshipId}
+                              onClick={() => openProfileModal(displayName)}
+                              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800/40 transition-colors"
                             >
-                              View Profile
-                            </button>
-                            <button
-                              onClick={() => handleRemoveFriendship(friend.friendshipId)}
-                              className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
-                            >
-                              Remove
-                            </button>
-                            <button
-                              onClick={() => handleBlockUser(friend.userId)}
-                              className="h-8 px-3 rounded-md bg-red-600 hover:bg-red-500 text-xs font-semibold text-white"
-                            >
-                              Block
-                            </button>
-                            <button
-                              onClick={() => handleSendMoneyToFriend(friend.userId, friend.username)}
-                              className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white"
-                            >
-                              Send NVC
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Incoming</p>
-                    <div className="space-y-2">
-                      {pendingIncoming.length === 0 ? (
-                        <p className="text-sm text-slate-500">No incoming requests.</p>
-                      ) : (
-                        pendingIncoming.map((request) => (
-                          <div key={request.friendshipId} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-                            <p className="font-medium text-slate-200">{request.username}</p>
-                            <div className="mt-2 flex gap-2">
+                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`} />
                               <button
-                                onClick={() => handleRespondFriendRequest(request.friendshipId, 'accept')}
-                                className="h-8 px-3 rounded-md bg-emerald-600 hover:bg-emerald-500 text-xs font-semibold text-white"
+                                type="button"
+                                onClick={() => openProfileModal(displayName)}
+                                className="font-semibold text-slate-200 truncate hover:text-cyan-300 hover:underline"
                               >
-                                Accept
+                                {displayName}
                               </button>
-                              <button
-                                onClick={() => handleRespondFriendRequest(request.friendshipId, 'decline')}
-                                className="h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
-                              >
-                                Decline
-                              </button>
+                              <div className="ml-auto flex items-center gap-1.5">
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleSendMoneyToFriend(friend.userId, displayName);
+                                  }}
+                                  className="h-8 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                                >
+                                  Send
+                                </button>
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    openProfileModal(displayName);
+                                  }}
+                                  className="h-8 px-2.5 rounded-md bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 text-xs inline-flex items-center gap-1"
+                                >
+                                  <Eye size={13} />
+                                  View
+                                </button>
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleRemoveFriendship(friend.friendshipId);
+                                  }}
+                                  className="h-8 w-8 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800/80 inline-flex items-center justify-center"
+                                  title="Remove friend"
+                                  aria-label={`Remove ${displayName}`}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                                <button
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleBlockUser(friend.userId);
+                                  }}
+                                  className="h-8 w-8 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800/80 inline-flex items-center justify-center"
+                                  title="Block user"
+                                  aria-label={`Block ${displayName}`}
+                                >
+                                  <Ban size={13} />
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Outgoing</p>
-                    <div className="space-y-2">
-                      {pendingOutgoing.length === 0 ? (
-                        <p className="text-sm text-slate-500">No pending requests.</p>
-                      ) : (
-                        pendingOutgoing.map((request) => (
-                          <div key={request.friendshipId} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-slate-200">{request.username}</span>
-                              <span className="text-xs uppercase tracking-wide text-amber-400">Pending</span>
-                            </div>
-                            <button
-                              onClick={() => handleRemoveFriendship(request.friendshipId)}
-                              className="mt-2 h-8 px-3 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
-                            >
-                              Cancel Request
-                            </button>
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Blocked</p>
-                  {blockedUsers.length === 0 ? (
-                    <p className="text-sm text-slate-500">No blocked users.</p>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {blockedUsers.map((blocked) => (
-                        <div key={blocked.blockId} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 flex items-center justify-between">
-                          <span className="font-medium text-slate-200">{blocked.username}</span>
-                          <button
-                            onClick={() => handleUnblockUser(blocked.blockId)}
-                            className="h-7 px-2 rounded-md bg-slate-800 hover:bg-slate-700 text-[10px] font-semibold uppercase text-slate-200"
-                          >
-                            Unblock
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">All Online Players</p>
-                  {onlineUsers.length === 0 ? (
-                    <p className="text-sm text-slate-500">No players online right now.</p>
-                  ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                      {onlineUsers.map((user, index) => (
-                      <div key={`${user}-${index}`} className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 flex items-center justify-between">
-                        <span className="font-medium text-slate-200">{user}</span>
-                        <span className="text-xs uppercase tracking-wide text-emerald-400">Online</span>
+                          );
+                        })}
                       </div>
-                      ))}
-                    </div>
-                  )}
+                    ) : null}
+                  </section>
+
+                  <div className="space-y-4">
+                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                      <button
+                        type="button"
+                        onClick={() => setIncomingOpen((current) => !current)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Incoming Requests</span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
+                            {pendingIncoming.length}
+                          </span>
+                          {incomingOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                        </span>
+                      </button>
+                      {incomingOpen ? (
+                        pendingIncoming.length === 0 ? (
+                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No incoming requests.</p>
+                        ) : (
+                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+                            {pendingIncoming.map((request) => (
+                              <div key={request.friendshipId} className="flex items-center gap-3 px-3 py-2.5">
+                                <span className="font-medium text-slate-200 truncate">{request.username}</span>
+                                <div className="ml-auto flex items-center gap-2">
+                                  <button
+                                    onClick={() => handleRespondFriendRequest(request.friendshipId, 'accept')}
+                                    className="h-8 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
+                                  >
+                                    Accept
+                                  </button>
+                                  <button
+                                    onClick={() => handleRespondFriendRequest(request.friendshipId, 'decline')}
+                                    className="h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                                  >
+                                    Decline
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      ) : null}
+                    </section>
+
+                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                      <button
+                        type="button"
+                        onClick={() => setOutgoingOpen((current) => !current)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Outgoing Requests</span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
+                            {pendingOutgoing.length}
+                          </span>
+                          {outgoingOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                        </span>
+                      </button>
+                      {outgoingOpen ? (
+                        pendingOutgoing.length === 0 ? (
+                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No pending requests.</p>
+                        ) : (
+                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+                            {pendingOutgoing.map((request) => (
+                              <div key={request.friendshipId} className="flex items-center gap-3 px-3 py-2.5">
+                                <span className="font-medium text-slate-200 truncate">{request.username}</span>
+                                <span className="text-xs uppercase tracking-wide text-amber-400">Pending</span>
+                                <button
+                                  onClick={() => handleRemoveFriendship(request.friendshipId)}
+                                  className="ml-auto h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      ) : null}
+                    </section>
+
+                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                      <button
+                        type="button"
+                        onClick={() => setBlockedOpen((current) => !current)}
+                        className="w-full flex items-center justify-between"
+                      >
+                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocked Users</span>
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
+                            {blockedUsers.length}
+                          </span>
+                          {blockedOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
+                        </span>
+                      </button>
+                      {blockedOpen ? (
+                        blockedUsers.length === 0 ? (
+                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No blocked users.</p>
+                        ) : (
+                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+                            {blockedUsers.map((blocked) => (
+                              <div key={blocked.blockId} className="flex items-center gap-3 px-3 py-2.5">
+                                <span className="font-medium text-slate-200 truncate">{blocked.username}</span>
+                                <button
+                                  onClick={() => handleUnblockUser(blocked.blockId)}
+                                  className="ml-auto h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
+                                >
+                                  Unblock
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      ) : null}
+                    </section>
+                  </div>
                 </div>
 
                 <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">All Online Players</p>
+                  {uniqueOnlineUsers.length === 0 ? (
+                    <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg">No players online right now.</p>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {uniqueOnlineUsers.map((user) => (
+                        <button
+                          key={user}
+                          type="button"
+                          onClick={() => openProfileModal(user)}
+                          className="flex items-center justify-between p-4 bg-slate-900 rounded-lg border border-slate-800 text-left hover:border-cyan-500/40 hover:bg-slate-800/80 transition-colors"
+                        >
+                          <span className="font-medium text-slate-200 truncate">{user}</span>
+                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shrink-0" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-5 rounded-xl border border-cyan-700/30 bg-gradient-to-br from-slate-950/80 to-slate-900/80 p-4 shadow-[0_0_30px_rgba(6,182,212,0.12)]">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Friend Profile</p>
-                    {profileLoading ? <span className="text-xs text-slate-500">Loading...</span> : null}
+                    <div className="flex items-center gap-2">
+                      <Activity size={16} className="text-cyan-300" />
+                      <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Friend Profile Preview</p>
+                    </div>
+                    {profileLoading ? <span className="text-xs text-slate-400">Loading...</span> : null}
                   </div>
 
                   {!selectedProfile && !profileLoading ? (
-                    <p className="mt-2 text-sm text-slate-500">Select a friend and click View Profile.</p>
+                    <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg mt-3">
+                      Select a friend and click View Profile.
+                    </p>
                   ) : null}
 
                   {selectedProfile ? (
-                    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 p-3">
+                    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/90 p-4">
                       <div className="flex items-center justify-between gap-2">
                         <p className="font-semibold text-slate-100">{selectedProfile.username}</p>
                         <span className="text-xs uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
                       </div>
                       <p className="mt-1 text-xs text-slate-400">
-                        Balance {selectedProfile.balance} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
+                        Balance {formatUserBalance(selectedProfile.balance, false)} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
                       </p>
                       <p className="mt-1 text-xs text-cyan-300">Favorite: {selectedProfile.favoriteGame}</p>
                       <p className="mt-2 text-sm text-slate-300">{selectedProfile.bio || 'No bio yet.'}</p>
@@ -1597,15 +2336,30 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     </div>
                   ) : null}
                 </div>
+
               </div>
             )}
 
-            {activeTab === 'leaderboard' && <LeaderboardPanel />}
+            {activeTab === 'leaderboard' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <LeaderboardPanel />
+              </div>
+            )}
 
-            {activeTab === 'quests' && <QuestsPanel />}
+            {activeTab === 'quests' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <QuestsPanel />
+              </div>
+            )}
+
+            {activeTab === 'admin' && isDanielAdmin ? (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <AdminPanel />
+              </div>
+            ) : null}
 
             {activeTab === 'settings' && (
-              <div className="flex-1 p-6 overflow-y-auto">
+              <div className="flex-1 min-h-0 min-w-0 p-6 overflow-y-auto">
                 <h2 className="text-2xl font-bold text-slate-100">Settings</h2>
                 <p className="text-sm text-slate-400 mt-1">Structured controls for profile, gameplay, appearance, privacy and security.</p>
 
@@ -1649,20 +2403,57 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                         </div>
 
                         <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <p className="font-semibold text-slate-100">Enable Baller Tag</p>
+                              <p className="text-xs text-slate-500">Nur verfugbar fur Freunde von Daniel.</p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={!hasDanielFriend && selectedRankTag !== 'BALLER'}
+                              onClick={() => {
+                                if (selectedRankTag === 'BALLER') {
+                                  setSelectedRankTag('BRONZE');
+                                  return;
+                                }
+
+                                if (!hasDanielFriend) {
+                                  setSettingsNotice('Nur verfugbar fur Freunde von Daniel.');
+                                  return;
+                                }
+
+                                setSelectedRankTag('BALLER');
+                              }}
+                              className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
+                                selectedRankTag === 'BALLER'
+                                  ? 'border-yellow-500/50 bg-yellow-500/10 text-yellow-400'
+                                  : 'border-slate-700 bg-slate-900 text-slate-400'
+                              } ${!hasDanielFriend && selectedRankTag !== 'BALLER' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                            >
+                              {selectedRankTag === 'BALLER' ? 'Enabled' : 'Disabled'}
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
                           <p className="font-semibold text-slate-100 mb-1">Chat Nametag</p>
                           <p className="text-xs text-slate-500 mb-3">Alle Ränge sind sichtbar, aber erst ab dem jeweiligen Level freischaltbar.</p>
                           <div className="grid gap-2 sm:grid-cols-2">
                             {RANKS.map((rank) => {
-                              const unlocked = canUseRankTag(level, balance, rank.tag);
+                              const unlocked = canUseRankTag(level, balance, rank.tag, { hasDanielFriend });
                               const selected = selectedRankTag === rank.tag;
                               return (
                                 <button
                                   key={rank.tag}
                                   onClick={() => {
                                     if (!unlocked) {
+                                      if (rank.tag === 'BALLER') {
+                                        setSettingsNotice('BALLER unlockt nur, wenn du Daniel als Freund hast.');
+                                        return;
+                                      }
                                       const requirement = rank.minLevel <= 1
-                                        ? `${rank.minBalance.toLocaleString()} NVC`
-                                        : `Level ${rank.minLevel} und ${rank.minBalance.toLocaleString()} NVC`;
+                                        ? `${formatMoney(rank.minBalance)} NVC`
+                                        : `Level ${rank.minLevel} und ${formatMoney(rank.minBalance)} NVC`;
                                       setSettingsNotice(`Rank ${rank.tag} unlockt ab ${requirement}.`);
                                       return;
                                     }
@@ -1682,8 +2473,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                                       {unlocked
                                         ? 'Unlocked'
                                         : rank.minLevel <= 1
-                                          ? `Locked ${rank.minBalance.toLocaleString()} NVC`
-                                          : `Locked L${rank.minLevel} · ${rank.minBalance.toLocaleString()} NVC`}
+                                          ? `Locked ${formatMoney(rank.minBalance)} NVC`
+                                          : `Locked L${rank.minLevel} · ${formatMoney(rank.minBalance)} NVC`}
                                     </span>
                                   </div>
                                   <p className="mt-1 text-[11px] text-slate-400">Wird als Tag neben deinem Namen im Live-Chat angezeigt.</p>
@@ -1728,6 +2519,23 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                             className={`h-10 rounded-lg border text-xs font-bold uppercase ${reducedMotion ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300' : 'border-slate-700 bg-slate-900 text-slate-400'}`}
                           >
                             Reduced Motion {reducedMotion ? 'On' : 'Off'}
+                          </button>
+                        </div>
+
+                        <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between gap-4">
+                          <div>
+                            <p className="font-semibold text-slate-100">Compact Balance Display</p>
+                            <p className="text-xs text-slate-500">e.g. 1M instead of 1,000,000</p>
+                          </div>
+                          <button
+                            onClick={() => toggleCompactBalance(!useCompactBalance)}
+                            className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
+                              useCompactBalance
+                                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                                : 'border-slate-700 bg-slate-900 text-slate-400'
+                            }`}
+                          >
+                            {useCompactBalance ? 'On' : 'Off'}
                           </button>
                         </div>
                       </>
@@ -1802,6 +2610,15 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                             placeholder="Tell others what games you like..."
                           />
                           <p className="mt-1 text-[11px] text-slate-500">{bio.length}/240</p>
+
+                          <label className="block text-xs uppercase tracking-wide text-slate-500 mt-4 mb-2">Clan Tag</label>
+                          <input
+                            value={clanDraft}
+                            onChange={(event) => setClanDraft(event.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase())}
+                            className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
+                            placeholder="Optional, z.B. NEON"
+                          />
+                          <p className="mt-1 text-[11px] text-slate-500">Wird als [TAG] vor deinem Namen im Chat angezeigt (max. 5 Zeichen).</p>
                         </div>
 
                         <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 grid gap-3 sm:grid-cols-2">
@@ -1916,81 +2733,349 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
             )}
           </div>
 
-          <div className="hub-chat w-80 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden hidden lg:flex shadow-lg">
-            <div className="p-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center gap-3">
-              <Activity size={18} className="text-emerald-400" />
-              <h3 className="font-bold text-slate-100">Live Chat</h3>
-              <div className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            </div>
+          <LiveChatPanel
+            chatMessages={chatMessages}
+            chatInput={chatInput}
+            suggestionType={suggestionType}
+            suggestionQuery={suggestionQuery}
+            mentionSuggestions={mentionSuggestions}
+            emojiSuggestions={emojiSuggestions}
+            showChatTimestamps={showChatTimestamps}
+            reducedMotion={reducedMotion}
+            chatScrollRef={chatScrollRef}
+            onChatInputChange={handleChatInputChange}
+            onSuggestionSelect={handleSuggestionSelect}
+            onMentionClick={handleMentionClick}
+            onSubmitChat={submitChat}
+          />
 
-            <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2" ref={chatScrollRef}>
-              <AnimatePresence>
-                {chatMessages.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <p className="text-xs text-slate-500 text-center">No messages yet. Start the conversation.</p>
+          {profileModalOpen ? (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 sm:p-6">
+                <div className="w-full max-w-2xl rounded-xl border border-cyan-700/30 bg-gradient-to-br from-slate-950 to-slate-900 p-6 sm:p-7 shadow-2xl">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <Activity size={16} className="text-cyan-300" />
+                      <p className="text-sm font-semibold uppercase tracking-wide text-cyan-300">Friend Profile</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setProfileModalOpen(false)}
+                    className="h-8 w-8 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800"
+                    aria-label="Close profile preview"
+                  >
+                    x
+                  </button>
+                </div>
+
+                {profileLoading ? <p className="mt-4 text-sm text-slate-400">Loading profile...</p> : null}
+
+                {!selectedProfile && !profileLoading ? (
+                  <p className="mt-4 text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg">
+                    Profile not available.
+                  </p>
+                ) : null}
+
+                {selectedProfile ? (
+                    <div className="mt-4 rounded-lg border border-slate-800 bg-slate-900/90 p-5 sm:p-6">
+                    <div className="flex items-center justify-between gap-2">
+                        <p className="text-lg font-semibold text-slate-100">{selectedProfile.username}</p>
+                        <span className="text-sm uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
+                    </div>
+                      <p className="mt-1 text-sm text-slate-300">
+                      Balance {formatUserBalance(selectedProfile.balance, false)} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
+                    </p>
+                      <p className="mt-1 text-sm text-cyan-300">Favorite: {selectedProfile.favoriteGame}</p>
+                      <p className="mt-3 text-base text-slate-200 leading-relaxed">{selectedProfile.bio || 'No bio yet.'}</p>
+                      <p className="mt-3 text-xs text-slate-500">Joined {new Date(selectedProfile.createdAt).toLocaleDateString()}</p>
                   </div>
                 ) : null}
-                {chatMessages.map((event) => {
-                  const hue = Math.abs(event.username.charCodeAt(0) * 7) % 360;
-                  const usernameColor = `hsl(${hue}, 70%, 55%)`;
-                  const rankColor = event.rankColor || '#64748b';
-                  return (
-                    <motion.div
-                      key={event.id}
-                      initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 10 }}
-                      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
-                      exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
-                      className="p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 transition-all group"
-                    >
-                      <div className="flex items-baseline justify-between gap-2 mb-1">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="font-bold text-sm" style={{ color: event.system ? '#f87171' : usernameColor }}>
-                            {event.username}
-                          </span>
-                          {event.rankTag ? (
-                            <span
-                              className="px-1.5 py-0.5 rounded border text-[10px] font-black uppercase tracking-wide"
-                              style={{ color: rankColor, borderColor: rankColor }}
-                            >
-                              {event.rankTag}
-                            </span>
-                          ) : null}
-                        </div>
-                        {showChatTimestamps ? (
-                          <span className="text-[11px] text-slate-500 font-mono group-hover:text-slate-400 transition">
-                            {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          </span>
-                        ) : null}
-                      </div>
-                      <p className="text-sm text-slate-200 leading-snug break-words">{event.text}</p>
-                    </motion.div>
-                  );
-                })}
-              </AnimatePresence>
+              </div>
             </div>
-
-            <form onSubmit={submitChat} className="border-t border-slate-800 p-3 flex items-center gap-2 bg-slate-950 shrink-0">
-              <input
-                value={chatInput}
-                onChange={(event) => setChatInput(event.target.value)}
-                placeholder="Nachricht..."
-                maxLength={200}
-                className="h-10 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition"
-              />
-              <button 
-                type="submit" 
-                disabled={!chatInput.trim()}
-                className="h-10 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
-              >
-                <Send size={16} />
-              </button>
-            </form>
-          </div>
+          ) : null}
         </div>
       </main>
     </div>
   );
 }
+
+function chatRoleBadgeClass(normalizedRole: string) {
+  if (normalizedRole === 'BALLER') {
+    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-yellow-500/50 text-yellow-300 bg-yellow-500/10 shadow-[0_0_10px_rgba(234,179,8,0.18)]';
+  }
+  if (normalizedRole === 'ADMIN') {
+    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-red-500/50 text-red-300 bg-red-500/10';
+  }
+  if (normalizedRole === 'OVERLORD') {
+    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-cyan-500/50 text-cyan-300 bg-cyan-500/10';
+  }
+  if (normalizedRole === 'VIP') {
+    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-fuchsia-500/50 text-fuchsia-300 bg-fuchsia-500/10';
+  }
+  return '';
+}
+
+const ChatMessageItem = React.memo(function ChatMessageItem({
+  event,
+  reducedMotion,
+  showChatTimestamps,
+  onMentionClick,
+}: {
+  event: ChatMessage;
+  reducedMotion: boolean;
+  showChatTimestamps: boolean;
+  onMentionClick: (username: string) => void;
+}) {
+  const messageRenderCountRef = useRef(0);
+  messageRenderCountRef.current += 1;
+
+  useEffect(() => {
+    if (!ENABLE_RENDER_PROFILING) {
+      return;
+    }
+
+    if (messageRenderCountRef.current % 10 === 0) {
+      console.debug(`[perf] ChatMessageItem id=${event.id} renders=${messageRenderCountRef.current}`);
+    }
+  });
+
+  const hue = Math.abs(event.username.charCodeAt(0) * 7) % 360;
+  const usernameColor = `hsl(${hue}, 70%, 55%)`;
+  const rankColor = event.rankColor || '#64748b';
+  const normalizedRole = (event.role ?? '').toUpperCase();
+  const clanLabel = typeof event.clanTag === 'string' ? event.clanTag.trim() : '';
+  const roleBadgeClass = chatRoleBadgeClass(normalizedRole);
+
+  return (
+    <motion.div
+      initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 10 }}
+      animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
+      exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
+      className="p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 transition-all group"
+    >
+      <div className="flex items-start justify-between gap-3 mb-1.5">
+        <div className="flex items-center gap-2 flex-wrap min-w-0">
+          {clanLabel ? (
+            <span className="inline-flex items-center h-5 rounded-md border border-slate-700 bg-slate-900 px-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              [{clanLabel}]
+            </span>
+          ) : null}
+          <span className="font-bold text-[15px] leading-5 truncate" style={{ color: event.system ? '#f87171' : usernameColor }}>
+            {event.username}
+          </span>
+          {roleBadgeClass ? <span className={roleBadgeClass}>{normalizedRole}</span> : null}
+          {event.rankTag ? (
+            <span
+              className="inline-flex items-center h-5 px-2 rounded-md border text-[10px] font-black uppercase tracking-wide"
+              style={{ color: rankColor, borderColor: rankColor }}
+            >
+              {event.rankTag}
+            </span>
+          ) : null}
+        </div>
+        {showChatTimestamps ? (
+          <span className="shrink-0 text-[11px] text-slate-500 font-mono group-hover:text-slate-400 transition mt-0.5">
+            {new Date(event.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        ) : null}
+      </div>
+      <p className="text-sm text-slate-200 leading-snug break-words">
+        <RenderChatMessage text={event.text} onMentionClick={onMentionClick} />
+      </p>
+    </motion.div>
+  );
+});
+
+const LiveChatPanel = React.memo(function LiveChatPanel({
+  chatMessages,
+  chatInput,
+  suggestionType,
+  suggestionQuery,
+  mentionSuggestions,
+  emojiSuggestions,
+  showChatTimestamps,
+  reducedMotion,
+  chatScrollRef,
+  onChatInputChange,
+  onSuggestionSelect,
+  onMentionClick,
+  onSubmitChat,
+}: {
+  chatMessages: ChatMessage[];
+  chatInput: string;
+  suggestionType: SuggestionType | null;
+  suggestionQuery: string;
+  mentionSuggestions: string[];
+  emojiSuggestions: string[];
+  showChatTimestamps: boolean;
+  reducedMotion: boolean;
+  chatScrollRef: React.RefObject<HTMLDivElement | null>;
+  onChatInputChange: (value: string, caretPosition: number) => void;
+  onSuggestionSelect: (value: string) => void;
+  onMentionClick: (username: string) => void;
+  onSubmitChat: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const panelRenderCountRef = useRef(0);
+  panelRenderCountRef.current += 1;
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(0);
+  const [isSuggestionDismissed, setIsSuggestionDismissed] = useState(false);
+  const visibleSuggestions = useMemo(
+    () => {
+      if (isSuggestionDismissed) {
+        return [];
+      }
+
+      if (suggestionType === 'mention') {
+        return mentionSuggestions;
+      }
+
+      if (suggestionType === 'emoji') {
+        return emojiSuggestions;
+      }
+
+      return [];
+    },
+    [isSuggestionDismissed, suggestionType, mentionSuggestions, emojiSuggestions]
+  );
+
+  useEffect(() => {
+    setIsSuggestionDismissed(false);
+  }, [chatInput, suggestionType]);
+
+  useEffect(() => {
+    if (visibleSuggestions.length === 0) {
+      setActiveSuggestionIndex(0);
+      return;
+    }
+
+    setActiveSuggestionIndex((current) => Math.min(current, visibleSuggestions.length - 1));
+  }, [visibleSuggestions]);
+
+  const handleMentionKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === 'Escape' && visibleSuggestions.length > 0) {
+        event.preventDefault();
+        setIsSuggestionDismissed(true);
+        return;
+      }
+
+      if (visibleSuggestions.length === 0) {
+        return;
+      }
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        setActiveSuggestionIndex((current) => (current + 1) % visibleSuggestions.length);
+        return;
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        setActiveSuggestionIndex((current) => (current - 1 + visibleSuggestions.length) % visibleSuggestions.length);
+        return;
+      }
+
+      if (event.key === 'Enter' || event.key === 'Tab') {
+        event.preventDefault();
+        const selected = visibleSuggestions[activeSuggestionIndex];
+        if (selected) {
+          onSuggestionSelect(selected);
+        }
+      }
+    },
+    [activeSuggestionIndex, onSuggestionSelect, visibleSuggestions]
+  );
+
+  useEffect(() => {
+    if (!ENABLE_RENDER_PROFILING) {
+      return;
+    }
+
+    if (panelRenderCountRef.current % 10 === 0) {
+      console.debug(`[perf] LiveChatPanel renders=${panelRenderCountRef.current} messages=${chatMessages.length}`);
+    }
+  }, [chatMessages.length]);
+
+  return (
+    <div className="hub-chat relative w-80 lg:w-80 flex-shrink-0 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden hidden lg:flex shadow-lg">
+      <div className="p-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center gap-3">
+        <Activity size={18} className="text-emerald-400" />
+        <h3 className="font-bold text-slate-100">Live Chat</h3>
+        <div className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2" ref={chatScrollRef}>
+        <AnimatePresence>
+          {chatMessages.length === 0 ? (
+            <div className="h-full flex items-center justify-center">
+              <p className="text-xs text-slate-500 text-center">No messages yet. Start the conversation.</p>
+            </div>
+          ) : null}
+          {chatMessages.map((event) => (
+            <ChatMessageItem
+              key={event.id}
+              event={event}
+              reducedMotion={reducedMotion}
+              showChatTimestamps={showChatTimestamps}
+              onMentionClick={onMentionClick}
+            />
+          ))}
+        </AnimatePresence>
+      </div>
+
+      <div className="border-t border-slate-800 p-3 bg-slate-950 shrink-0">
+        <div className="relative">
+          {visibleSuggestions.length > 0 ? (
+            <div className="absolute bottom-full mb-2 left-0 w-full z-50 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden">
+              <div className="px-3 py-1.5 border-b border-slate-700/80 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                {suggestionType === 'emoji' ? 'Emoji Suggestions' : 'Mention Suggestions'}
+                {suggestionQuery ? ` - ${suggestionQuery}` : ''}
+              </div>
+              <div className="max-h-44 overflow-y-auto">
+                {visibleSuggestions.map((value, index) => {
+                  const isActive = index === activeSuggestionIndex;
+                  const isMention = suggestionType === 'mention';
+                  const label = isMention ? `@${value}` : `${value} ${EMOJI_MAP[value.toLowerCase()] ?? ''}`.trim();
+
+                  return (
+                    <button
+                      key={value}
+                      type="button"
+                      onMouseEnter={() => setActiveSuggestionIndex(index)}
+                      onClick={() => onSuggestionSelect(value)}
+                      className={`w-full px-3 py-2 text-left text-sm transition-colors ${
+                        isActive ? 'bg-cyan-500/20 text-cyan-200' : 'text-slate-200 hover:bg-slate-800'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
+          <form onSubmit={onSubmitChat} className="flex items-center gap-2">
+          <input
+            value={chatInput}
+            onChange={(event) => onChatInputChange(event.target.value, event.target.selectionStart ?? event.target.value.length)}
+            onKeyDown={handleMentionKeyDown}
+            placeholder="Nachricht..."
+            maxLength={200}
+            className="h-10 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm text-slate-100 placeholder-slate-600 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition"
+          />
+          <button
+            type="submit"
+            disabled={!chatInput.trim()}
+            className="h-10 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:cursor-not-allowed text-white flex items-center justify-center transition-colors"
+          >
+            <Send size={16} />
+          </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  );
+});
 
 function SidebarButton({
   icon,
