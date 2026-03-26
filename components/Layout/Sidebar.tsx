@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
-import { House, Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand } from 'lucide-react';
+import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane } from 'lucide-react';
 
 type SidebarItem = {
   label: string;
@@ -33,10 +33,13 @@ export default function Sidebar({
   const activeGame = searchParams.get('game');
 
   const sidebarItems: SidebarItem[] = [
-    { label: 'Home', href: '/', icon: <House size={20} /> },
-    { label: 'Crash', href: '/hub?game=crash', icon: <TrendingUp size={20} />, tabKey: 'crash' },
+    { label: 'Neon Rocket', href: '/hub?game=crash', icon: <TrendingUp size={20} />, tabKey: 'crash' },
+    { label: 'Cyber Aviator', href: '/hub?game=crash-aviator', icon: <Plane size={20} />, tabKey: 'crash-aviator' },
     { label: 'Slots', href: '/hub?game=slots', icon: <Coins size={20} />, tabKey: 'slots' },
     { label: 'Blackjack', href: '/hub?game=blackjack', icon: <Hand size={20} />, tabKey: 'blackjack' },
+    { label: 'Roulette', href: '/hub?game=roulette', icon: <CircleDashed size={20} />, tabKey: 'roulette' },
+    { label: 'Poker', href: '/hub?game=poker', icon: <Spade size={20} />, tabKey: 'poker' },
+    { label: 'Coinflip', href: '/hub?game=coinflip', icon: <Coins size={20} />, tabKey: 'coinflip' },
     { label: 'Leaderboard', icon: <Trophy size={20} />, onClick: onOpenLeaderboard },
     { label: 'Settings', href: '/settings', icon: <Settings size={20} /> },
     { label: 'Admin', href: '/admin', icon: <Shield size={20} />, adminOnly: true },
