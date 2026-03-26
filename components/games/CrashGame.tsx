@@ -77,8 +77,8 @@ export default function CrashGame() {
   const activeStake = Number(serverMe?.amount ?? 0);
   const potential = hasBetOnServer ? activeStake * multiplier : Number(betInput || 0) * multiplier;
   const flightProgress = Math.min(1, Math.log10(Math.max(1, multiplier)) / Math.log10(45));
-  const rocketX = Math.min(88, 8 + flightProgress * 80);
-  const rocketY = Math.max(8, 78 - flightProgress * 64);
+  const rocketX = 50;
+  const rocketY = Math.max(10, 82 - flightProgress * 70);
   const speedFactor = Math.max(0.8, Math.min(9, multiplier));
   const trailDuration = Math.max(0.45, 4.5 / speedFactor);
   const scanDuration = Math.max(2, 18 / speedFactor);
@@ -331,7 +331,7 @@ export default function CrashGame() {
         <motion.div
           className="absolute z-30"
           style={{ left: `${rocketX}%`, top: `${rocketY}%` }}
-          animate={phase === 'running' ? { x: [-2, 1, -1, 2, 0], y: [-1, 1, -2, 1, 0], rotate: [-1, 1, -1, 1, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -22 : 0 }}
+          animate={phase === 'running' ? { x: [-1, 1, -1, 1, 0], y: [-1, 1, -1, 1, 0], rotate: [-1, 1, -1, 1, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -22 : 0 }}
           transition={phase === 'running' ? { duration: 0.42, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.24 }}
         >
           <motion.div
