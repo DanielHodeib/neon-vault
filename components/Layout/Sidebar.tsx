@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname, useSearchParams } from 'next/navigation';
 import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane } from 'lucide-react';
 
 type SidebarItem = {
@@ -16,6 +15,8 @@ type SidebarItem = {
 export default function Sidebar({
   collapsed,
   onToggle,
+  activeTab,
+  onSelectTab,
   isAdmin,
   dailyFaucetClaimed,
   onClaimFaucet,
@@ -23,26 +24,24 @@ export default function Sidebar({
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  activeTab: string;
+  onSelectTab: (tab: string) => void;
   isAdmin: boolean;
   dailyFaucetClaimed: boolean;
   onClaimFaucet: () => void;
   onOpenLeaderboard: () => void;
 }) {
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const activeGame = searchParams.get('game');
-
   const sidebarItems: SidebarItem[] = [
-    { label: 'Neon Rocket', href: '/hub?game=crash', icon: <TrendingUp size={20} />, tabKey: 'crash' },
-    { label: 'Cyber Aviator', href: '/hub?game=crash-aviator', icon: <Plane size={20} />, tabKey: 'crash-aviator' },
-    { label: 'Slots', href: '/hub?game=slots', icon: <Coins size={20} />, tabKey: 'slots' },
-    { label: 'Blackjack', href: '/hub?game=blackjack', icon: <Hand size={20} />, tabKey: 'blackjack' },
-    { label: 'Roulette', href: '/hub?game=roulette', icon: <CircleDashed size={20} />, tabKey: 'roulette' },
-    { label: 'Poker', href: '/hub?game=poker', icon: <Spade size={20} />, tabKey: 'poker' },
-    { label: 'Coinflip', href: '/hub?game=coinflip', icon: <Coins size={20} />, tabKey: 'coinflip' },
+    { label: 'Neon Rocket', icon: <TrendingUp size={20} />, tabKey: 'crash', onClick: () => onSelectTab('crash') },
+    { label: 'Cyber Aviator', icon: <Plane size={20} />, tabKey: 'crash-aviator', onClick: () => onSelectTab('crash-aviator') },
+    { label: 'Slots', icon: <Coins size={20} />, tabKey: 'slots', onClick: () => onSelectTab('slots') },
+    { label: 'Blackjack', icon: <Hand size={20} />, tabKey: 'blackjack', onClick: () => onSelectTab('blackjack') },
+    { label: 'Roulette', icon: <CircleDashed size={20} />, tabKey: 'roulette', onClick: () => onSelectTab('roulette') },
+    { label: 'Poker', icon: <Spade size={20} />, tabKey: 'poker', onClick: () => onSelectTab('poker') },
+    { label: 'Coinflip', icon: <Coins size={20} />, tabKey: 'coinflip', onClick: () => onSelectTab('coinflip') },
     { label: 'Leaderboard', icon: <Trophy size={20} />, onClick: onOpenLeaderboard },
-    { label: 'Settings', href: '/settings', icon: <Settings size={20} /> },
-    { label: 'Admin', href: '/admin', icon: <Shield size={20} />, adminOnly: true },
+    { label: 'Settings', icon: <Settings size={20} />, tabKey: 'settings', onClick: () => onSelectTab('settings') },
+    { label: 'Admin', icon: <Shield size={20} />, tabKey: 'admin', onClick: () => onSelectTab('admin'), adminOnly: true },
   ];
 
   const visibleItems = sidebarItems.filter((item) => !item.adminOnly || isAdmin);
@@ -73,7 +72,7 @@ export default function Sidebar({
 
       <nav className={`flex-1 ${collapsed ? 'p-2' : 'p-4'} space-y-2 overflow-y-auto custom-scrollbar`}>
         {visibleItems.map((item) => {
-          const active = item.tabKey ? pathname === '/hub' && activeGame === item.tabKey : item.href ? pathname === item.href : false;
+          const active = item.tabKey ? activeTab === item.tabKey : false;
           const sharedClassName = `group w-full h-11 rounded-xl transition-all flex items-center ${
             collapsed ? 'justify-center' : 'px-3 gap-3'
           } ${
@@ -82,31 +81,17 @@ export default function Sidebar({
               : 'text-slate-300 hover:text-white hover:bg-slate-800 border border-transparent'
           }`;
 
-          if (!item.href) {
-            return (
-              <button
-                key={item.label}
-                type="button"
-                onClick={item.onClick}
-                className={sharedClassName}
-                title={collapsed ? item.label : undefined}
-              >
-                <span className="transition-transform duration-300 group-hover:scale-110">{item.icon}</span>
-                {!collapsed ? <span className="text-base font-medium transition-all duration-200 opacity-100 translate-x-0">{item.label}</span> : null}
-              </button>
-            );
-          }
-
           return (
-            <Link
-              key={item.href}
-              href={item.href}
+            <button
+              key={item.label}
+              type="button"
+              onClick={item.onClick}
               className={sharedClassName}
               title={collapsed ? item.label : undefined}
             >
               <span className="transition-transform duration-300 group-hover:scale-110">{item.icon}</span>
               {!collapsed ? <span className="text-base font-medium transition-all duration-200 opacity-100 translate-x-0">{item.label}</span> : null}
-            </Link>
+            </button>
           );
         })}
       </nav>

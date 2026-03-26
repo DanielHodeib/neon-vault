@@ -328,6 +328,7 @@ export default function MainHubRealtime({
   const [chatClanTag, setChatClanTag] = useState<string | null>(null);
   const [isKing, setIsKing] = useState(false);
   const [serverAdminAccess, setServerAdminAccess] = useState(false);
+  const [adminAccessResolved, setAdminAccessResolved] = useState(false);
   const [rainBanner, setRainBanner] = useState<RainBannerState>({
     active: false,
     amount: 0,
@@ -412,10 +413,16 @@ export default function MainHubRealtime({
   );
 
   useEffect(() => {
-    if (activeTab === 'admin' && !isDanielAdmin) {
+    if (adminAccessResolved && activeTab === 'admin' && !isDanielAdmin) {
       setActiveTab('settings');
     }
-  }, [activeTab, isDanielAdmin]);
+  }, [activeTab, isDanielAdmin, adminAccessResolved]);
+
+  useEffect(() => {
+    if (initialTab && initialTab !== activeTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab, activeTab]);
 
   useEffect(() => {
     if (activeTab === 'leaderboard') {
@@ -759,9 +766,11 @@ export default function MainHubRealtime({
         } else {
           setServerAdminAccess(false);
         }
+        setAdminAccessResolved(true);
       } catch {
         // Keep defaults if profile fetch fails.
         setServerAdminAccess(false);
+        setAdminAccessResolved(true);
       }
     })();
 
@@ -1817,12 +1826,26 @@ export default function MainHubRealtime({
     await persistSettings(false);
   };
 
+  const handleSelectSidebarTab = (tab: string) => {
+    const nextTab = tab as Tab;
+    if (nextTab === 'admin' && !isDanielAdmin) {
+      setErrorMsg('Admin access required.');
+      return;
+    }
+
+    setErrorMsg('');
+    setActiveTab(nextTab);
+    router.push(`/hub?game=${nextTab}`);
+  };
+
   return (
     <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
       <AnnouncementOverlay message={announcement} />
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((current) => !current)}
+        activeTab={activeTab}
+        onSelectTab={handleSelectSidebarTab}
         isAdmin={isDanielAdmin}
         dailyFaucetClaimed={daily.faucetClaimed}
         onClaimFaucet={handleFaucet}
