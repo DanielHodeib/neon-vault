@@ -17,7 +17,11 @@
     "lint": "eslint",
     "deploy:up": "docker compose -f docker-compose.deploy.yml up -d --build",
     "deploy:down": "docker compose -f docker-compose.deploy.yml down",
-    "deploy:logs": "docker compose -f docker-compose.deploy.yml logs -f"
+    "deploy:logs": "docker compose -f docker-compose.deploy.yml logs -f",
+    "tunnel": "sh ./tunnel-tailscale.sh",
+    "tunnel:dev": "sh -c 'npm run dev:all & sleep 3 && npm run tunnel'",
+    "tunnel:stop": "sh ./tunnel-tailscale-stop.sh",
+    "tunnel:url": "sh ./tunnel-url.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -29,6 +33,7 @@
     "next-auth": "^5.0.0-beta.29",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "react-hot-toast": "^2.6.0",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.12"

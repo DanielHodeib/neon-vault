@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
+import toast from 'react-hot-toast';
 
 import { copyToClipboard } from '@/lib/copyToClipboard';
 
@@ -39,8 +40,18 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:4001';
   }
 
+  if (fromEnv === 'same-origin') {
+    return window.location.origin;
+  }
+
   if (!fromEnv) {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 
   try {
@@ -54,7 +65,13 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 }
 
@@ -104,16 +121,26 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   }, [state.players, selfSocketId, username]);
 
   const others = useMemo(() => {
-    if (selfSocketId) {
-      return state.players.filter((player) => player.socketId !== selfSocketId);
-    }
+    const ownSocketId = me?.socketId ?? selfSocketId;
+    const ownUsername = me?.username ?? username;
 
-    return state.players.filter((player) => player.username !== username);
-  }, [state.players, selfSocketId, username]);
+    return state.players.filter((player) => {
+      if (ownSocketId && player.socketId === ownSocketId) {
+        return false;
+      }
+
+      if (ownUsername && player.username === ownUsername) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [state.players, selfSocketId, username, me]);
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
     const socket = io(socketUrl, {
+      path: '/socket.io',
       transports: ['websocket'],
       query: { username, pokerRoomId: 'global' },
     });
@@ -134,6 +161,15 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
     socket.on('poker_state', (payload: PokerState) => {
       setState(payload);
+    });
+
+    socket.on('poker_table_win', (payload: { roomId: string; username: string }) => {
+      if (!payload?.username || payload.username === username) {
+        return;
+      }
+      toast.success(`${payload.username} hat den Poker-Tisch gewonnen!`, {
+        id: `poker-win-${payload.roomId}`,
+      });
     });
 
     return () => {
@@ -158,7 +194,17 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
     setJoiningRoom(true);
     setNotice('Switching room...');
-    socket.emit('join_poker_room', { roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) return;
+      setJoiningRoom(false);
+      setNotice('Join room timed out. Please try again.');
+    }, 2200);
+
+    socket.emit('joinRoom', { game: 'poker', roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setNotice(response.error ?? 'Could not join room.');
@@ -184,7 +230,17 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     }
 
     setJoiningRoom(true);
-    socket.emit('join_poker_room', { roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) return;
+      setJoiningRoom(false);
+      setNotice('Create room timed out. Please try again.');
+    }, 2200);
+
+    socket.emit('joinRoom', { game: 'poker', roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setNotice(response.error ?? 'Could not create room.');

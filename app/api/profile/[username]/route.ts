@@ -26,6 +26,7 @@ export async function GET(
     select: {
       id: true,
       username: true,
+      balance: true,
       xp: true,
       createdAt: true,
       settings: {
@@ -74,7 +75,9 @@ export async function GET(
   return NextResponse.json({
     profile: {
       username: target.username,
+      balance: target.balance,
       xp: target.xp,
+      favoriteGame: 'Crash (v1 placeholder)',
       bio: target.settings?.bio ?? '',
       theme: target.settings?.theme ?? 'slate',
       publicProfile,

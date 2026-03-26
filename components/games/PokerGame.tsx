@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
@@ -398,7 +398,9 @@ function holeCardsLabel(cards: Card[]) {
 }
 
 export default function PokerGame() {
-  const { placeBet, addWin } = useCasinoStore();
+  const { balance, placeBet, addWin } = useCasinoStore();
+  const pendingBetSyncRef = useRef(0);
+  const pendingWinSyncRef = useRef(0);
 
   const [stage, setStage] = useState<Stage>('idle');
   const [tableSeats, setTableSeats] = useState<Seat[]>([]);
@@ -448,12 +450,44 @@ export default function PokerGame() {
     window.setTimeout(() => setError(''), 2200);
   };
 
+  const syncWalletForHand = useCallback(async () => {
+    pendingBetSyncRef.current = 0;
+    pendingWinSyncRef.current = 0;
+  }, []);
+
+  const applyPlayerBet = useCallback((amount: number) => {
+    const safeAmount = Math.max(0, Math.floor(amount));
+    if (safeAmount <= 0) {
+      return true;
+    }
+
+    if (!placeBet(safeAmount)) {
+      return false;
+    }
+
+    pendingBetSyncRef.current += safeAmount;
+    return true;
+  }, [placeBet]);
+
+  const applyPlayerWin = useCallback((amount: number) => {
+    const safeAmount = Math.max(0, Math.floor(amount));
+    if (safeAmount <= 0) {
+      return;
+    }
+
+    addWin(safeAmount);
+    pendingWinSyncRef.current += safeAmount;
+  }, [addWin]);
+
   const startHand = () => {
     const bb = Math.max(40, Math.floor(bigBlindInput));
     const sb = Math.max(20, Math.floor(bb / 2));
     const playerForcedBlind = sbSeatId === 'player' ? sb : bbSeatId === 'player' ? bb : 0;
 
-    if (playerForcedBlind > 0 && !placeBet(playerForcedBlind)) {
+    pendingBetSyncRef.current = 0;
+    pendingWinSyncRef.current = 0;
+
+    if (playerForcedBlind > 0 && !applyPlayerBet(playerForcedBlind)) {
       setError('Not enough funds to post blind.');
       clearErrorSoon();
       return;
@@ -586,7 +620,7 @@ export default function PokerGame() {
     const playerShare = playerWins ? Math.floor(potAtShowdown / winners.length) : 0;
 
     if (playerShare > 0) {
-      addWin(playerShare);
+      applyPlayerWin(playerShare);
     }
 
     const nextSeats = seatsAtShowdown.map((seat): Seat => {
@@ -621,7 +655,8 @@ export default function PokerGame() {
         ? `Showdown won with ${best.rankedHand.label}. You get ${playerShare.toFixed(2)} NVC.`
         : `${best.seat.name} wins with ${best.rankedHand.label}.`
     );
-  }, [addWin]);
+    void syncWalletForHand();
+  }, [applyPlayerWin, syncWalletForHand]);
 
   const settleAfterAction = useCallback((
     nextSeats: Seat[],
@@ -647,13 +682,14 @@ export default function PokerGame() {
       setStage('result');
       setStatus('You are out of this hand.');
       setResult('Hand lost.');
+      void syncWalletForHand();
       return;
     }
 
     if (aliveIds.length === 1) {
       const winner = aliveIds[0];
       if (winner === 'player') {
-        addWin(nextPot);
+        applyPlayerWin(nextPot);
       }
 
       const finalSeats = nextSeats.map((seat): Seat => {
@@ -683,6 +719,7 @@ export default function PokerGame() {
       setStage('result');
       setStatus('Hand complete.');
       setResult(winner === 'player' ? `All opponents folded. You win ${nextPot.toFixed(2)} NVC.` : `${seatById(finalSeats, winner)?.name ?? 'Opponent'} wins.`);
+      void syncWalletForHand();
       return;
     }
 
@@ -753,7 +790,7 @@ export default function PokerGame() {
     setCurrentBet(nextCurrentBet);
     setCurrentTurn(nextTurn);
     setStatus(nextTurn ? `${seatById(updatedSeats, nextTurn)?.name ?? 'Seat'} to act` : 'Waiting');
-  }, [addWin, dealerSeatId, resolveShowdown, stage]);
+  }, [applyPlayerWin, dealerSeatId, resolveShowdown, stage, syncWalletForHand]);
 
   const executeAction = useCallback((seatId: SeatId, action: PlayerAction, customRaiseTo?: number) => {
     if (!BETTING_STAGES.includes(stage)) {
@@ -814,7 +851,7 @@ export default function PokerGame() {
     if (action === 'call') {
       const payment = callAmount;
 
-      if (seatId === 'player' && payment > 0 && !placeBet(payment)) {
+      if (seatId === 'player' && payment > 0 && !applyPlayerBet(payment)) {
         setError('Not enough funds to call.');
         clearErrorSoon();
         return;
@@ -838,7 +875,7 @@ export default function PokerGame() {
       const targetBet = Math.max(nextCurrentBet + minRaise, raiseTarget);
       const payment = Math.max(0, targetBet - nextContrib[seatId]);
 
-      if (seatId === 'player' && payment > 0 && !placeBet(payment)) {
+      if (seatId === 'player' && payment > 0 && !applyPlayerBet(payment)) {
         setError(`Not enough funds to ${action}.`);
         clearErrorSoon();
         return;
@@ -868,7 +905,7 @@ export default function PokerGame() {
     board,
     currentBet,
     deck,
-    placeBet,
+    applyPlayerBet,
     pot,
     raiseBy,
     settleAfterAction,
@@ -968,6 +1005,8 @@ export default function PokerGame() {
   };
 
   const resetTable = () => {
+    pendingBetSyncRef.current = 0;
+    pendingWinSyncRef.current = 0;
     setStage('idle');
     setTableSeats([]);
     setDeck([]);
@@ -1063,6 +1102,22 @@ export default function PokerGame() {
               disabled={stage !== 'idle' && stage !== 'result'}
               className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
             />
+            <div className="grid grid-cols-2 gap-2 mt-2">
+              <button
+                onClick={() => setBigBlindInput((value) => Math.max(40, Math.floor(value / 2) || 40))}
+                disabled={stage !== 'idle' && stage !== 'result'}
+                className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              >
+                1/2
+              </button>
+              <button
+                onClick={() => setBigBlindInput(Math.max(0, Math.floor(balance)))}
+                disabled={stage !== 'idle' && stage !== 'result'}
+                className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              >
+                MAX
+              </button>
+            </div>
           </div>
 
           <div>

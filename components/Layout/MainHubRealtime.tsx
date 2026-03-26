@@ -431,7 +431,13 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     const socketUrl = getSocketUrl();
     const socket: Socket = io(socketUrl, {
       path: '/socket.io',
-      query: { username: effectiveUsername, xp: String(xp), crashRoomId: 'global' },
+      query: { 
+        username: effectiveUsername, 
+        xp: String(xp),
+        balance: String(balance),
+        selectedRankTag: selectedRankTag,
+        crashRoomId: 'global' 
+      },
     });
     socketRef.current = socket;
 
@@ -550,21 +556,27 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         setSettingsNotice('');
       }
 
-      const response = await fetch('/api/settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ soundEnabled, theme, selectedRankTag, publicProfile, bio }),
-      });
+      try {
+        const response = await fetch('/api/settings', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ soundEnabled, theme, selectedRankTag, publicProfile, bio }),
+        });
 
-      const payload = (await response.json()) as { error?: string };
-      setSettingsSaving(false);
+        const payload = (await response.json()) as { error?: string; settings?: SettingsPayload };
+        setSettingsSaving(false);
 
-      if (!response.ok) {
-        setSettingsNotice(payload.error ?? 'Settings save failed.');
-        return;
+        if (!response.ok) {
+          setSettingsNotice(payload.error ?? 'Settings save failed.');
+          return;
+        }
+
+        setSettingsNotice(silent ? 'Settings autosaved.' : 'Settings saved.');
+      } catch (error) {
+        console.error('Settings save error:', error);
+        setSettingsSaving(false);
+        setSettingsNotice('Settings save failed.');
       }
-
-      setSettingsNotice(silent ? 'Settings autosaved.' : 'Settings saved.');
     },
     [soundEnabled, theme, selectedRankTag, publicProfile, bio]
   );

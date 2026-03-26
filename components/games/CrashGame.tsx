@@ -70,13 +70,13 @@ export default function CrashGame() {
   const processedCashoutRef = useRef<string | null>(null);
 
   const safeBalance = Math.max(0, Math.floor(balance));
-  const canEditBet = phase !== 'running' && !isPlacingBet && !hasBet;
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
   const activePlayer = useMemo(
     () => players.find((player) => player.username === effectiveUsername && !player.cashedOut) ?? null,
     [effectiveUsername, players]
   );
   const hasBet = Boolean(activePlayer);
+  const canEditBet = phase !== 'running' && !isPlacingBet && !hasBet;
   const roundBet = activePlayer?.amount ?? 0;
 
   const showError = (message: string) => {

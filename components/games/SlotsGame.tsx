@@ -30,19 +30,21 @@ interface ModeConfig {
 }
 
 const SYMBOLS: SlotSymbol[] = [
-  { icon: '🍒', name: 'Cherry', baseMulti: 3, weight: 35 },
-  { icon: '🍋', name: 'Lemon', baseMulti: 4, weight: 28 },
-  { icon: '🍇', name: 'Grapes', baseMulti: 5, weight: 20 },
-  { icon: '💎', name: 'Diamond', baseMulti: 8, weight: 12 },
-  { icon: '7️⃣', name: 'Seven', baseMulti: 15, weight: 5 },
+  { icon: '🍒', name: 'Cherry', baseMulti: 2.2, weight: 46 },
+  { icon: '🍋', name: 'Lemon', baseMulti: 2.8, weight: 34 },
+  { icon: '🍇', name: 'Grapes', baseMulti: 4.2, weight: 22 },
+  { icon: '💎', name: 'Diamond', baseMulti: 7, weight: 10 },
+  { icon: '7️⃣', name: 'Seven', baseMulti: 14, weight: 2 },
 ];
 
+const RTP_ADJUSTMENT = 0.92;
+
 const BOOK_SYMBOLS: SlotSymbol[] = [
-  { icon: '🏺', name: 'Vase', baseMulti: 2, weight: 30 },
-  { icon: '🦅', name: 'Eagle', baseMulti: 4, weight: 25 },
-  { icon: '👑', name: 'Scarab', baseMulti: 6, weight: 20 },
-  { icon: '🏛️', name: 'Temple', baseMulti: 10, weight: 15 },
-  { icon: '📖', name: 'Book', baseMulti: 25, weight: 10 },
+  { icon: '🏺', name: 'Vase', baseMulti: 2, weight: 38 },
+  { icon: '🦅', name: 'Eagle', baseMulti: 3.8, weight: 26 },
+  { icon: '👑', name: 'Scarab', baseMulti: 5.5, weight: 17 },
+  { icon: '🏛️', name: 'Temple', baseMulti: 9, weight: 10 },
+  { icon: '📖', name: 'Book', baseMulti: 20, weight: 4 },
 ];
 
 const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
@@ -53,10 +55,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 95,
     minBet: 10,
     reelCount: 3,
-    pairMulti: 2,
-    jackpotMulti: 30,
-    tripleBoost: 1,
-    streakBonusPerWin: 0.15,
+    pairMulti: 1.2,
+    jackpotMulti: 20,
+    tripleBoost: 0.9,
+    streakBonusPerWin: 0.05,
   },
   turbo: {
     label: 'Turbo',
@@ -65,10 +67,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 60,
     minBet: 10,
     reelCount: 3,
-    pairMulti: 2,
-    jackpotMulti: 30,
-    tripleBoost: 1,
-    streakBonusPerWin: 0.1,
+    pairMulti: 1.2,
+    jackpotMulti: 19,
+    tripleBoost: 0.85,
+    streakBonusPerWin: 0.05,
   },
   highroller: {
     label: 'High Roller',
@@ -77,10 +79,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 85,
     minBet: 500,
     reelCount: 3,
-    pairMulti: 3,
-    jackpotMulti: 42,
-    tripleBoost: 1.35,
-    streakBonusPerWin: 0.2,
+    pairMulti: 1.6,
+    jackpotMulti: 30,
+    tripleBoost: 1,
+    streakBonusPerWin: 0.08,
   },
   chaos: {
     label: 'Chaos',
@@ -89,10 +91,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 75,
     minBet: 25,
     reelCount: 3,
-    pairMulti: 2,
-    jackpotMulti: 34,
-    tripleBoost: 1,
-    streakBonusPerWin: 0.12,
+    pairMulti: 1.25,
+    jackpotMulti: 22,
+    tripleBoost: 0.9,
+    streakBonusPerWin: 0.05,
   },
   freespins: {
     label: 'Free Spins',
@@ -101,10 +103,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 85,
     minBet: 20,
     reelCount: 3,
-    pairMulti: 2,
-    jackpotMulti: 30,
-    tripleBoost: 1,
-    streakBonusPerWin: 0.15,
+    pairMulti: 1.2,
+    jackpotMulti: 20,
+    tripleBoost: 0.9,
+    streakBonusPerWin: 0.05,
   },
   bookofra: {
     label: 'Book of Ra',
@@ -113,10 +115,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 85,
     minBet: 50,
     reelCount: 5,
-    pairMulti: 2,
-    jackpotMulti: 80,
-    tripleBoost: 1.8,
-    streakBonusPerWin: 0.25,
+    pairMulti: 1.35,
+    jackpotMulti: 55,
+    tripleBoost: 1.15,
+    streakBonusPerWin: 0.08,
     isMultiReel: true,
     hasExpanding: true,
   },
@@ -127,10 +129,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 80,
     minBet: 40,
     reelCount: 4,
-    pairMulti: 2.5,
-    jackpotMulti: 60,
-    tripleBoost: 1.5,
-    streakBonusPerWin: 0.2,
+    pairMulti: 1.4,
+    jackpotMulti: 45,
+    tripleBoost: 1.1,
+    streakBonusPerWin: 0.08,
     isMultiReel: true,
     hasCascading: true,
   },
@@ -141,10 +143,10 @@ const MODE_CONFIG: Record<SlotMode, ModeConfig> = {
     reelTickMs: 90,
     minBet: 75,
     reelCount: 5,
-    pairMulti: 2.2,
-    jackpotMulti: 100,
-    tripleBoost: 2,
-    streakBonusPerWin: 0.3,
+    pairMulti: 1.45,
+    jackpotMulti: 70,
+    tripleBoost: 1.2,
+    streakBonusPerWin: 0.09,
     isMultiReel: true,
     hasExpanding: true,
     hasCascading: true,
@@ -160,15 +162,15 @@ function getWeightedSymbol(mode: SlotMode) {
     let adjustedWeight = symbol.weight;
 
     if (mode === 'highroller' && symbol.icon === '7️⃣') {
-      adjustedWeight += 2;
+      adjustedWeight += 1;
     }
 
     if (mode === 'freespins' && symbol.icon === '💎') {
-      adjustedWeight += 4;
+      adjustedWeight += 2;
     }
 
     if ((mode === 'bookofra' || mode === 'treasurehunt') && symbol.icon === '📖') {
-      adjustedWeight += 3;
+      adjustedWeight += 1;
     }
 
     for (let i = 0; i < adjustedWeight; i += 1) {
@@ -179,8 +181,18 @@ function getWeightedSymbol(mode: SlotMode) {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
+function trackSlotsQuestProgress() {
+  void fetch('/api/quests/progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event: 'slots_spin', count: 1 }),
+  }).catch((error) => {
+    console.error('Failed to track slots quest progress:', error);
+  });
+}
+
 export default function SlotsGame() {
-  const { placeBet, addWin } = useCasinoStore();
+  const { balance, placeBet, addWin } = useCasinoStore();
   const [mode, setMode] = useState<SlotMode>('classic');
   const config = MODE_CONFIG[mode];
   
@@ -279,7 +291,7 @@ export default function SlotsGame() {
 
     if (bestMatch) {
       const multiplier = bestMatch.count >= finalReels.length ? config.jackpotMulti : bestMatch.symbol.baseMulti * config.tripleBoost;
-      payout = wager * multiplier * streakMulti * chaosMulti;
+      payout = wager * multiplier * streakMulti * chaosMulti * RTP_ADJUSTMENT;
       message = `${bestMatch.symbol.name.toUpperCase()} ×${bestMatch.count}! +${payout.toFixed(2)}`;
       
       if (config.hasCascading && bestMatch.count === finalReels.length) {
@@ -287,11 +299,15 @@ export default function SlotsGame() {
         message += ' - CASCADING!';
       }
     } else {
-      // Check for pairs
+      // Consolation wins are intentionally rarer to keep RTP realistic.
+      const minConsolationMatch = config.reelCount >= 4 ? 3 : 2;
       for (const [, count] of Object.entries(symbolCounts)) {
-        if (count >= 2) {
-          payout = wager * config.pairMulti * streakMulti * chaosMulti;
-          message = `Match found! +${payout.toFixed(2)}`;
+        if (count >= minConsolationMatch) {
+          const chance = minConsolationMatch === 2 ? 0.42 : 0.28;
+          if (Math.random() <= chance) {
+            payout = wager * config.pairMulti * streakMulti * chaosMulti * RTP_ADJUSTMENT;
+            message = `Match found! +${payout.toFixed(2)}`;
+          }
           break;
         }
       }
@@ -319,6 +335,7 @@ export default function SlotsGame() {
     }
 
     setIsSpinning(true);
+    trackSlotsQuestProgress();
     setResultMsg(usingFreeSpin ? `Bonus spin... (${freeSpinsLeft - 1} left)` : 'Spinning...');
     setErrorMsg('');
     setTotalCascades(0);
@@ -355,7 +372,7 @@ export default function SlotsGame() {
         // Handle book symbol for expanding modes
         if (config.hasExpanding && newReels.some((r) => r.icon === '📖')) {
           const bookCount = newReels.filter((r) => r.icon === '📖').length;
-          const expandBonus = safeBet * (5 * bookCount) * (1 + Math.min(winStreak * config.streakBonusPerWin, 0.9));
+          const expandBonus = safeBet * (3 * bookCount) * (1 + Math.min(winStreak * config.streakBonusPerWin, 0.9)) * RTP_ADJUSTMENT;
           addWin(expandBonus);
           setLastWin(payout + expandBonus);
           setResultMsg(message + ` | BOOK BONUS! +${expandBonus.toFixed(2)}`);
@@ -536,7 +553,7 @@ export default function SlotsGame() {
                   disabled={isSpinning || isCascading}
                   className="h-8 rounded-md border border-slate-800 bg-slate-950 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >
-                  /2
+                  1/2
                 </button>
                 <button
                   onClick={() => setBetAmount((value) => Math.max(config.minBet, value * 2))}
@@ -546,7 +563,7 @@ export default function SlotsGame() {
                   x2
                 </button>
                 <button
-                  onClick={() => setBetAmount(Math.max(config.minBet, 1000))}
+                  onClick={() => setBetAmount(Math.max(config.minBet, Math.floor(balance)))}
                   disabled={isSpinning || isCascading}
                   className="h-8 rounded-md border border-slate-800 bg-slate-950 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >

@@ -71,83 +71,257 @@ function normalizeAmount(raw: number | string) {
 }
 
 export async function POST(request: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  let body: WalletRequestBody;
   try {
-    body = (await request.json()) as WalletRequestBody;
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
-  }
+    const session = await auth();
+    const userId = session?.user?.id;
 
-  const action = body.action;
-  const amount = normalizeAmount(body.amount ?? 0);
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
 
-  if (!action || !['bet', 'win', 'faucet', 'refund'].includes(action)) {
-    return NextResponse.json({ error: 'Invalid wallet action' }, { status: 400 });
-  }
+    let body: WalletRequestBody;
+    try {
+      body = (await request.json()) as WalletRequestBody;
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+    }
 
-  if (action !== 'faucet' && amount <= 0) {
-    return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
-  }
+    const action = body.action;
+    const amount = normalizeAmount(body.amount ?? 0);
 
-  const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
-    const today = todayKey();
-    const week = weekKey();
+    if (!action || !['bet', 'win', 'faucet', 'refund'].includes(action)) {
+      return NextResponse.json({ error: 'Invalid wallet action' }, { status: 400 });
+    }
 
-    await ensureQuestTable(tx);
-    await tx.$executeRawUnsafe(
-      `INSERT OR IGNORE INTO quest_progress (user_id, daily_date, weekly_date) VALUES (?, ?, ?)`,
-      userId,
-      today,
-      week
-    );
+    if (action !== 'faucet' && amount <= 0) {
+      return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
+    }
 
-    await tx.$executeRawUnsafe(
-      `UPDATE quest_progress
-       SET daily_slots_rounds = CASE WHEN daily_date <> ? THEN 0 ELSE daily_slots_rounds END,
-           daily_claimed = CASE WHEN daily_date <> ? THEN 0 ELSE daily_claimed END,
-           daily_date = CASE WHEN daily_date <> ? THEN ? ELSE daily_date END,
-           weekly_slots_rounds = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_slots_rounds END,
-           weekly_bet_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_bet_actions END,
-           weekly_win_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_win_actions END,
-           weekly_claimed = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_claimed END,
-           weekly_date = CASE WHEN weekly_date <> ? THEN ? ELSE weekly_date END,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE user_id = ?`,
-      today,
-      today,
-      today,
-      today,
-      week,
-      week,
-      week,
-      week,
-      userId
-    );
+    const result = await prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const today = todayKey();
+      const week = weekKey();
 
-    let current = await tx.user.findUnique({
-      where: { id: userId },
-      select: {
-        id: true,
-        username: true,
-        balance: true,
-        xp: true,
-        dailyStatsDate: true,
-        dailyBets: true,
-        dailyWins: true,
-        dailyFaucetClaimed: true,
-        dailyQuestClaimed: true,
-      },
+      await ensureQuestTable(tx);
+      await tx.$executeRawUnsafe(
+        `INSERT OR IGNORE INTO quest_progress (user_id, daily_date, weekly_date) VALUES (?, ?, ?)`,
+        userId,
+        today,
+        week
+      );
+
+      await tx.$executeRawUnsafe(
+        `UPDATE quest_progress
+         SET daily_slots_rounds = CASE WHEN daily_date <> ? THEN 0 ELSE daily_slots_rounds END,
+             daily_claimed = CASE WHEN daily_date <> ? THEN 0 ELSE daily_claimed END,
+             daily_date = CASE WHEN daily_date <> ? THEN ? ELSE daily_date END,
+             weekly_slots_rounds = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_slots_rounds END,
+             weekly_bet_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_bet_actions END,
+             weekly_win_actions = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_win_actions END,
+             weekly_claimed = CASE WHEN weekly_date <> ? THEN 0 ELSE weekly_claimed END,
+             weekly_date = CASE WHEN weekly_date <> ? THEN ? ELSE weekly_date END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?`,
+        today,
+        today,
+        today,
+        today,
+        week,
+        week,
+        week,
+        week,
+        userId
+      );
+
+      let current = await tx.user.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          username: true,
+          balance: true,
+          xp: true,
+          dailyStatsDate: true,
+          dailyBets: true,
+          dailyWins: true,
+          dailyFaucetClaimed: true,
+          dailyQuestClaimed: true,
+        },
+      });
+
+      if (!current) {
+        return { error: 'User not found' as const };
+      }
+
+      if (current.dailyStatsDate !== today) {
+        current = await tx.user.update({
+          where: { id: userId },
+          data: {
+            dailyStatsDate: today,
+            dailyBets: 0,
+            dailyWins: 0,
+            dailyFaucetClaimed: false,
+            dailyQuestClaimed: false,
+          },
+          select: {
+            id: true,
+            username: true,
+            balance: true,
+            xp: true,
+            dailyStatsDate: true,
+            dailyBets: true,
+            dailyWins: true,
+            dailyFaucetClaimed: true,
+            dailyQuestClaimed: true,
+          },
+        });
+      }
+
+      if (action === 'faucet') {
+        if (current.dailyFaucetClaimed) {
+          return {
+            error: 'Daily faucet already claimed. Come back tomorrow.' as const,
+            balance: current.balance,
+            xp: current.xp,
+            daily: {
+              date: current.dailyStatsDate,
+              bets: current.dailyBets,
+              wins: current.dailyWins,
+              faucetClaimed: current.dailyFaucetClaimed,
+              questClaimed: current.dailyQuestClaimed,
+            },
+          };
+        }
+
+        const updated = await tx.user.update({
+          where: { id: userId },
+          data: {
+            balance: { increment: DAILY_FAUCET_REWARD },
+            xp: { increment: 120 },
+            dailyFaucetClaimed: true,
+          },
+          select: {
+            username: true,
+            balance: true,
+            xp: true,
+            dailyStatsDate: true,
+            dailyBets: true,
+            dailyWins: true,
+            dailyFaucetClaimed: true,
+            dailyQuestClaimed: true,
+          },
+        });
+
+        return {
+          username: updated.username,
+          balance: updated.balance,
+          xp: updated.xp,
+          daily: {
+            date: updated.dailyStatsDate,
+            bets: updated.dailyBets,
+            wins: updated.dailyWins,
+            faucetClaimed: updated.dailyFaucetClaimed,
+            questClaimed: updated.dailyQuestClaimed,
+          },
+        };
+      }
+
+      if (action === 'bet' && current.balance < amount) {
+        return {
+          error: 'Insufficient balance' as const,
+          balance: current.balance,
+          xp: current.xp,
+          daily: {
+            date: current.dailyStatsDate,
+            bets: current.dailyBets,
+            wins: current.dailyWins,
+            faucetClaimed: current.dailyFaucetClaimed,
+            questClaimed: current.dailyQuestClaimed,
+          },
+        };
+      }
+
+      const updated = await tx.user.update({
+        where: { id: userId },
+        data: {
+          balance: {
+            increment: action === 'win' || action === 'refund' ? amount : -amount,
+          },
+          xp: {
+            increment: action === 'win' ? 10 : action === 'bet' ? 5 : 0,
+          },
+          dailyBets: action === 'bet' ? { increment: 1 } : undefined,
+          dailyWins: action === 'win' ? { increment: 1 } : undefined,
+        },
+        select: {
+          username: true,
+          balance: true,
+          xp: true,
+          dailyStatsDate: true,
+          dailyBets: true,
+          dailyWins: true,
+          dailyFaucetClaimed: true,
+          dailyQuestClaimed: true,
+        },
+      });
+
+      if (action === 'bet' || action === 'win') {
+        await tx.$executeRawUnsafe(
+          `UPDATE quest_progress
+           SET weekly_bet_actions = weekly_bet_actions + ?,
+               weekly_win_actions = weekly_win_actions + ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ?`,
+          action === 'bet' ? 1 : 0,
+          action === 'win' ? 1 : 0,
+          userId
+        );
+      }
+
+      return {
+        username: updated.username,
+        balance: updated.balance,
+        xp: updated.xp,
+        daily: {
+          date: updated.dailyStatsDate,
+          bets: updated.dailyBets,
+          wins: updated.dailyWins,
+          faucetClaimed: updated.dailyFaucetClaimed,
+          questClaimed: updated.dailyQuestClaimed,
+        },
+      };
     });
 
-    if (!current) {
-      return { error: 'User not found' as const };
+    if ('error' in result) {
+      return NextResponse.json(
+        {
+          error: result.error,
+          balance: result.balance ?? 0,
+          xp: result.xp ?? 0,
+          daily: result.daily,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (amount >= 5000) {
+      void notifyLeaderboardRefresh({
+        amount,
+        reason: action,
+      });
+    }
+
+    if (action === 'win' && amount >= 5000 && result.username) {
+      void notifyGlobalWinMessage({
+        username: result.username,
+        amount,
+      });
+    }
+
+    return NextResponse.json({ balance: result.balance, xp: result.xp, daily: result.daily });
+  } catch (error) {
+    console.error('Wallet POST error:', error);
+    return NextResponse.json({ error: 'Failed to process wallet action.' }, { status: 500 });
+  }
+}
     }
 
     if (current.dailyStatsDate !== today) {

@@ -52,8 +52,18 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:4001';
   }
 
+  if (fromEnv === 'same-origin') {
+    return window.location.origin;
+  }
+
   if (!fromEnv) {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 
   try {
@@ -67,7 +77,13 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return `${window.location.protocol}//${window.location.hostname}:4001`;
+    const host = window.location.hostname;
+    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
+    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
+    if (isLocalHost || isPrivateIp) {
+      return `${window.location.protocol}//${window.location.hostname}:4001`;
+    }
+    return window.location.origin;
   }
 }
 
@@ -149,7 +165,7 @@ function nextSoloTurnId(seats: SoloSeat[], fromId: SoloSeatId) {
 }
 
 export default function BlackjackGame({ username = 'You' }: { username?: string }) {
-  const { placeBet, addWin } = useCasinoStore();
+  const { balance, placeBet, addWin } = useCasinoStore();
 
   const [mode, setMode] = useState<BlackjackMode>('solo');
 
@@ -188,7 +204,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
-    const socket = io(socketUrl, {
+      const socket = io(socketUrl, {
+      path: '/socket.io',
       transports: ['websocket'],
       query: { username, blackjackRoomId: 'global' },
     });
@@ -219,7 +236,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     window.setTimeout(() => setSoloError(''), 2200);
   };
 
-  const resolveSoloRound = useCallback((seats: SoloSeat[], dealerCards: string[], deck: string[]) => {
+  const resolveSoloRound = useCallback(async (seats: SoloSeat[], dealerCards: string[], deck: string[]) => {
     let nextDealer = [...dealerCards];
     const nextDeck = [...deck];
 
@@ -272,7 +289,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     setSoloPhase('result');
   }, [addWin, soloBet]);
 
-  const startSoloRound = () => {
+  const startSoloRound = async () => {
     const safeBet = Math.max(1, Math.floor(Number.isFinite(soloBet) ? soloBet : 1));
     if (!placeBet(safeBet)) {
       setSoloError('Not enough funds for this bet.');
@@ -351,7 +368,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       setSoloMessage('You busted. Bots continue...');
       const nextTurn = nextSoloTurnId(nextSeats, 'player');
       if (!nextTurn) {
-        resolveSoloRound(nextSeats, soloDealerCards, nextDeck);
+        void resolveSoloRound(nextSeats, soloDealerCards, nextDeck);
         return;
       }
       setSoloCurrentTurnId(nextTurn);
@@ -379,7 +396,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
     const nextTurn = nextSoloTurnId(nextSeats, 'player');
     if (!nextTurn) {
-      resolveSoloRound(nextSeats, soloDealerCards, soloDeck);
+      void resolveSoloRound(nextSeats, soloDealerCards, soloDeck);
       return;
     }
 
@@ -402,7 +419,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       if (!bot.isBot || bot.stood || bot.busted) {
         const nextTurn = nextSoloTurnId(soloSeats, soloCurrentTurnId);
         if (!nextTurn) {
-          resolveSoloRound(soloSeats, soloDealerCards, soloDeck);
+          void resolveSoloRound(soloSeats, soloDealerCards, soloDeck);
           return;
         }
         setSoloCurrentTurnId(nextTurn);
@@ -435,7 +452,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
         if (busted) {
           const nextTurn = nextSoloTurnId(nextSeats, soloCurrentTurnId);
           if (!nextTurn) {
-            resolveSoloRound(nextSeats, soloDealerCards, nextDeck);
+            void resolveSoloRound(nextSeats, soloDealerCards, nextDeck);
             return;
           }
           setSoloCurrentTurnId(nextTurn);
@@ -455,7 +472,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
       const nextTurn = nextSoloTurnId(nextSeats, soloCurrentTurnId);
       if (!nextTurn) {
-        resolveSoloRound(nextSeats, soloDealerCards, soloDeck);
+        void resolveSoloRound(nextSeats, soloDealerCards, soloDeck);
         return;
       }
 
@@ -479,7 +496,17 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     }
 
     setJoiningRoom(true);
-    socket.emit('join_blackjack_room', { roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) return;
+      setJoiningRoom(false);
+      setFriendsNotice('Join room timed out. Please try again.');
+    }, 2200);
+
+    socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not join room.');
@@ -507,7 +534,17 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     }
 
     setJoiningRoom(true);
-    socket.emit('join_blackjack_room', { roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    
+    let ackReceived = false;
+    const ackTimeout = window.setTimeout(() => {
+      if (ackReceived) return;
+      setJoiningRoom(false);
+      setFriendsNotice('Create room timed out. Please try again.');
+    }, 2200);
+
+    socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      ackReceived = true;
+      window.clearTimeout(ackTimeout);
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not create room.');
@@ -523,10 +560,9 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const copyFriendsInvite = async () => {
     const roomCode = friendsState.roomId || friendsRoomId;
-    const text = `Login: ${window.location.origin}/login\nBlackjack room code: ${roomCode}`;
-    const copied = await copyToClipboard(text);
+    const copied = await copyToClipboard(roomCode);
     if (copied) {
-      setFriendsNotice('Invite copied.');
+      setFriendsNotice('Room code copied.');
     } else {
       setFriendsNotice(`Share this room id: ${roomCode}`);
     }
@@ -666,6 +702,22 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 disabled={soloPhase === 'playing'}
                 className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
               />
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <button
+                  onClick={() => setSoloBet((value) => Math.max(1, Math.floor(value / 2) || 1))}
+                  disabled={soloPhase === 'playing'}
+                  className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                >
+                  1/2
+                </button>
+                <button
+                  onClick={() => setSoloBet(Math.max(0, Math.floor(balance)))}
+                  disabled={soloPhase === 'playing'}
+                  className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                >
+                  MAX
+                </button>
+              </div>
             </div>
 
             <div className="flex gap-2 justify-end flex-wrap">

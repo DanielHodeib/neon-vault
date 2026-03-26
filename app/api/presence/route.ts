@@ -6,6 +6,10 @@ function getGameServerUrl() {
     return 'http://localhost:4001';
   }
 
+  if (fromEnv === 'same-origin') {
+    return 'http://localhost:4001';
+  }
+
   try {
     return new URL(fromEnv).toString().replace(/\/$/, '');
   } catch {
