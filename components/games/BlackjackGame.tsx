@@ -197,7 +197,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const [friendsRoomId, setFriendsRoomId] = useState('global');
   const [friendsRoomInput, setFriendsRoomInput] = useState('global');
-  const [friendsBetInput, setFriendsBetInput] = useState('100');
+  const [friendsBetInput, setFriendsBetInput] = useState(100);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [friendsNotice, setFriendsNotice] = useState('Create or join a room to play with friends.');
   const [friendsState, setFriendsState] = useState<FriendsState>({
@@ -723,7 +723,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 type="number"
                 min={1}
                 value={soloBet}
-                onChange={(event) => setSoloBet(Math.max(0, Number(event.target.value) || 0))}
+                onChange={(event) => setSoloBet(Math.max(0, parseInt(event.target.value, 10) || 0))}
                 disabled={soloPhase === 'playing'}
                 className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
               />
@@ -777,7 +777,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               type="number"
               min={1}
               value={friendsBetInput}
-              onChange={(event) => setFriendsBetInput(event.target.value)}
+              onChange={(event) => setFriendsBetInput(Math.max(0, parseInt(event.target.value, 10) || 0))}
               className="h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
               placeholder="bet amount"
             />

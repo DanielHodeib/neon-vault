@@ -36,22 +36,22 @@ export default function Sidebar({
   const visibleItems = SIDEBAR_ITEMS.filter((item) => !item.adminOnly || isAdmin);
 
   return (
-    <aside className={`hub-sidebar ${collapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-all duration-300`}>
-      <div className={`h-16 flex items-center ${collapsed ? 'px-3 justify-between' : 'px-5'} border-b border-slate-800`}>
+    <aside className={`hub-sidebar ${collapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-[width] duration-300 ease-out`}>
+      <div className={`h-16 flex items-center ${collapsed ? 'px-3 justify-between' : 'px-5'} border-b border-slate-800 transition-[padding] duration-300`}>
         {!collapsed ? (
-          <Link href="/" className="inline-flex items-center gap-2 text-lg font-black tracking-wide text-white hover:text-cyan-200 transition-colors">
+          <Link href="/" className="inline-flex items-center gap-2 text-lg font-black tracking-wide text-white hover:text-cyan-200 transition-all duration-300">
             <span className="text-cyan-300">NEON</span>
             <span>VAULT</span>
           </Link>
         ) : (
-          <Link href="/" className="w-8 h-8 rounded bg-cyan-600/20 border border-cyan-400/40 text-cyan-200 text-xs font-black inline-flex items-center justify-center">
+          <Link href="/" className="w-8 h-8 rounded bg-cyan-600/20 border border-cyan-400/40 text-cyan-200 text-xs font-black inline-flex items-center justify-center transition-all duration-300">
             NV
           </Link>
         )}
 
         <button
           onClick={onToggle}
-          className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center hover:bg-blue-500 transition-colors"
+          className={`w-8 h-8 bg-blue-600 rounded flex items-center justify-center hover:bg-blue-500 transition-all duration-300 ${collapsed ? 'rotate-180' : 'rotate-0'}`}
           aria-label="Toggle sidebar"
           type="button"
         >
@@ -66,7 +66,7 @@ export default function Sidebar({
             <Link
               key={item.href}
               href={item.href}
-              className={`w-full h-11 rounded-xl transition-all flex items-center ${
+              className={`group w-full h-11 rounded-xl transition-all flex items-center ${
                 collapsed ? 'justify-center' : 'px-3 gap-3'
               } ${
                 active
@@ -75,8 +75,8 @@ export default function Sidebar({
               }`}
               title={collapsed ? item.label : undefined}
             >
-              <span>{item.icon}</span>
-              {!collapsed ? <span className="text-base font-medium">{item.label}</span> : null}
+              <span className="transition-transform duration-300 group-hover:scale-110">{item.icon}</span>
+              {!collapsed ? <span className="text-base font-medium transition-all duration-200 opacity-100 translate-x-0">{item.label}</span> : null}
             </Link>
           );
         })}

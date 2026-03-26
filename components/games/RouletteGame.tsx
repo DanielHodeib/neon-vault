@@ -786,7 +786,7 @@ export default function RouletteGame() {
             type="number"
             min={1}
             value={chipValue}
-            onChange={(event) => setChipValue(Math.max(0, Math.floor(Number(event.target.value) || 0)))}
+            onChange={(event) => setChipValue(Math.max(0, parseInt(event.target.value, 10) || 0))}
             disabled={isSpinning}
             className="w-full bg-slate-900 border border-slate-800 rounded-lg p-4 outline-none font-mono text-white focus:border-blue-600"
           />

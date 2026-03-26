@@ -174,6 +174,18 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       }
     });
 
+    socket.on('poker_created', (payload: { roomId?: string }) => {
+      if (!payload?.roomId) {
+        return;
+      }
+
+      setPokerRoomId(payload.roomId);
+      setPokerRoomInput(payload.roomId);
+      setSwitchingRoom(false);
+      setState((current) => ({ ...current, roomId: payload.roomId }));
+      setNotice(`Private room ${payload.roomId} ready.`);
+    });
+
     socket.on('poker_state', (payload: PokerState) => {
       setState(payload);
     });
@@ -189,6 +201,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
     return () => {
       setSelfSocketId(null);
+      socket.off('poker_created');
       socket.disconnect();
       socketRef.current = null;
     };

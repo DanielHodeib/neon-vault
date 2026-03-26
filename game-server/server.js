@@ -625,6 +625,10 @@ function getBlackjackPlayerStatus(room, socketId) {
     return 'WAITING';
   }
 
+  if (typeof player.status === 'string') {
+    return player.status;
+  }
+
   return player.stood || player.busted ? 'WAITING' : 'PLAYER_TURN';
 }
 
@@ -671,6 +675,7 @@ function resolveBlackjackRound(room) {
   const dealerValue = blackjackHandValue(room.dealerHand);
   room.players.forEach((player) => {
     const value = blackjackHandValue(player.hand);
+    player.status = 'ROUND_OVER';
 
     if (value > 21) {
       player.resultText = 'Bust';
@@ -724,6 +729,7 @@ function startBlackjackRound(roomId) {
     player.hand = [room.deck.pop(), room.deck.pop()];
     player.stood = false;
     player.busted = blackjackHandValue(player.hand) > 21;
+    player.status = player.busted ? 'WAITING' : 'PLAYER_TURN';
     player.resultText = '';
   });
 
@@ -750,6 +756,7 @@ function applyBlackjackHit(room, socketId) {
   player.hand.push(room.deck.pop());
   player.busted = blackjackHandValue(player.hand) > 21;
   if (player.busted) {
+    player.status = 'WAITING';
     player.resultText = 'Bust';
   }
 
@@ -774,6 +781,7 @@ function applyBlackjackStand(room, socketId) {
   }
 
   player.stood = true;
+  player.status = 'WAITING';
   player.resultText = 'Stand';
   broadcastBlackjackState(room.id);
   maybeResolveBlackjackRound(room);
@@ -783,7 +791,6 @@ function applyBlackjackStand(room, socketId) {
 function createPokerRoomForSocket(socket, username) {
   const roomId = `pk-${Math.random().toString(36).slice(2, 8)}`;
   const room = attachPokerSocket(socket, roomId, username);
-  io.to(socket.id).emit('poker_state', publicPokerState(room, socket.id));
   return room;
 }
 
@@ -989,13 +996,13 @@ function emitToCrashRoom(roomId, event, payload) {
   io.to(roomChannel(room.id)).emit(event, payload);
 }
 
-function publicPokerState(room, targetSocketId) {
+function publicPokerState(room) {
   const players = Array.from(room.players.values()).map((player) => ({
     socketId: player.socketId,
     username: player.username,
     ready: player.ready,
     folded: player.folded,
-    hand: player.socketId === targetSocketId || room.stage === 'showdown' ? player.hand : ['??', '??'],
+    hand: player.hand,
     actionText: player.actionText,
     isWinner: player.socketId === room.winnerSocketId,
   }));
@@ -1012,9 +1019,7 @@ function publicPokerState(room, targetSocketId) {
 
 function broadcastPokerState(roomId) {
   const room = getPokerRoom(roomId);
-  room.sockets.forEach((socketId) => {
-    io.to(socketId).emit('poker_state', publicPokerState(room, socketId));
-  });
+  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room));
 }
 
 function resetPokerRound(room) {
@@ -1310,7 +1315,7 @@ function attachPokerSocket(socket, roomId, username) {
   socket.join(pokerChannel(room.id));
 
   // Immediately push poker_state to the full room when a player joins.
-  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room, socket.id));
+  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room));
   broadcastPokerState(room.id);
   startPokerRound(room.id);
   return room;
@@ -1356,6 +1361,7 @@ function attachBlackjackSocket(socket, roomId, username) {
     hand: [],
     stood: false,
     busted: false,
+    status: 'WAITING',
     resultText: '',
   });
 
@@ -1721,21 +1727,25 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join_poker_room', (payload, callback) => {
+    console.log('Event received: join_poker_room', payload);
     const desired = sanitizeRoomId(payload?.roomId);
     const nextRoom = attachPokerSocket(socket, desired, username);
 
     setUserActivity(socket.id, "Poker");
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
-    socket.emit('poker_state', publicPokerState(nextRoom, socket.id));
+    io.to(pokerChannel(nextRoom.id)).emit('poker_state', publicPokerState(nextRoom));
   });
 
-  socket.on('poker_create', (_payload, callback) => {
+  socket.on('poker_create', (payload, callback) => {
+    console.log('Event received: poker_create', payload);
     const nextRoom = createPokerRoomForSocket(socket, username);
 
     setUserActivity(socket.id, 'Poker');
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
+    socket.emit('poker_created', { roomId: nextRoom.id });
+    io.to(pokerChannel(nextRoom.id)).emit('poker_state', publicPokerState(nextRoom));
   });
 
   socket.on('join_blackjack_room', (payload, callback) => {
@@ -2008,10 +2018,33 @@ io.on('connection', (socket) => {
   });
 
   socket.on('blackjack_deal', (payload, callback) => {
+    console.log('Event received: blackjack_deal', payload);
     const roomId = socket.data.blackjackRoomId;
+    const amount = parseInt(String(payload?.amount ?? ''), 10);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      callback?.({ ok: false, error: 'Invalid bet amount.' });
+      return;
+    }
+
+    const profile = getSocketProfile(socket.id, username);
+    if (Number.isFinite(Number(profile.balance)) && Number(profile.balance) < amount) {
+      callback?.({ ok: false, error: 'Insufficient balance.' });
+      return;
+    }
+
+    if (Number.isFinite(Number(profile.balance))) {
+      profile.balance = Number(profile.balance) - amount;
+      socketProfiles.set(socket.id, profile);
+    }
+
     const result = startBlackjackRound(roomId);
 
     if (!result.ok) {
+      if (Number.isFinite(Number(profile.balance))) {
+        profile.balance = Number(profile.balance) + amount;
+        socketProfiles.set(socket.id, profile);
+      }
       callback?.(result);
       return;
     }
@@ -2019,9 +2052,11 @@ io.on('connection', (socket) => {
     const room = getBlackjackRoom(roomId);
     const player = room.players.get(socket.id);
     if (player) {
-      const amount = Math.floor(Number(payload?.amount ?? 0));
-      player.bet = Number.isFinite(amount) && amount > 0 ? amount : 0;
+      player.bet = amount;
+      player.status = 'PLAYER_TURN';
     }
+
+    io.to(socket.id).emit('blackjack_state', publicBlackjackState(room, socket.id));
 
     callback?.({ ok: true });
   });
@@ -2039,9 +2074,16 @@ io.on('connection', (socket) => {
   });
 
   socket.on('blackjack_action', (payload, callback) => {
+    console.log('Event received: blackjack_action', payload);
     const roomId = socket.data.blackjackRoomId;
     const room = getBlackjackRoom(roomId);
     const action = typeof payload?.action === 'string' ? payload.action.toLowerCase() : '';
+    const game = publicBlackjackState(room, socket.id);
+
+    if (game.status !== 'PLAYER_TURN') {
+      callback?.({ ok: false, error: 'Not your turn.' });
+      return;
+    }
 
     if (action === 'hit') {
       callback?.(applyBlackjackHit(room, socket.id));
@@ -2079,6 +2121,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('poker_action', (payload, callback) => {
+    console.log('Event received: poker_action', payload);
     const roomId = socket.data.pokerRoomId;
     const room = getPokerRoom(roomId);
     const player = room.players.get(socket.id);
