@@ -1,22 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { House, Menu, Settings, Shield, Trophy } from 'lucide-react';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { House, Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand } from 'lucide-react';
 
 type SidebarItem = {
   label: string;
-  href: string;
   icon: React.ReactNode;
+  href?: string;
+  tabKey?: string;
+  onClick?: () => void;
   adminOnly?: boolean;
 };
-
-const SIDEBAR_ITEMS: SidebarItem[] = [
-  { label: 'Home', href: '/', icon: <House size={20} /> },
-  { label: 'Leaderboard', href: '/leaderboard', icon: <Trophy size={20} /> },
-  { label: 'Settings', href: '/settings', icon: <Settings size={20} /> },
-  { label: 'Admin', href: '/admin', icon: <Shield size={20} />, adminOnly: true },
-];
 
 export default function Sidebar({
   collapsed,
@@ -24,16 +19,30 @@ export default function Sidebar({
   isAdmin,
   dailyFaucetClaimed,
   onClaimFaucet,
+  onOpenLeaderboard,
 }: {
   collapsed: boolean;
   onToggle: () => void;
   isAdmin: boolean;
   dailyFaucetClaimed: boolean;
   onClaimFaucet: () => void;
+  onOpenLeaderboard: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const activeGame = searchParams.get('game');
 
-  const visibleItems = SIDEBAR_ITEMS.filter((item) => !item.adminOnly || isAdmin);
+  const sidebarItems: SidebarItem[] = [
+    { label: 'Home', href: '/', icon: <House size={20} /> },
+    { label: 'Crash', href: '/hub?game=crash', icon: <TrendingUp size={20} />, tabKey: 'crash' },
+    { label: 'Slots', href: '/hub?game=slots', icon: <Coins size={20} />, tabKey: 'slots' },
+    { label: 'Blackjack', href: '/hub?game=blackjack', icon: <Hand size={20} />, tabKey: 'blackjack' },
+    { label: 'Leaderboard', icon: <Trophy size={20} />, onClick: onOpenLeaderboard },
+    { label: 'Settings', href: '/settings', icon: <Settings size={20} /> },
+    { label: 'Admin', href: '/admin', icon: <Shield size={20} />, adminOnly: true },
+  ];
+
+  const visibleItems = sidebarItems.filter((item) => !item.adminOnly || isAdmin);
 
   return (
     <aside className={`hub-sidebar ${collapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-[width] duration-300 ease-out`}>
@@ -61,18 +70,35 @@ export default function Sidebar({
 
       <nav className={`flex-1 ${collapsed ? 'p-2' : 'p-4'} space-y-2 overflow-y-auto custom-scrollbar`}>
         {visibleItems.map((item) => {
-          const active = pathname === item.href;
+          const active = item.tabKey ? pathname === '/hub' && activeGame === item.tabKey : item.href ? pathname === item.href : false;
+          const sharedClassName = `group w-full h-11 rounded-xl transition-all flex items-center ${
+            collapsed ? 'justify-center' : 'px-3 gap-3'
+          } ${
+            active
+              ? 'bg-cyan-500/18 text-cyan-200 border border-cyan-500/30 shadow-[0_0_18px_rgba(34,211,238,0.18)]'
+              : 'text-slate-300 hover:text-white hover:bg-slate-800 border border-transparent'
+          }`;
+
+          if (!item.href) {
+            return (
+              <button
+                key={item.label}
+                type="button"
+                onClick={item.onClick}
+                className={sharedClassName}
+                title={collapsed ? item.label : undefined}
+              >
+                <span className="transition-transform duration-300 group-hover:scale-110">{item.icon}</span>
+                {!collapsed ? <span className="text-base font-medium transition-all duration-200 opacity-100 translate-x-0">{item.label}</span> : null}
+              </button>
+            );
+          }
+
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`group w-full h-11 rounded-xl transition-all flex items-center ${
-                collapsed ? 'justify-center' : 'px-3 gap-3'
-              } ${
-                active
-                  ? 'bg-cyan-500/18 text-cyan-200 border border-cyan-500/30 shadow-[0_0_18px_rgba(34,211,238,0.18)]'
-                  : 'text-slate-300 hover:text-white hover:bg-slate-800 border border-transparent'
-              }`}
+              className={sharedClassName}
               title={collapsed ? item.label : undefined}
             >
               <span className="transition-transform duration-300 group-hover:scale-110">{item.icon}</span>

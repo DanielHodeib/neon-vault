@@ -209,6 +209,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
   const joinPokerRoom = () => {
     const roomId = pokerRoomInput.trim().toLowerCase();
+    console.log('Button clicked: poker_join_room', { roomId });
     if (!roomId) {
       setNotice('Please enter a room id.');
       return;
@@ -234,6 +235,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   };
 
   const createPokerRoom = () => {
+    console.log('Button clicked: poker_create');
     const socket = socketRef.current;
     if (!socket || !socket.connected) {
       setNotice('Socket disconnected.');

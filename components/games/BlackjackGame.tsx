@@ -578,6 +578,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const startFriendsRound = () => {
     const amount = Math.floor(Number(friendsBetInput));
+    console.log('Button clicked: blackjack_deal', { amount });
     if (!Number.isFinite(amount) || amount < 1) {
       setFriendsNotice('Enter a valid bet amount.');
       return;
@@ -597,6 +598,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const friendHit = () => {
+    console.log('Button clicked: blackjack_hit');
     socketRef.current?.emit('blackjack_action', { action: 'hit' }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Hit failed.');
@@ -605,6 +607,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const friendStand = () => {
+    console.log('Button clicked: blackjack_stand');
     socketRef.current?.emit('blackjack_action', { action: 'stand' }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Stand failed.');

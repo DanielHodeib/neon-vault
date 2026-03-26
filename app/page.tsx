@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { auth } from '@/auth';
+import HomeLeaderboardModal from '@/components/HomeLeaderboardModal';
 
 const GAME_CARDS: Array<{
   title: string;
@@ -95,17 +96,18 @@ export default async function Home() {
           </div>
           <div className="mt-5 flex flex-wrap gap-3">
             <Link
-              href="#games-grid"
+              href="/hub"
               className="inline-flex h-10 items-center rounded-lg bg-cyan-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-cyan-500"
             >
               Open Main Hub
             </Link>
             <Link
-              href="/leaderboard"
-              className="inline-flex h-10 items-center rounded-lg border border-slate-700 bg-slate-900 px-4 text-sm font-semibold text-slate-200 transition-colors hover:bg-slate-800"
+              href="#games-grid"
+              className="inline-flex h-10 items-center rounded-lg border border-cyan-700/60 bg-cyan-600/10 px-4 text-sm font-semibold text-cyan-300 transition-colors hover:bg-cyan-600/20"
             >
-              View Leaderboard
+              Play Now
             </Link>
+            <HomeLeaderboardModal />
           </div>
         </div>
 

@@ -253,6 +253,7 @@ export default function MainHubRealtime({
   } = useCasinoStore();
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(initialTab === 'leaderboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [hadSocketConnection, setHadSocketConnection] = useState(false);
@@ -415,6 +416,13 @@ export default function MainHubRealtime({
       setActiveTab('settings');
     }
   }, [activeTab, isDanielAdmin]);
+
+  useEffect(() => {
+    if (activeTab === 'leaderboard') {
+      setLeaderboardModalOpen(true);
+      setActiveTab('crash');
+    }
+  }, [activeTab]);
 
   const level = useMemo(() => Math.floor(xp / 1000) + 1, [xp]);
   const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
@@ -1818,6 +1826,7 @@ export default function MainHubRealtime({
         isAdmin={isDanielAdmin}
         dailyFaucetClaimed={daily.faucetClaimed}
         onClaimFaucet={handleFaucet}
+        onOpenLeaderboard={() => setLeaderboardModalOpen(true)}
       />
 
       <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0">
@@ -2673,6 +2682,42 @@ export default function MainHubRealtime({
           ) : null}
         </div>
       </main>
+
+      <AnimatePresence>
+        {leaderboardModalOpen ? (
+          <motion.div
+            className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm p-4 md:p-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="mx-auto h-full max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-cyan-500/35 bg-slate-900 shadow-[0_0_45px_rgba(34,211,238,0.22)]"
+              initial={{ y: 24, opacity: 0.8 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 24, opacity: 0.8 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 bg-slate-950">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Live Rankings</p>
+                  <h3 className="text-lg font-bold text-slate-100">Leaderboard</h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setLeaderboardModalOpen(false)}
+                  className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+                >
+                  Close
+                </button>
+              </div>
+              <div className="h-[calc(92vh-64px)] overflow-y-auto">
+                <LeaderboardPanel />
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
