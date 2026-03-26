@@ -5,6 +5,7 @@ import { io, Socket } from 'socket.io-client';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 const MIN_BET = 1;
+const GLOBAL_CRASH_ROOM_ID = 'global';
 
 interface CrashPlayer {
   username: string;
@@ -35,7 +36,6 @@ export default function CrashGame() {
   const [phase, setPhase] = useState<'waiting' | 'running' | 'crashed'>('waiting');
   const [multiplier, setMultiplier] = useState(1.0);
   const [betInput, setBetInput] = useState('100');
-  const [crashRoomId, setCrashRoomId] = useState('global');
   const [players, setPlayers] = useState<CrashPlayer[]>([]);
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncingCashOut, setIsSyncingCashOut] = useState(false);
@@ -55,6 +55,10 @@ export default function CrashGame() {
   const hasBetOnServer = Boolean(serverMe && !serverMe.cashedOut);
   const hasBet = hasBetOnServer;
   const canEditBet = phase === 'waiting' && !isPlacingBet && !hasBetOnServer;
+  const activePlayers = useMemo(
+    () => Array.from(new Set(players.map((player) => player.username).filter(Boolean))),
+    [players]
+  );
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg);
@@ -67,7 +71,7 @@ export default function CrashGame() {
     const socket = io(url, {
       path: '/socket.io',
       transports: ['polling', 'websocket'], // Polling zuerst für stabilere Tunnel-Verbindungen
-      query: { username: effectiveUsername, crashRoomId: 'global' },
+      query: { username: effectiveUsername, crashRoomId: GLOBAL_CRASH_ROOM_ID },
       reconnectionAttempts: 5,
       timeout: 10000,
     });
@@ -76,16 +80,7 @@ export default function CrashGame() {
 
     socket.on('connect', () => console.log('Crash Socket Connected'));
 
-    socket.on('crash_room_joined', (payload: { ok?: boolean; roomId?: string }) => {
-      if (payload?.ok && payload.roomId) {
-        setCrashRoomId(payload.roomId);
-      }
-    });
-
     socket.on('crash_state', (payload: CrashStatePayload) => {
-      if (payload?.roomId) {
-        setCrashRoomId(payload.roomId);
-      }
       setPhase(payload.phase);
       setMultiplier(payload.multiplier);
       setPlayers(payload.players || []);
@@ -93,9 +88,6 @@ export default function CrashGame() {
     });
 
     socket.on('crash_tick', (payload: { roomId?: string; multiplier: number; players: CrashPlayer[] }) => {
-      if (payload?.roomId) {
-        setCrashRoomId(payload.roomId);
-      }
       setMultiplier(payload.multiplier);
       setPlayers(payload.players || []);
       setPhase('running');
@@ -143,7 +135,7 @@ export default function CrashGame() {
       return showError("Server not reachable");
     }
 
-    socket.emit('crash_place_bet', { amount: safeBet, roomId: crashRoomId }, (res: { ok: boolean; error?: string }) => {
+    socket.emit('crash_place_bet', { amount: safeBet, roomId: GLOBAL_CRASH_ROOM_ID }, (res: { ok: boolean; error?: string }) => {
       if (!res.ok) {
         // 3. Rollback bei Fehler
         addWin(safeBet);
@@ -246,6 +238,20 @@ export default function CrashGame() {
                 {isSyncingCashOut ? 'Syncing...' : hasBetOnServer ? `Cash Out ${(Number(serverMe?.amount || 0) * multiplier).toFixed(2)}` : 'Waiting...'}
               </button>
             )}
+          </div>
+
+          <div className="flex-1 md:max-w-[240px]">
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Players Active ({activePlayers.length})</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {activePlayers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
+                {activePlayers.map((player, index) => (
+                  <span key={`${player}-${index}`} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
+                    {player}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </div>

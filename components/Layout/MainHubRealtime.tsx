@@ -3,6 +3,7 @@
 import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
+  House,
   Wallet,
   TrendingUp,
   Coins,
@@ -23,6 +24,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { io, Socket } from 'socket.io-client';
+import { useRouter } from 'next/navigation';
 import { signOut } from 'next-auth/react';
 import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
@@ -224,7 +226,14 @@ function shouldForcePolling(socketUrl: string) {
   }
 }
 
-export default function MainHubRealtime({ initialUsername }: { initialUsername?: string }) {
+export default function MainHubRealtime({
+  initialUsername,
+  initialTab = 'crash',
+}: {
+  initialUsername?: string;
+  initialTab?: Tab;
+}) {
+  const router = useRouter();
   const {
     balance,
     username,
@@ -241,7 +250,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     setAnnouncement,
   } = useCasinoStore();
 
-  const [activeTab, setActiveTab] = useState<Tab>('crash');
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [hadSocketConnection, setHadSocketConnection] = useState(false);
@@ -1810,10 +1819,19 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           >
             <Menu size={18} className="text-white" />
           </button>
-          {!sidebarCollapsed ? <h1 className="text-lg font-bold text-white tracking-wide">NEON VAULT</h1> : null}
+          {!sidebarCollapsed ? (
+            <button
+              type="button"
+              onClick={() => router.push('/')}
+              className="text-lg font-bold text-white tracking-wide hover:text-cyan-200 transition-colors"
+            >
+              NEON VAULT
+            </button>
+          ) : null}
         </div>
 
         <nav className={`flex-1 ${sidebarCollapsed ? 'p-3' : 'p-4'} space-y-2 overflow-y-auto custom-scrollbar`}>
+          <SidebarButton icon={<House size={20} />} label="Home" active={false} onClick={() => router.push('/')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<TrendingUp size={20} />} label="Neon Rocket" active={activeTab === 'crash'} onClick={() => setActiveTab('crash')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<TrendingUp size={20} />} label="Cyber Aviator" active={activeTab === 'crash-aviator'} onClick={() => setActiveTab('crash-aviator')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Coins size={20} />} label="Slots" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} collapsed={sidebarCollapsed} />

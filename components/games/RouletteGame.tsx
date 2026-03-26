@@ -5,7 +5,6 @@ import { motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
-import { copyToClipboard } from '@/lib/copyToClipboard';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 type BetType = 'number' | 'color' | 'parity' | 'range' | 'dozen' | 'column';
@@ -301,9 +300,7 @@ export default function RouletteGame() {
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
   const [errorText, setErrorText] = useState('');
   const [rouletteRoomId, setRouletteRoomId] = useState('global');
-  const [rouletteRoomInput, setRouletteRoomInput] = useState('global');
   const [rouletteRoomMembers, setRouletteRoomMembers] = useState<string[]>([]);
-  const [joiningRoom, setJoiningRoom] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const rouletteRoomIdRef = useRef('global');
   const pendingSpinStakeRef = useRef(0);
@@ -338,7 +335,6 @@ export default function RouletteGame() {
     const rouletteRoomJoinedHandler = (payload: { ok: boolean; roomId?: string }) => {
       if (payload.ok && payload.roomId) {
         setRouletteRoomId(payload.roomId);
-        setRouletteRoomInput(payload.roomId);
       }
     };
 
@@ -433,49 +429,6 @@ export default function RouletteGame() {
     };
   }, [addWin, effectiveUsername]);
 
-  const joinRouletteRoom = (roomId: string) => {
-    const socket = socketRef.current;
-    const nextRoom = roomId.trim().toLowerCase();
-
-    if (!socket || !socket.connected) {
-      setErrorText('Socket not connected');
-      return;
-    }
-
-    if (!nextRoom) {
-      setErrorText('Enter a room name');
-      return;
-    }
-
-    setJoiningRoom(true);
-    socket.emit('joinRoom', { game: 'roulette', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
-      setJoiningRoom(false);
-      if (!response.ok || !response.roomId) {
-        setErrorText(response.error ?? 'Could not join room');
-        return;
-      }
-
-      setRouletteRoomId(response.roomId);
-      setRouletteRoomInput(response.roomId);
-      setErrorText('');
-    });
-  };
-
-  const createRouletteRoom = () => {
-    const room = `room-${Math.random().toString(36).slice(2, 7)}`;
-    setRouletteRoomInput(room);
-    joinRouletteRoom(room);
-  };
-
-  const copyRouletteInvite = async () => {
-    const copied = await copyToClipboard(rouletteRoomId);
-    if (copied) {
-      toast.success('Roulette room code copied.');
-      return;
-    }
-    setErrorText(`Share this room id: ${rouletteRoomId}`);
-  };
-
   const placeChip = (type: BetType, value: string) => {
     if (isSpinning) {
       return;
@@ -568,42 +521,12 @@ export default function RouletteGame() {
           <div className="min-h-0 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-2xl font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
-              <p className="text-sm text-slate-400">Single Zero Table · Room {rouletteRoomId}</p>
+              <p className="text-sm text-slate-400">Single Zero Table · Global</p>
             </div>
 
             <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-              <p className="text-xs font-bold text-slate-500 uppercase mb-2">Room</p>
-              <div className="flex gap-2">
-                <input
-                  value={rouletteRoomInput}
-                  onChange={(event) => setRouletteRoomInput(event.target.value)}
-                  className="h-10 flex-1 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100 outline-none focus:border-cyan-500"
-                  placeholder="global oder room-name"
-                />
-                <button
-                  onClick={() => joinRouletteRoom(rouletteRoomInput)}
-                  disabled={joiningRoom}
-                  className="h-10 px-3 rounded-md bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold disabled:opacity-60"
-                >
-                  {joiningRoom ? 'Joining...' : 'Join'}
-                </button>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  onClick={createRouletteRoom}
-                  className="h-8 px-3 rounded-md border border-slate-700 bg-slate-950 hover:bg-slate-800 text-xs font-semibold text-slate-200"
-                >
-                  Create Private
-                </button>
-                <button
-                  onClick={copyRouletteInvite}
-                  className="h-8 px-3 rounded-md border border-cyan-700/60 bg-cyan-600/10 hover:bg-cyan-600/20 text-xs font-semibold text-cyan-300"
-                >
-                  Copy Invite
-                </button>
-              </div>
               <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/70 p-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">At table ({rouletteRoomMembers.length})</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({rouletteRoomMembers.length})</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {rouletteRoomMembers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
                   {rouletteRoomMembers.map((member, index) => (
@@ -902,7 +825,7 @@ export default function RouletteGame() {
         </div>
       </div>
       <div className="px-6 pb-4 bg-slate-950">
-        <p className="text-sm text-slate-400">{status} · Room {rouletteRoomId}</p>
+        <p className="text-sm text-slate-400">{status} · Global table</p>
       </div>
     </div>
   );

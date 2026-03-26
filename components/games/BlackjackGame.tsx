@@ -187,7 +187,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const [soloSeats, setSoloSeats] = useState<SoloSeat[]>([]);
   const [soloCurrentTurnId, setSoloCurrentTurnId] = useState<SoloSeatId | null>(null);
   const [soloDealerCards, setSoloDealerCards] = useState<string[]>([]);
-  const [soloBet, setSoloBet] = useState(100);
+  const [soloBet, setSoloBet] = useState(0);
   const [soloMessage, setSoloMessage] = useState('Set your bet and deal a new hand.');
   const [soloError, setSoloError] = useState('');
   const [soloOutcome, setSoloOutcome] = useState<{ tone: 'win' | 'lose' | 'push'; text: string } | null>(null);
@@ -305,7 +305,13 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   }, [addWin, soloBet]);
 
   const startSoloRound = async () => {
-    const safeBet = Math.max(1, Math.floor(Number.isFinite(soloBet) ? soloBet : 1));
+    const safeBet = Math.max(0, Math.floor(Number.isFinite(soloBet) ? soloBet : 0));
+    if (safeBet < 1) {
+      setSoloError('Select a bet first.');
+      clearSoloErrorSoon();
+      return;
+    }
+
     if (!placeBet(safeBet)) {
       setSoloError('Not enough funds for this bet.');
       clearSoloErrorSoon();
@@ -593,6 +599,10 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const soloBots = useMemo(() => soloSeats.filter((seat) => seat.isBot), [soloSeats]);
   const canPlayerAct = soloPhase === 'playing' && soloCurrentTurnId === 'player';
   const soloDealerVisible = soloPhase === 'result' ? soloDealerCards : soloDealerCards.map((card, index) => (index === 1 ? '??' : card));
+  const canDealSolo = (soloPhase === 'idle' || soloPhase === 'result') && soloBet >= 1 && soloBet <= Number(balance);
+  const soloPlayerValue = handValue(soloPlayerSeat?.hand ?? []);
+  const soloDealerKnownValue = handValue(soloDealerVisible.filter((card) => card !== '??'));
+  const myFriendValue = handValue(myFriendSeat?.hand ?? []);
   const friendsOtherPlayers = friendsState.players.filter((player) => player.username !== username);
 
   const soloTurnLabel =
@@ -670,6 +680,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               <div className="absolute top-[47%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-center">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Table</p>
                 <p className="text-lg font-semibold text-slate-200 mt-1">{soloMessage}</p>
+                <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {soloDealerKnownValue}{soloPhase !== 'result' && soloDealerVisible.length > 1 ? ' + ?' : ''} | You: {soloPlayerValue}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">{soloTurnLabel}</p>
                 {soloError ? <p className="text-sm font-semibold text-red-400 mt-1">{soloError}</p> : null}
               </div>
@@ -695,13 +706,13 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 type="number"
                 min={1}
                 value={soloBet}
-                onChange={(event) => setSoloBet(Math.max(1, Number(event.target.value) || 1))}
+                onChange={(event) => setSoloBet(Math.max(0, Number(event.target.value) || 0))}
                 disabled={soloPhase === 'playing'}
                 className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
               />
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <button
-                  onClick={() => setSoloBet((value) => Math.max(1, Math.floor(value / 2) || 1))}
+                  onClick={() => setSoloBet((value) => Math.max(0, Math.floor(value / 2) || 0))}
                   disabled={soloPhase === 'playing'}
                   className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >
@@ -719,7 +730,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
             <div className="flex gap-2 justify-end flex-wrap">
               {(soloPhase === 'idle' || soloPhase === 'result') && (
-                <button onClick={startSoloRound} className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase">
+                <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                   Deal Hand
                 </button>
               )}
@@ -769,11 +780,12 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
               {friendsOtherPlayers.slice(0, 4).map((player, index) => {
                 const slots = ['top-24 left-8', 'top-24 right-8', 'bottom-24 left-8', 'bottom-24 right-8'];
+                const value = handValue(player.hand);
                 return (
                   <SeatBox
                     key={player.socketId}
                     title={player.username}
-                    subtitle={player.resultText || (player.stood ? 'Stand' : player.busted ? 'Bust' : 'Playing')}
+                    subtitle={`${player.resultText || (player.stood ? 'Stand' : player.busted ? 'Bust' : 'Playing')} · ${value}`}
                     cards={player.hand}
                     className={slots[index] ?? 'bottom-24 left-8'}
                   />
@@ -782,7 +794,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
               <SeatBox
                 title={myFriendSeat?.username ?? 'You'}
-                subtitle={myFriendSeat ? (myFriendSeat.resultText || (myFriendSeat.stood ? 'Stand' : myFriendSeat.busted ? 'Bust' : 'Playing')) : 'Not seated'}
+                subtitle={myFriendSeat ? `${myFriendSeat.resultText || (myFriendSeat.stood ? 'Stand' : myFriendSeat.busted ? 'Bust' : 'Playing')} · ${myFriendValue}` : 'Not seated'}
                 cards={myFriendSeat?.hand ?? []}
                 className="bottom-5 left-1/2 -translate-x-1/2"
                 highlighted
@@ -791,6 +803,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               <div className="absolute top-[47%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-center px-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Room {friendsState.roomId}</p>
                 <p className="text-lg font-semibold text-slate-200 mt-1">{friendsState.message}</p>
+                <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {handValue(friendsState.dealerCards)} | {username}: {myFriendValue}</p>
                 <p className="text-sm text-slate-300 mt-1">{friendsNotice}</p>
               </div>
             </div>

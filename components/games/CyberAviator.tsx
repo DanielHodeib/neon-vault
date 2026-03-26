@@ -36,6 +36,7 @@ export default function CyberAviator() {
     phase,
     multiplier,
     history,
+    players,
     hasActiveBet,
     myPlayer,
     roundStartAt,
@@ -65,6 +66,10 @@ export default function CyberAviator() {
   const betAmount = Math.max(MIN_BET, Math.floor(Number(betInput) || MIN_BET));
   const activeStake = Number(myPlayer?.amount ?? 0);
   const potential = hasActiveBet ? activeStake * multiplier : betAmount * multiplier;
+  const activePlayers = useMemo(
+    () => Array.from(new Set(players.map((player) => player.username).filter(Boolean))),
+    [players]
+  );
 
   const flightProgress = Math.min(1, Math.log10(Math.max(1, multiplier)) / Math.log10(50));
   const planeX = Math.min(86, 8 + flightProgress * 78);
@@ -295,8 +300,18 @@ export default function CyberAviator() {
           <span>Status: {formatPhase(phase)}</span>
           <span>Round Start: {roundStartAt ? new Date(roundStartAt).toLocaleTimeString() : '--:--:--'}</span>
           <span>Balance: {numericBalance} NVC</span>
+          <span>Players Active: {activePlayers.length}</span>
           {error ? <span className="text-rose-400">{error}</span> : null}
           {localError ? <span className="text-rose-400">{localError}</span> : null}
+        </div>
+
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {activePlayers.length === 0 ? <span className="text-[11px] text-slate-500">No players yet</span> : null}
+          {activePlayers.map((player, index) => (
+            <span key={`${player}-${index}`} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
+              {player}
+            </span>
+          ))}
         </div>
 
         <div className="mt-3 rounded-lg border border-slate-800/90 bg-[linear-gradient(180deg,rgba(15,23,42,0.86)_0%,rgba(2,6,23,0.88)_100%)] px-2 py-2 shadow-[inset_0_1px_0_rgba(148,163,184,0.08),0_0_18px_rgba(34,211,238,0.08)]">
