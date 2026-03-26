@@ -32,6 +32,7 @@ import RouletteGame from '@/components/games/RouletteGame';
 import SlotsGame from '@/components/games/SlotsGame';
 import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
+import CoinflipGame from '@/components/games/CoinflipGame';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
@@ -42,7 +43,7 @@ import { useCasinoStore } from '../../store/useCasinoStore';
 
 const AdminPanel = dynamic(() => import('@/components/AdminPanel'));
 
-type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
+type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
 type PokerMode = 'solo' | 'friends';
 type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
@@ -52,10 +53,18 @@ interface ChatMessage {
   text: string;
   createdAt: number;
   role?: string;
+  isKing?: boolean;
   clanTag?: string | null;
   rankTag?: string;
   rankColor?: string;
   system?: boolean;
+}
+
+interface RainBannerState {
+  active: boolean;
+  amount: number;
+  remainingSeconds: number;
+  endsAt: number;
 }
 
 interface CrashPlayer {
@@ -304,7 +313,14 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [chatRole, setChatRole] = useState('USER');
   const [chatClanTag, setChatClanTag] = useState<string | null>(null);
+  const [isKing, setIsKing] = useState(false);
   const [serverAdminAccess, setServerAdminAccess] = useState(false);
+  const [rainBanner, setRainBanner] = useState<RainBannerState>({
+    active: false,
+    amount: 0,
+    remainingSeconds: 0,
+    endsAt: 0,
+  });
   const [isMounted, setIsMounted] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const hubRenderCountRef = useRef(0);
@@ -735,6 +751,43 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
   }, []);
 
   useEffect(() => {
+    let isActive = true;
+
+    const syncKingStatus = async () => {
+      try {
+        const response = await fetch('/api/leaderboard/daily', { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as {
+          dailyLeaderboard?: Array<{ username: string; isKing: boolean }>;
+        };
+
+        if (!isActive) {
+          return;
+        }
+
+        const kingEntry = (payload.dailyLeaderboard ?? []).find((entry) => entry.isKing);
+        const kingUsername = kingEntry?.username?.trim().toLowerCase() ?? '';
+        setIsKing(kingUsername !== '' && kingUsername === normalizedEffectiveUsername);
+      } catch {
+        // Keep current king status if refresh fails.
+      }
+    };
+
+    void syncKingStatus();
+    const interval = window.setInterval(() => {
+      void syncKingStatus();
+    }, 60000);
+
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [normalizedEffectiveUsername]);
+
+  useEffect(() => {
     const socketUrl = getSocketUrl();
     const forcePolling = shouldForcePolling(socketUrl);
     const socket: Socket = io(socketUrl, {
@@ -744,6 +797,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       query: { 
         username: effectiveUsername, 
         role: chatRole,
+        isKing: isKing ? 'true' : 'false',
         clanTag: chatClanTag ?? '',
         xp: String(xp),
         balance: String(balance),
@@ -854,6 +908,51 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         setAnnouncement(null);
         announcementTimeoutRef.current = null;
       }, 10000);
+    };
+
+    const rainStartedHandler = (payload: { amount?: number; endsAt?: number }) => {
+      const amount = Math.max(0, Math.floor(Number(payload?.amount ?? 0)));
+      const endsAt = Number(payload?.endsAt ?? 0);
+      const remainingSeconds = endsAt > 0 ? Math.max(0, Math.ceil((endsAt - Date.now()) / 1000)) : 0;
+
+      setRainBanner({
+        active: true,
+        amount,
+        remainingSeconds,
+        endsAt,
+      });
+    };
+
+    const rainTickHandler = (payload: { amount?: number; remainingSeconds?: number; endsAt?: number }) => {
+      setRainBanner((current) => ({
+        active: true,
+        amount: Math.max(0, Math.floor(Number(payload?.amount ?? current.amount ?? 0))),
+        remainingSeconds: Math.max(0, Math.floor(Number(payload?.remainingSeconds ?? 0))),
+        endsAt: Number(payload?.endsAt ?? current.endsAt ?? 0),
+      }));
+    };
+
+    const rainEndedHandler = () => {
+      setRainBanner({
+        active: false,
+        amount: 0,
+        remainingSeconds: 0,
+        endsAt: 0,
+      });
+    };
+
+    const rainRewardHandler = (payload: { amount?: number }) => {
+      const amount = Math.max(0, Math.floor(Number(payload?.amount ?? 0)));
+      if (amount <= 0) {
+        return;
+      }
+
+      addWin(amount, {
+        source: 'rain',
+        tier: 'community',
+        multiplier: 0,
+      });
+      toast.success(`Rain reward: +${amount} NVC`, { id: `rain-${Date.now()}` });
     };
 
     const crashRoomJoinedHandler = (payload: { ok: boolean; roomId?: string }) => {
@@ -982,6 +1081,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     socket.on('notification', notificationHandler);
     socket.on('global_notification', globalNotificationHandler);
     socket.on('admin_broadcast', adminBroadcastHandler);
+    socket.on('rain_started', rainStartedHandler);
+    socket.on('rain_tick', rainTickHandler);
+    socket.on('rain_ended', rainEndedHandler);
+    socket.on('rain_reward', rainRewardHandler);
     socket.on('crash_room_joined', crashRoomJoinedHandler);
     socket.on('crash_room_members', crashRoomMembersHandler);
     socket.on('crash_state', crashStateHandler);
@@ -1002,6 +1105,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
       socket.off('notification', notificationHandler);
       socket.off('global_notification', globalNotificationHandler);
       socket.off('admin_broadcast', adminBroadcastHandler);
+      socket.off('rain_started', rainStartedHandler);
+      socket.off('rain_tick', rainTickHandler);
+      socket.off('rain_ended', rainEndedHandler);
+      socket.off('rain_reward', rainRewardHandler);
       socket.off('crash_room_joined', crashRoomJoinedHandler);
       socket.off('crash_room_members', crashRoomMembersHandler);
       socket.off('crash_state', crashStateHandler);
@@ -1028,12 +1135,13 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
     socket.emit('profile_sync', {
       username: effectiveUsername,
       role: chatRole,
+      isKing,
       clanTag: chatClanTag,
       xp,
       balance,
       selectedRankTag,
     });
-  }, [xp, balance, chatClanTag, chatRole, effectiveUsername, selectedRankTag, socketConnected]);
+  }, [xp, balance, chatClanTag, chatRole, effectiveUsername, isKing, selectedRankTag, socketConnected]);
 
   useEffect(() => {
     if (!payoutToast) {
@@ -1710,6 +1818,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           <SidebarButton icon={<Hand size={20} />} label="Blackjack" active={activeTab === 'blackjack'} onClick={() => setActiveTab('blackjack')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<CircleDashed size={20} />} label="Roulette" active={activeTab === 'roulette'} onClick={() => setActiveTab('roulette')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Spade size={20} />} label="Poker" active={activeTab === 'poker'} onClick={() => setActiveTab('poker')} collapsed={sidebarCollapsed} />
+          <SidebarButton icon={<Coins size={20} />} label="Coinflip" active={activeTab === 'coinflip'} onClick={() => setActiveTab('coinflip')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Users size={20} />} label="Friends" active={activeTab === 'friends'} onClick={() => setActiveTab('friends')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<TrendingUp size={20} />} label="Leaderboard" active={activeTab === 'leaderboard'} onClick={() => setActiveTab('leaderboard')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<ShieldCheck size={20} />} label="Quests" active={activeTab === 'quests'} onClick={() => setActiveTab('quests')} collapsed={sidebarCollapsed} />
@@ -2059,6 +2168,12 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                 </div>
 
                 <div className="flex-1 min-h-0">{pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={effectiveUsername} />}</div>
+              </div>
+            )}
+
+            {activeTab === 'coinflip' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <CoinflipGame socket={socketRef.current} username={effectiveUsername} />
               </div>
             )}
 
@@ -2736,6 +2851,7 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
           <LiveChatPanel
             chatMessages={chatMessages}
             chatInput={chatInput}
+            rainBanner={rainBanner}
             suggestionType={suggestionType}
             suggestionQuery={suggestionQuery}
             mentionSuggestions={mentionSuggestions}
@@ -2862,7 +2978,8 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
           <span className="font-bold text-[15px] leading-5 truncate" style={{ color: event.system ? '#f87171' : usernameColor }}>
             {event.username}
           </span>
-          {roleBadgeClass ? <span className={roleBadgeClass}>{normalizedRole}</span> : null}
+          {!event.system && event.isKing ? <span className="text-[14px] leading-5">👑</span> : null}
+          {roleBadgeClass && !event.system ? <span className={roleBadgeClass}>{normalizedRole}</span> : null}
           {event.rankTag ? (
             <span
               className="inline-flex items-center h-5 px-2 rounded-md border text-[10px] font-black uppercase tracking-wide"
@@ -2888,6 +3005,7 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
 const LiveChatPanel = React.memo(function LiveChatPanel({
   chatMessages,
   chatInput,
+  rainBanner,
   suggestionType,
   suggestionQuery,
   mentionSuggestions,
@@ -2902,6 +3020,7 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
 }: {
   chatMessages: ChatMessage[];
   chatInput: string;
+  rainBanner: RainBannerState;
   suggestionType: SuggestionType | null;
   suggestionQuery: string;
   mentionSuggestions: string[];
@@ -3023,6 +3142,11 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
       </div>
 
       <div className="border-t border-slate-800 p-3 bg-slate-950 shrink-0">
+        {rainBanner.active ? (
+          <div className="mb-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-200">
+            🌧️ RAIN ACTIVE: {rainBanner.amount} NVC in {rainBanner.remainingSeconds}s
+          </div>
+        ) : null}
         <div className="relative">
           {visibleSuggestions.length > 0 ? (
             <div className="absolute bottom-full mb-2 left-0 w-full z-50 bg-slate-900 border border-slate-700 rounded-lg shadow-xl overflow-hidden">

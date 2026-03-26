@@ -82,6 +82,23 @@ export async function GET() {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
+  const today = new Date().toISOString().slice(0, 10);
+  const todayUsers = await prisma.user.findMany({
+    where: { dailyStatsDate: today },
+    select: {
+      username: true,
+      dailyBets: true,
+      dailyWins: true,
+    },
+  });
+
+  const kingUsername = todayUsers
+    .map((entry) => ({
+      username: entry.username,
+      netProfit: Number(entry.dailyWins) - Number(entry.dailyBets),
+    }))
+    .sort((a, b) => b.netProfit - a.netProfit)[0]?.username;
+
   const rank = getRankInfo(user.xp, user.balance);
-  return NextResponse.json({ user: { ...user, level: rank.level, rankTag: rank.tag, rankColor: rank.color } });
+  return NextResponse.json({ user: { ...user, isKing: user.username === kingUsername, level: rank.level, rankTag: rank.tag, rankColor: rank.color } });
 }

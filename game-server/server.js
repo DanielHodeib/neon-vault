@@ -14,9 +14,12 @@ const ROOM_PREFIX = 'crash:';
 const POKER_ROOM_PREFIX = 'poker:';
 const BLACKJACK_ROOM_PREFIX = 'blackjack:';
 const ROULETTE_ROOM_PREFIX = 'roulette:';
+const COINFLIP_ROOM_ID = 'coinflip:global';
 const CRASH_ROUND_WAIT_MS = 10000;
 const CRASH_ROUND_CRASHED_MS = 1500;
 const GLOBAL_CRASH_ROOM_ID = 'global';
+const CHAT_ACTIVITY_WINDOW_MS = 10 * 60 * 1000;
+const COINFLIP_HOUSE_FEE_RATE = 0.05;
 const ROULETTE_WHEEL_NUMBERS = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 
 const SUITS = ['S', 'H', 'D', 'C'];
@@ -79,6 +82,16 @@ const blackjackRooms = new Map();
 const rouletteRooms = new Map();
 const genericRooms = new Map();
 const socketProfiles = new Map();
+const chatActiveUsers = new Map();
+
+const coinflipState = {
+  openLobby: null,
+  lastResult: null,
+};
+
+let activeRain = null;
+let rainResolveTimer = null;
+let rainTickTimer = null;
 
 const HIGH_ROLLER_THRESHOLD = 50000;
 const RANK_RULES = [
@@ -144,7 +157,8 @@ function upsertSocketProfile(
   selectedRankTag,
   rawBalance = Number.MAX_SAFE_INTEGER,
   rawRole = 'USER',
-  rawClanTag = null
+  rawClanTag = null,
+  rawIsKing = false
 ) {
   const rank = rankFromXp(rawXp, rawBalance);
   const balance = Number.isFinite(Number(rawBalance)) ? Math.max(0, Math.floor(Number(rawBalance))) : 0;
@@ -153,6 +167,8 @@ function upsertSocketProfile(
     username,
     role: normalizeRole(rawRole),
     clanTag: normalizeClanTag(rawClanTag),
+    balance,
+    isKing: Boolean(rawIsKing),
     xp: rank.xp,
     level: rank.level,
     rankTag: displayed.rankTag,
@@ -169,7 +185,195 @@ function getSocketProfile(socketId, usernameFallback) {
     return existing;
   }
 
-  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER, 'USER', null);
+  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER, 'USER', null, false);
+}
+
+function shuffleArray(values) {
+  const next = [...values];
+  for (let i = next.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [next[i], next[j]] = [next[j], next[i]];
+  }
+  return next;
+}
+
+function distributeAmount(total, recipients) {
+  const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
+  const safeRecipients = Math.max(0, Math.floor(Number(recipients) || 0));
+  if (safeTotal <= 0 || safeRecipients <= 0) {
+    return [];
+  }
+
+  if (safeRecipients === 1) {
+    return [safeTotal];
+  }
+
+  const cuts = new Set();
+  while (cuts.size < safeRecipients - 1) {
+    cuts.add(Math.floor(Math.random() * safeTotal));
+  }
+
+  const sortedCuts = [0, ...Array.from(cuts).sort((a, b) => a - b), safeTotal];
+  const shares = [];
+
+  for (let i = 1; i < sortedCuts.length; i += 1) {
+    shares.push(sortedCuts[i] - sortedCuts[i - 1]);
+  }
+
+  return shuffleArray(shares);
+}
+
+function emitSystemMessage(text) {
+  const message = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    username: 'SYSTEM',
+    sender: 'SYSTEM',
+    text,
+    timestamp: new Date().toISOString(),
+    createdAt: Date.now(),
+    role: 'ADMIN',
+    system: true,
+  };
+
+  chatHistory = [...chatHistory, message].slice(-80);
+  io.emit('chat_message', message);
+}
+
+function coinflipPublicState() {
+  return {
+    openLobby: coinflipState.openLobby,
+    lastResult: coinflipState.lastResult,
+  };
+}
+
+function emitCoinflipState() {
+  io.to(COINFLIP_ROOM_ID).emit('coinflip_state', coinflipPublicState());
+}
+
+function getRecentRainCandidates(limit) {
+  const threshold = Date.now() - CHAT_ACTIVITY_WINDOW_MS;
+  const candidates = [];
+
+  chatActiveUsers.forEach((lastAt, candidateUsername) => {
+    if (lastAt < threshold) {
+      return;
+    }
+    if (String(candidateUsername).startsWith('Guest-')) {
+      return;
+    }
+    candidates.push(candidateUsername);
+  });
+
+  return shuffleArray(candidates).slice(0, Math.max(1, Math.floor(limit)));
+}
+
+function stopRainTimers() {
+  if (rainResolveTimer) {
+    clearTimeout(rainResolveTimer);
+    rainResolveTimer = null;
+  }
+
+  if (rainTickTimer) {
+    clearInterval(rainTickTimer);
+    rainTickTimer = null;
+  }
+}
+
+function finishRain() {
+  if (!activeRain) {
+    return;
+  }
+
+  const rain = activeRain;
+  const winners = getRecentRainCandidates(rain.participantsCount);
+  const shares = distributeAmount(rain.amount, winners.length);
+  const payouts = winners.map((winnerUsername, index) => ({
+    username: winnerUsername,
+    amount: shares[index] ?? 0,
+  })).filter((entry) => entry.amount > 0);
+
+  payouts.forEach((entry) => {
+    const socketIds = getSocketIdsByUsername(entry.username);
+    socketIds.forEach((socketId) => {
+      io.to(socketId).emit('rain_reward', {
+        rainId: rain.id,
+        amount: entry.amount,
+        username: entry.username,
+      });
+    });
+  });
+
+  io.emit('rain_ended', {
+    rainId: rain.id,
+    winners: payouts,
+    totalWinners: payouts.length,
+    endedAt: Date.now(),
+  });
+
+  if (payouts.length > 0) {
+    const winnersLabel = payouts
+      .map((entry) => `${entry.username} (+${entry.amount})`)
+      .join(', ');
+    emitSystemMessage(`🌧️ RAIN ENDED: ${winnersLabel}`);
+  } else {
+    emitSystemMessage('🌧️ RAIN ENDED: Keine aktiven Chat-Teilnehmer in den letzten 10 Minuten.');
+  }
+
+  activeRain = null;
+  stopRainTimers();
+}
+
+function startRain(amount, duration, participantsCount, startedBy = 'SYSTEM') {
+  const safeAmount = Math.max(1, Math.floor(Number(amount) || 0));
+  const safeDuration = Math.max(5, Math.floor(Number(duration) || 0));
+  const safeParticipants = Math.max(1, Math.floor(Number(participantsCount) || 0));
+
+  if (activeRain) {
+    return { ok: false, error: 'Rain already active.' };
+  }
+
+  const now = Date.now();
+  activeRain = {
+    id: `${now}-${Math.random().toString(36).slice(2, 8)}`,
+    amount: safeAmount,
+    duration: safeDuration,
+    participantsCount: safeParticipants,
+    startedBy,
+    startedAt: now,
+    endsAt: now + safeDuration * 1000,
+  };
+
+  io.emit('rain_started', {
+    rainId: activeRain.id,
+    amount: activeRain.amount,
+    duration: activeRain.duration,
+    participantsCount: activeRain.participantsCount,
+    endsAt: activeRain.endsAt,
+    startedBy: activeRain.startedBy,
+  });
+
+  emitSystemMessage(`🌧️ RAIN ACTIVE: ${activeRain.amount} NVC in ${activeRain.duration}s für ${activeRain.participantsCount} Spieler!`);
+
+  rainTickTimer = setInterval(() => {
+    if (!activeRain) {
+      return;
+    }
+
+    const remainingSeconds = Math.max(0, Math.ceil((activeRain.endsAt - Date.now()) / 1000));
+    io.emit('rain_tick', {
+      rainId: activeRain.id,
+      amount: activeRain.amount,
+      participantsCount: activeRain.participantsCount,
+      remainingSeconds,
+      endsAt: activeRain.endsAt,
+    });
+  }, 1000);
+
+  rainResolveTimer = setTimeout(() => {
+    finishRain();
+  }, safeDuration * 1000);
+
+  return { ok: true, rain: activeRain };
 }
 
 function shouldBroadcastSystemWin(amount = 0) {
@@ -200,6 +404,10 @@ function getHypeMessage(username, payout, source = '') {
     return `♠️ POKER CRUSH! ${username} hat ${amountText} NVC am Poker-Table gewonnen!`;
   }
 
+  if (game === 'coinflip') {
+    return `🪙 COINFLIP DUEL! ${username} hat ${amountText} NVC im 1v1 Coinflip gewonnen!`;
+  }
+
   return `🏆 HIGH ROLLER! ${username} hat ${amountText} NVC gewonnen!`;
 }
 
@@ -212,19 +420,7 @@ function emitSystemBigWin(username, amount, source = '') {
 
   const hypeText = getHypeMessage(username, numericAmount, source);
 
-  const message = {
-    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-    username: 'SYSTEM',
-    sender: 'SYSTEM',
-    text: hypeText,
-    timestamp: new Date().toISOString(),
-    createdAt: Date.now(),
-    role: 'ADMIN',
-    system: true,
-  };
-
-  chatHistory = [...chatHistory, message].slice(-80);
-  io.emit('chat_message', message);
+  emitSystemMessage(hypeText);
 }
 
 function randomRange(min, max) {
@@ -1261,11 +1457,29 @@ app.post('/internal/admin-broadcast', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post('/internal/rain/start', (req, res) => {
+  const amount = Math.floor(Number(req.body?.amount ?? 0));
+  const duration = Math.floor(Number(req.body?.duration ?? 30));
+  const participantsCount = Math.floor(Number(req.body?.participantsCount ?? 5));
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ ok: false, error: 'Invalid amount.' });
+  }
+
+  const result = startRain(amount, duration, participantsCount, 'SYSTEM');
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+
+  return res.json(result);
+});
+
 io.on('connection', (socket) => {
   const rawName = socket.handshake.query.username;
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
   const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
   const initialRole = typeof socket.handshake.query.role === 'string' ? socket.handshake.query.role : 'USER';
+  const initialIsKing = socket.handshake.query.isKing === 'true' || socket.handshake.query.isKing === true;
   const initialClanTag =
     typeof socket.handshake.query.clanTag === 'string'
       ? socket.handshake.query.clanTag
@@ -1276,11 +1490,23 @@ io.on('connection', (socket) => {
   onlineUsers.set(socket.id, username);
   const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
   const initialBalance = Number.isFinite(Number(socket.handshake.query.balance)) ? Number(socket.handshake.query.balance) : Number.MAX_SAFE_INTEGER;
-  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, initialRole, initialClanTag);
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, initialRole, initialClanTag, initialIsKing);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
+  socket.join(COINFLIP_ROOM_ID);
 
   socket.emit('chat_history', chatHistory);
+  socket.emit('coinflip_state', coinflipPublicState());
+  if (activeRain) {
+    socket.emit('rain_started', {
+      rainId: activeRain.id,
+      amount: activeRain.amount,
+      duration: activeRain.duration,
+      participantsCount: activeRain.participantsCount,
+      endsAt: activeRain.endsAt,
+      startedBy: activeRain.startedBy,
+    });
+  }
 
   const initialCrashRoomId = GLOBAL_CRASH_ROOM_ID;
   const crashRoom = attachSocketToRoom(socket, initialCrashRoomId);
@@ -1467,6 +1693,7 @@ io.on('connection', (socket) => {
     const balance = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Number.MAX_SAFE_INTEGER;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
     const role = typeof payload?.role === 'string' ? payload.role : 'USER';
+    const isKing = payload?.isKing === true;
     const clanTag =
       typeof payload?.clanTag === 'string'
         ? payload.clanTag
@@ -1474,7 +1701,7 @@ io.on('connection', (socket) => {
           ? payload.clan
           : null;
     const selectedRankTag = typeof payload?.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
-    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance, role, clanTag);
+    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance, role, clanTag, isKing);
     callback?.({
       ok: true,
       level: profile.level,
@@ -1482,7 +1709,155 @@ io.on('connection', (socket) => {
       rankColor: profile.rankColor,
       role: profile.role,
       clanTag: profile.clanTag,
+      isKing: profile.isKing,
     });
+  });
+
+  socket.on('rain_start', (payload, callback) => {
+    const profile = getSocketProfile(socket.id, username);
+    const isAdmin = String(profile.role).toUpperCase() === 'ADMIN';
+    if (!isAdmin) {
+      callback?.({ ok: false, error: 'Only admins can start rain.' });
+      return;
+    }
+
+    const amount = Math.floor(Number(payload?.amount ?? 0));
+    const duration = Math.floor(Number(payload?.duration ?? 30));
+    const participantsCount = Math.floor(Number(payload?.participantsCount ?? 5));
+    const result = startRain(amount, duration, participantsCount, username);
+    callback?.(result);
+  });
+
+  socket.on('coinflip_get_state', (_payload, callback) => {
+    callback?.({ ok: true, ...coinflipPublicState() });
+  });
+
+  socket.on('coinflip_create', (payload, callback) => {
+    const amount = Math.floor(Number(payload?.amount ?? 0));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      callback?.({ ok: false, error: 'Invalid amount.' });
+      return;
+    }
+
+    if (coinflipState.openLobby) {
+      callback?.({ ok: false, error: 'An open coinflip already exists.' });
+      return;
+    }
+
+    const profile = getSocketProfile(socket.id, username);
+    if (!Number.isFinite(Number(profile.balance))) {
+      callback?.({ ok: false, error: 'Balance not synced.' });
+      return;
+    }
+
+    if (amount > Number(profile.balance)) {
+      callback?.({ ok: false, error: 'Insufficient balance.' });
+      return;
+    }
+
+    profile.balance = Number(profile.balance) - amount;
+    socketProfiles.set(socket.id, profile);
+
+    coinflipState.openLobby = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      amount,
+      creatorSocketId: socket.id,
+      creatorUsername: username,
+      createdAt: Date.now(),
+    };
+    coinflipState.lastResult = null;
+    emitCoinflipState();
+    callback?.({ ok: true, lobby: coinflipState.openLobby });
+  });
+
+  socket.on('coinflip_cancel', (_payload, callback) => {
+    if (!coinflipState.openLobby) {
+      callback?.({ ok: false, error: 'No open coinflip.' });
+      return;
+    }
+
+    if (coinflipState.openLobby.creatorSocketId !== socket.id) {
+      callback?.({ ok: false, error: 'Only creator can cancel.' });
+      return;
+    }
+
+    const refundAmount = coinflipState.openLobby.amount;
+    const profile = getSocketProfile(socket.id, username);
+    profile.balance = Number(profile.balance) + refundAmount;
+    socketProfiles.set(socket.id, profile);
+
+    const canceledLobbyId = coinflipState.openLobby.id;
+    coinflipState.openLobby = null;
+    emitCoinflipState();
+    io.to(COINFLIP_ROOM_ID).emit('coinflip_canceled', {
+      lobbyId: canceledLobbyId,
+      creatorUsername: username,
+      refundAmount,
+    });
+    callback?.({ ok: true, refundAmount });
+  });
+
+  socket.on('coinflip_join', (_payload, callback) => {
+    const lobby = coinflipState.openLobby;
+    if (!lobby) {
+      callback?.({ ok: false, error: 'No open coinflip available.' });
+      return;
+    }
+
+    if (lobby.creatorSocketId === socket.id) {
+      callback?.({ ok: false, error: 'You cannot join your own coinflip.' });
+      return;
+    }
+
+    const joinerProfile = getSocketProfile(socket.id, username);
+    if (!Number.isFinite(Number(joinerProfile.balance))) {
+      callback?.({ ok: false, error: 'Balance not synced.' });
+      return;
+    }
+
+    if (lobby.amount > Number(joinerProfile.balance)) {
+      callback?.({ ok: false, error: 'Insufficient balance.' });
+      return;
+    }
+
+    joinerProfile.balance = Number(joinerProfile.balance) - lobby.amount;
+    socketProfiles.set(socket.id, joinerProfile);
+
+    const creatorProfile = getSocketProfile(lobby.creatorSocketId, lobby.creatorUsername);
+    const winnerIsCreator = Math.random() < 0.5;
+    const winnerUsername = winnerIsCreator ? lobby.creatorUsername : username;
+    const winnerSocketId = winnerIsCreator ? lobby.creatorSocketId : socket.id;
+    const loserUsername = winnerIsCreator ? username : lobby.creatorUsername;
+    const pot = lobby.amount * 2;
+    const payout = Math.floor(pot * (1 - COINFLIP_HOUSE_FEE_RATE));
+    const fee = pot - payout;
+
+    const winnerProfile = winnerIsCreator ? creatorProfile : joinerProfile;
+    winnerProfile.balance = Number(winnerProfile.balance) + payout;
+    socketProfiles.set(winnerSocketId, winnerProfile);
+
+    coinflipState.lastResult = {
+      id: lobby.id,
+      creatorUsername: lobby.creatorUsername,
+      joinerUsername: username,
+      winnerUsername,
+      loserUsername,
+      amount: lobby.amount,
+      pot,
+      payout,
+      fee,
+      resolvedAt: Date.now(),
+    };
+    coinflipState.openLobby = null;
+
+    io.to(COINFLIP_ROOM_ID).emit('coinflip_result', coinflipState.lastResult);
+    emitCoinflipState();
+
+    if (payout >= HIGH_ROLLER_THRESHOLD) {
+      emitSystemBigWin(winnerUsername, payout, 'coinflip');
+    }
+
+    callback?.({ ok: true, result: coinflipState.lastResult });
   });
 
   socket.on('blackjack_start_round', (_payload, callback) => {
@@ -1610,6 +1985,7 @@ io.on('connection', (socket) => {
     }
 
     const profile = getSocketProfile(socket.id, username);
+    chatActiveUsers.set(username, Date.now());
 
     const message = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -1617,6 +1993,7 @@ io.on('connection', (socket) => {
       text: text.slice(0, 280),
       createdAt: Date.now(),
       role: profile.role,
+      isKing: Boolean(profile.isKing),
       clanTag: profile.clanTag,
       rankTag: profile.rankTag,
       rankColor: profile.rankColor,
@@ -1816,8 +2193,24 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     setUserActivity(socket.id, 'Offline');
+
+    if (coinflipState.openLobby && coinflipState.openLobby.creatorSocketId === socket.id) {
+      const canceledLobbyId = coinflipState.openLobby.id;
+      coinflipState.openLobby = null;
+      emitCoinflipState();
+      io.to(COINFLIP_ROOM_ID).emit('coinflip_canceled', {
+        lobbyId: canceledLobbyId,
+        creatorUsername: username,
+        refundAmount: 0,
+      });
+    }
+
     onlineUsers.delete(socket.id);
     socketProfiles.delete(socket.id);
+    const hasOtherSessions = Array.from(onlineUsers.values()).some((onlineUsername) => onlineUsername === username);
+    if (!hasOtherSessions) {
+      chatActiveUsers.delete(username);
+    }
     userActivities.delete(socket.id);
     userActivityStartedAt.delete(socket.id);
     broadcastOnlineUsers();

@@ -11,6 +11,13 @@ interface LeaderboardEntry {
   xp: number;
 }
 
+interface DailyLeaderboardEntry {
+  rank: number;
+  username: string;
+  netProfit: number;
+  isKing: boolean;
+}
+
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
@@ -41,6 +48,7 @@ function getSocketUrl() {
 
 export default function LeaderboardPanel() {
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
+  const [dailyEntries, setDailyEntries] = useState<DailyLeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchLeaderboard = useCallback(async () => {
@@ -57,8 +65,26 @@ export default function LeaderboardPanel() {
     }
   }, []);
 
+  const fetchDailyLeaderboard = useCallback(async () => {
+    try {
+      const response = await fetch('/api/leaderboard/daily', { cache: 'no-store' });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        dailyLeaderboard?: DailyLeaderboardEntry[];
+      };
+
+      setDailyEntries(payload.dailyLeaderboard ?? []);
+    } catch {
+      // Keep previous daily entries on fetch errors.
+    }
+  }, []);
+
   useEffect(() => {
     void fetchLeaderboard();
+    void fetchDailyLeaderboard();
 
     const socket = io(getSocketUrl(), {
       path: '/socket.io',
@@ -67,12 +93,13 @@ export default function LeaderboardPanel() {
 
     socket.on('leaderboard_refresh', () => {
       void fetchLeaderboard();
+      void fetchDailyLeaderboard();
     });
 
     return () => {
       socket.disconnect();
     };
-  }, [fetchLeaderboard]);
+  }, [fetchDailyLeaderboard, fetchLeaderboard]);
 
   const topThree = useMemo(() => entries.slice(0, 3), [entries]);
 
@@ -87,6 +114,20 @@ export default function LeaderboardPanel() {
             <p className="text-xs uppercase tracking-wider text-slate-500">#{index + 1}</p>
             <p className="mt-1 text-lg font-semibold text-slate-100">{entry.username}</p>
             <p className="mt-1 font-mono text-cyan-300">{formatUserBalance(entry.balance, true)} NVC</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 overflow-hidden">
+        <div className="px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+          Daily High Score (Top 5)
+        </div>
+        {dailyEntries.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">No daily results yet.</p> : null}
+        {dailyEntries.map((entry) => (
+          <div key={`${entry.username}-${entry.rank}`} className="grid grid-cols-[56px_1fr_140px] gap-2 px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
+            <span className="text-slate-400">#{entry.rank}</span>
+            <span className="text-slate-200 font-medium">{entry.isKing ? '👑 ' : ''}{entry.username}</span>
+            <span className="font-mono text-emerald-300">{entry.netProfit}</span>
           </div>
         ))}
       </div>
