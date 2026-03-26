@@ -40,7 +40,8 @@ function burstOffset(index: number) {
 
 function multiplierToYPercent(value: number) {
   const progress = Math.min(1, Math.log10(Math.max(1, value)) / Math.log10(45));
-  return Math.max(10, 82 - progress * 70);
+  // Keep the rocket inside the visible flight corridor (away from top badges and bottom HUD).
+  return Math.max(18, 68 - progress * 50);
 }
 
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
@@ -401,10 +402,26 @@ export default function CrashGame() {
         </div>
 
         <motion.div
-          className="absolute z-30 -translate-x-1/2"
-          style={{ left: `${rocketX}%`, top: `${rocketY}%` }}
-          animate={phase === 'running' ? { x: [-0.5, 0.5, -0.5, 0.5, 0], y: [-1, 1, -1, 1, 0], rotate: [-0.4, 0.4, -0.4, 0.4, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -12 : 0 }}
-          transition={phase === 'running' ? { duration: 0.42, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.24 }}
+          className="absolute z-30 -translate-x-1/2 transform-gpu will-change-transform"
+          initial={false}
+          animate={phase === 'running'
+            ? {
+                left: `${rocketX}%`,
+                top: `${rocketY}%`,
+                x: [-0.5, 0.5, -0.5, 0.5, 0],
+                y: [-1, 1, -1, 1, 0],
+                rotate: [-0.4, 0.4, -0.4, 0.4, 0],
+              }
+            : {
+                left: `${rocketX}%`,
+                top: `${rocketY}%`,
+                x: 0,
+                y: 0,
+                rotate: phase === 'crashed' ? -12 : 0,
+              }}
+          transition={phase === 'running'
+            ? { left: { duration: 0.16, ease: 'linear' }, top: { duration: 0.16, ease: 'linear' }, duration: 0.42, repeat: Infinity, ease: 'easeInOut' }
+            : { left: { duration: 0.2, ease: 'easeOut' }, top: { duration: 0.2, ease: 'easeOut' }, duration: 0.24 }}
         >
           <motion.div
             className={`relative h-28 w-20 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
