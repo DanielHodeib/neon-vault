@@ -1026,7 +1026,7 @@ function startPokerRound(roomId) {
     return;
   }
 
-  if (!players.every((player) => player.ready)) {
+  if (room.started) {
     return;
   }
 
@@ -1040,6 +1040,7 @@ function startPokerRound(roomId) {
   room.winnerLabel = '';
 
   room.players.forEach((player) => {
+    player.ready = true;
     player.folded = false;
     player.hand = [room.deck.pop(), room.deck.pop()];
     player.actionText = 'in hand';
@@ -1208,7 +1209,11 @@ function attachPokerSocket(socket, roomId, username) {
   });
   socket.data.pokerRoomId = room.id;
   socket.join(pokerChannel(room.id));
+
+  // Immediately push poker_state to the full room when a player joins.
+  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room, socket.id));
   broadcastPokerState(room.id);
+  startPokerRound(room.id);
   return room;
 }
 

@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
-import { copyToClipboard } from '@/lib/copyToClipboard';
-
 interface PokerPlayer {
   socketId: string;
   username: string;
@@ -107,8 +105,6 @@ function cardSymbol(card: string) {
 
 export default function PokerFriendsGame({ username }: { username: string }) {
   const [pokerRoomId, setPokerRoomId] = useState('global');
-  const [roomInput, setRoomInput] = useState('global');
-  const [joiningRoom, setJoiningRoom] = useState(false);
   const [selfSocketId, setSelfSocketId] = useState<string | null>(null);
   const [state, setState] = useState<PokerState>({
     roomId: 'global',
@@ -118,7 +114,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     players: [],
     winnerLabel: '',
   });
-  const [notice, setNotice] = useState('Join a room and set Ready to start with friends.');
+  const [notice, setNotice] = useState('Global poker table. Round starts automatically with 2 players.');
 
   const socketRef = useRef<Socket | null>(null);
 
@@ -169,8 +165,6 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     socket.on('poker_room_joined', (payload: { ok: boolean; roomId?: string }) => {
       if (payload.ok && payload.roomId) {
         setPokerRoomId(payload.roomId);
-        setRoomInput(payload.roomId);
-        setJoiningRoom(false);
       }
     });
 
@@ -194,81 +188,6 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     };
   }, [username]);
 
-  const joinRoom = () => {
-    const next = roomInput.trim().toLowerCase();
-    if (!next) {
-      setNotice('Enter a room id.');
-      return;
-    }
-
-    const socket = socketRef.current;
-    if (!socket || !socket.connected) {
-      setNotice('Socket disconnected.');
-      return;
-    }
-
-    setJoiningRoom(true);
-    setNotice('Switching room...');
-
-    socket.emit('joinRoom', { game: 'poker', roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
-      setJoiningRoom(false);
-      if (!response.ok) {
-        setNotice(response.error ?? 'Could not join room.');
-        return;
-      }
-
-      if (response.roomId) {
-        setPokerRoomId(response.roomId);
-        setRoomInput(response.roomId);
-      }
-    });
-  };
-
-  const createRoom = () => {
-    const next = `poker-${Math.random().toString(36).slice(2, 7)}`;
-    setRoomInput(next);
-    setNotice('Private room created. Share the room id with your friends.');
-
-    const socket = socketRef.current;
-    if (!socket || !socket.connected) {
-      setNotice('Socket disconnected.');
-      return;
-    }
-
-    setJoiningRoom(true);
-
-    socket.emit('joinRoom', { game: 'poker', roomId: next }, (response: { ok: boolean; roomId?: string; error?: string }) => {
-      setJoiningRoom(false);
-      if (!response.ok) {
-        setNotice(response.error ?? 'Could not create room.');
-        return;
-      }
-
-      if (response.roomId) {
-        setPokerRoomId(response.roomId);
-        setRoomInput(response.roomId);
-      }
-    });
-  };
-
-  const copyInvite = async () => {
-    const roomCode = state.roomId || pokerRoomId;
-    const copied = await copyToClipboard(roomCode);
-    if (copied) {
-      setNotice('Room code copied.');
-    } else {
-      setNotice(`Share this room id with your friend: ${roomCode}`);
-    }
-  };
-
-  const setReady = (ready: boolean) => {
-    socketRef.current?.emit('poker_set_ready', { ready }, (response: { ok: boolean; error?: string }) => {
-      if (!response.ok) {
-        setNotice(response.error ?? 'Could not change ready state.');
-      }
-    });
-  };
-
   const action = (nextAction: 'check' | 'call' | 'fold') => {
     socketRef.current?.emit('poker_action', { action: nextAction }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
@@ -282,30 +201,12 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em Friends</h2>
-          <p className="text-xs text-slate-400">Same table style, now with real friend seats.</p>
+          <p className="text-xs text-slate-400">Global table with live seats and auto-start.</p>
         </div>
         <div className="text-right">
-          <p className="text-xs uppercase text-slate-500">Room</p>
-          <p className="font-mono text-sm text-cyan-300">{state.roomId}</p>
+          <p className="text-xs uppercase text-slate-500">Players Active</p>
+          <p className="font-mono text-sm text-cyan-300">{state.players.length}</p>
         </div>
-      </div>
-
-      <div className="p-4 border-b border-slate-800 bg-slate-950 grid gap-3 lg:grid-cols-[1fr_auto_auto_auto] items-center">
-        <input
-          value={roomInput}
-          onChange={(event) => setRoomInput(event.target.value)}
-          className="h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
-          placeholder="room id"
-        />
-        <button onClick={joinRoom} disabled={joiningRoom} className="h-11 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed">
-          {joiningRoom ? 'Joining...' : 'Join Room'}
-        </button>
-        <button onClick={createRoom} className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm">
-          Create Private
-        </button>
-        <button onClick={copyInvite} className="h-11 px-4 rounded-lg border border-cyan-700/60 bg-cyan-600/10 hover:bg-cyan-600/20 text-cyan-300 font-semibold text-sm">
-          Copy Invite
-        </button>
       </div>
 
       <div className="flex-1 min-h-0 p-4">
@@ -321,6 +222,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
               })}
             </div>
             <p className="mt-3 text-center text-sm text-slate-300">Stage: {state.stage}</p>
+            <p className="mt-1 text-center text-xs text-slate-400">Room: Global</p>
             {state.winnerLabel ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{state.winnerLabel}</p> : null}
             <p className="mt-1 text-center text-xs text-slate-400">{notice}</p>
           </div>
@@ -339,12 +241,6 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
       <div className="border-t border-slate-800 bg-slate-950 p-4">
         <div className="flex flex-wrap gap-2 justify-end">
-          <button onClick={() => setReady(true)} className="h-11 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold uppercase">
-            Ready
-          </button>
-          <button onClick={() => setReady(false)} className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase">
-            Unready
-          </button>
           <button onClick={() => action('check')} className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase">
             Check
           </button>

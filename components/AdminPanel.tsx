@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 type AdminRole = 'USER' | 'BALLER' | 'VIP' | 'ADMIN';
 type RankTag =
@@ -81,6 +82,7 @@ export default function AdminPanel() {
   const [clanTagDrafts, setClanTagDrafts] = useState<Record<string, string>>({});
   const [selectedRankTagDrafts, setSelectedRankTagDrafts] = useState<Record<string, RankTag>>({});
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
+  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -479,223 +481,240 @@ export default function AdminPanel() {
           {!loading
             ? visibleUsers.map((user) => {
                 const isBusy = busyUserId === user.id;
+                const isExpanded = expandedUserId === user.id;
+                const roleLabel = roleDrafts[user.id] ?? (['USER', 'BALLER', 'VIP', 'ADMIN'].includes(user.role) ? (user.role as AdminRole) : 'USER');
                 return (
                   <div key={user.id} className="px-3 py-3 grid gap-3">
-                    <div className="flex items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedUserId((current) => (current === user.id ? null : user.id))}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-left hover:border-slate-700"
+                    >
                       <div className="min-w-0">
                         <p className="font-semibold text-slate-200 truncate">{user.username}</p>
-                        <p className="text-xs text-slate-500">
-                          XP {user.xp} · Level {Math.floor(user.xp / 1000) + 1} · Balance {user.balance} · {user.isBanned ? 'BANNED' : 'ACTIVE'}
-                        </p>
+                        <p className="text-xs text-slate-500">Role: {roleLabel}</p>
                       </div>
-                      <button
-                        onClick={() => void handleToggleBan(user.id, user.isBanned)}
-                        disabled={isBusy}
-                        className={`h-9 px-3 rounded-lg text-xs font-semibold ${
-                          user.isBanned
-                            ? 'bg-amber-600 hover:bg-amber-500 text-white'
-                            : 'bg-red-600 hover:bg-red-500 text-white'
-                        } disabled:opacity-60`}
-                      >
-                        {user.isBanned ? 'Unban' : 'Ban'}
-                      </button>
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      <input
-                        value={usernameDrafts[user.id] ?? ''}
-                        onChange={(event) =>
-                          setUsernameDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                        placeholder="Username"
-                      />
-
-                      <select
-                        value={roleDrafts[user.id] ?? 'USER'}
-                        onChange={(event) =>
-                          setRoleDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value as AdminRole,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                      >
-                        <option value="USER">USER</option>
-                        <option value="BALLER">BALLER</option>
-                        <option value="VIP">VIP</option>
-                        <option value="ADMIN">ADMIN</option>
-                      </select>
-
-                      <input
-                        type="number"
-                        value={balanceDrafts[user.id] ?? ''}
-                        onChange={(event) =>
-                          setBalanceDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                        placeholder="Balance"
-                      />
-
-                      <input
-                        type="number"
-                        value={xpDrafts[user.id] ?? ''}
-                        onChange={(event) =>
-                          setXpDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                        placeholder="XP"
-                      />
-
-                      <input
-                        type="number"
-                        min={1}
-                        value={levelDrafts[user.id] ?? ''}
-                        onChange={(event) =>
-                          setLevelDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                        placeholder="Level"
-                      />
-
-                      <input
-                        value={clanTagDrafts[user.id] ?? ''}
-                        onChange={(event) =>
-                          setClanTagDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase(),
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                        placeholder="ClanTag"
-                      />
-
-                      <select
-                        value={selectedRankTagDrafts[user.id] ?? 'BRONZE'}
-                        onChange={(event) =>
-                          setSelectedRankTagDrafts((prev) => ({
-                            ...prev,
-                            [user.id]: event.target.value as RankTag,
-                          }))
-                        }
-                        className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                      >
-                        {RANK_TAG_OPTIONS.map((tag) => (
-                          <option key={tag} value={tag}>
-                            {tag}
-                          </option>
-                        ))}
-                      </select>
-
-                      <button
-                        onClick={() => void handleSaveProfile(user.id, user.isBanned)}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        Save Profile
-                      </button>
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'add-balance-1000')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        +1K Balance
-                      </button>
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'add-balance-10000')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        +10K Balance
-                      </button>
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'add-xp-1000')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        +1K XP
-                      </button>
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'add-xp-10000')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        +10K XP
-                      </button>
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'reset-daily')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        Reset Daily
-                      </button>
-                    </div>
-
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'reset-quests')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        Reset Quests
-                      </button>
-                      <button
-                        onClick={() => void handleQuickAction(user.id, 'reset-social')}
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        Reset Social
-                      </button>
-                      <button
-                        onClick={() =>
-                          void handleQuickAction(
-                            user.id,
-                            'delete-user',
-                            `Delete user ${user.username} permanently?`
-                          )
-                        }
-                        disabled={isBusy}
-                        className="h-9 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white text-xs font-semibold"
-                      >
-                        Delete User
-                      </button>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="password"
-                          value={passwordDrafts[user.id] ?? ''}
-                          onChange={(event) =>
-                            setPasswordDrafts((prev) => ({
-                              ...prev,
-                              [user.id]: event.target.value,
-                            }))
-                          }
-                          className="h-9 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                          placeholder="New password (min 8)"
-                        />
-                        <button
-                          onClick={() => void handleSetPassword(user.id)}
-                          disabled={isBusy}
-                          className="h-9 px-3 rounded-lg bg-fuchsia-700 hover:bg-fuchsia-600 disabled:opacity-60 text-white text-xs font-semibold"
-                        >
-                          Set PW
-                        </button>
+                      <div className="shrink-0 text-slate-500">
+                        {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                       </div>
-                    </div>
+                    </button>
+
+                    {isExpanded ? (
+                      <>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-xs text-slate-500">
+                            XP {user.xp} · Level {Math.floor(user.xp / 1000) + 1} · Balance {user.balance} · {user.isBanned ? 'BANNED' : 'ACTIVE'}
+                          </p>
+                          <button
+                            onClick={() => void handleToggleBan(user.id, user.isBanned)}
+                            disabled={isBusy}
+                            className={`h-9 px-3 rounded-lg text-xs font-semibold ${
+                              user.isBanned
+                                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                                : 'bg-red-600 hover:bg-red-500 text-white'
+                            } disabled:opacity-60`}
+                          >
+                            {user.isBanned ? 'Unban' : 'Ban'}
+                          </button>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <input
+                            value={usernameDrafts[user.id] ?? ''}
+                            onChange={(event) =>
+                              setUsernameDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            placeholder="Username"
+                          />
+
+                          <select
+                            value={roleDrafts[user.id] ?? 'USER'}
+                            onChange={(event) =>
+                              setRoleDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value as AdminRole,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                          >
+                            <option value="USER">USER</option>
+                            <option value="BALLER">BALLER</option>
+                            <option value="VIP">VIP</option>
+                            <option value="ADMIN">ADMIN</option>
+                          </select>
+
+                          <input
+                            type="number"
+                            value={balanceDrafts[user.id] ?? ''}
+                            onChange={(event) =>
+                              setBalanceDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            placeholder="Balance"
+                          />
+
+                          <input
+                            type="number"
+                            value={xpDrafts[user.id] ?? ''}
+                            onChange={(event) =>
+                              setXpDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            placeholder="XP"
+                          />
+
+                          <input
+                            type="number"
+                            min={1}
+                            value={levelDrafts[user.id] ?? ''}
+                            onChange={(event) =>
+                              setLevelDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            placeholder="Level"
+                          />
+
+                          <input
+                            value={clanTagDrafts[user.id] ?? ''}
+                            onChange={(event) =>
+                              setClanTagDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value.replace(/[^a-zA-Z0-9]/g, '').slice(0, 5).toUpperCase(),
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            placeholder="ClanTag"
+                          />
+
+                          <select
+                            value={selectedRankTagDrafts[user.id] ?? 'BRONZE'}
+                            onChange={(event) =>
+                              setSelectedRankTagDrafts((prev) => ({
+                                ...prev,
+                                [user.id]: event.target.value as RankTag,
+                              }))
+                            }
+                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                          >
+                            {RANK_TAG_OPTIONS.map((tag) => (
+                              <option key={tag} value={tag}>
+                                {tag}
+                              </option>
+                            ))}
+                          </select>
+
+                          <button
+                            onClick={() => void handleSaveProfile(user.id, user.isBanned)}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            Save Profile
+                          </button>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'add-balance-1000')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            +1K Balance
+                          </button>
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'add-balance-10000')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            +10K Balance
+                          </button>
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'add-xp-1000')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-indigo-700 hover:bg-indigo-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            +1K XP
+                          </button>
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'add-xp-10000')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            +10K XP
+                          </button>
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'reset-daily')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            Reset Daily
+                          </button>
+                        </div>
+
+                        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'reset-quests')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            Reset Quests
+                          </button>
+                          <button
+                            onClick={() => void handleQuickAction(user.id, 'reset-social')}
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            Reset Social
+                          </button>
+                          <button
+                            onClick={() =>
+                              void handleQuickAction(
+                                user.id,
+                                'delete-user',
+                                `Delete user ${user.username} permanently?`
+                              )
+                            }
+                            disabled={isBusy}
+                            className="h-9 rounded-lg bg-red-700 hover:bg-red-600 disabled:opacity-60 text-white text-xs font-semibold"
+                          >
+                            Delete User
+                          </button>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="password"
+                              value={passwordDrafts[user.id] ?? ''}
+                              onChange={(event) =>
+                                setPasswordDrafts((prev) => ({
+                                  ...prev,
+                                  [user.id]: event.target.value,
+                                }))
+                              }
+                              className="h-9 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                              placeholder="New password (min 8)"
+                            />
+                            <button
+                              onClick={() => void handleSetPassword(user.id)}
+                              disabled={isBusy}
+                              className="h-9 px-3 rounded-lg bg-fuchsia-700 hover:bg-fuchsia-600 disabled:opacity-60 text-white text-xs font-semibold"
+                            >
+                              Set PW
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    ) : null}
                   </div>
                 );
               })
