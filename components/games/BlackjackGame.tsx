@@ -34,6 +34,7 @@ interface FriendPlayer {
 interface FriendsState {
   roomId: string;
   stage: 'waiting' | 'playing' | 'result';
+  status?: 'PLAYER_TURN' | 'WAITING' | 'ROUND_OVER';
   message: string;
   dealerCards: string[];
   dealerValue: number;
@@ -117,7 +118,7 @@ function createDeck() {
   return deck;
 }
 
-function handValue(cards: string[]) {
+function calculateHandValue(cards: string[]) {
   let total = 0;
   let aces = 0;
 
@@ -144,6 +145,8 @@ function handValue(cards: string[]) {
 
   return total;
 }
+
+const handValue = calculateHandValue;
 
 function cardLabel(card: string) {
   if (card === '??') {
@@ -194,6 +197,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const [friendsRoomId, setFriendsRoomId] = useState('global');
   const [friendsRoomInput, setFriendsRoomInput] = useState('global');
+  const [friendsBetInput, setFriendsBetInput] = useState('100');
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [friendsNotice, setFriendsNotice] = useState('Create or join a room to play with friends.');
   const [friendsState, setFriendsState] = useState<FriendsState>({
@@ -213,7 +217,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   );
 
   const myFriendTurnDone = myFriendSeat ? isPlayerDone(myFriendSeat) : true;
-  const canFriendAct = friendsState.stage === 'playing' && !!myFriendSeat && !myFriendTurnDone;
+  const gameStateStatus = friendsState.status ?? (friendsState.stage === 'playing' && !!myFriendSeat && !myFriendTurnDone ? 'PLAYER_TURN' : friendsState.stage === 'playing' ? 'WAITING' : 'ROUND_OVER');
+  const canFriendAct = gameStateStatus === 'PLAYER_TURN';
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
@@ -572,15 +577,27 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const startFriendsRound = () => {
-    socketRef.current?.emit('blackjack_start_round', {}, (response: { ok: boolean; error?: string }) => {
+    const amount = Math.floor(Number(friendsBetInput));
+    if (!Number.isFinite(amount) || amount < 1) {
+      setFriendsNotice('Enter a valid bet amount.');
+      return;
+    }
+
+    if (!placeBet(amount)) {
+      setFriendsNotice('Not enough funds for this bet.');
+      return;
+    }
+
+    socketRef.current?.emit('blackjack_deal', { amount }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
+        addWin(amount);
         setFriendsNotice(response.error ?? 'Could not start round.');
       }
     });
   };
 
   const friendHit = () => {
-    socketRef.current?.emit('blackjack_hit', {}, (response: { ok: boolean; error?: string }) => {
+    socketRef.current?.emit('blackjack_action', { action: 'hit' }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Hit failed.');
       }
@@ -588,7 +605,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const friendStand = () => {
-    socketRef.current?.emit('blackjack_stand', {}, (response: { ok: boolean; error?: string }) => {
+    socketRef.current?.emit('blackjack_action', { action: 'stand' }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Stand failed.');
       }
@@ -756,6 +773,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               className="h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
               placeholder="room id"
             />
+            <input
+              type="number"
+              min={1}
+              value={friendsBetInput}
+              onChange={(event) => setFriendsBetInput(event.target.value)}
+              className="h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+              placeholder="bet amount"
+            />
             <button onClick={joinFriendsRoom} disabled={joiningRoom} className="h-11 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-sm disabled:opacity-60 disabled:cursor-not-allowed">
               {joiningRoom ? 'Joining...' : 'Join Room'}
             </button>
@@ -804,6 +829,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Room {friendsState.roomId}</p>
                 <p className="text-lg font-semibold text-slate-200 mt-1">{friendsState.message}</p>
                 <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {handValue(friendsState.dealerCards)} | {username}: {myFriendValue}</p>
+                <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">Status: {gameStateStatus}</p>
                 <p className="text-sm text-slate-300 mt-1">{friendsNotice}</p>
               </div>
             </div>

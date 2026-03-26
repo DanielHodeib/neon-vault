@@ -48,6 +48,11 @@ interface RouletteSpinRequestResponse {
   winningNumber?: number;
 }
 
+interface RouletteRoomMember {
+  id: string;
+  username: string;
+}
+
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const BOARD_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
@@ -300,7 +305,7 @@ export default function RouletteGame() {
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
   const [errorText, setErrorText] = useState('');
   const [rouletteRoomId, setRouletteRoomId] = useState('global');
-  const [rouletteRoomMembers, setRouletteRoomMembers] = useState<string[]>([]);
+  const [rouletteRoomMembers, setRouletteRoomMembers] = useState<RouletteRoomMember[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const rouletteRoomIdRef = useRef('global');
   const pendingSpinStakeRef = useRef(0);
@@ -310,6 +315,12 @@ export default function RouletteGame() {
   const effectiveUsername = (username ?? '').trim() || 'Guest';
 
   const activeBets = useMemo(() => Object.values(bets), [bets]);
+  const uniquePlayers = useMemo(() => {
+    const ids = Array.from(new Set(rouletteRoomMembers.map((player) => player.id)));
+    return ids
+      .map((id) => rouletteRoomMembers.find((player) => player.id === id))
+      .filter((player): player is RouletteRoomMember => Boolean(player));
+  }, [rouletteRoomMembers]);
   const totalBet = useMemo(
     () => activeBets.reduce((sum, bet) => sum + bet.stake, 0),
     [activeBets]
@@ -338,7 +349,7 @@ export default function RouletteGame() {
       }
     };
 
-    const rouletteRoomMembersHandler = (payload: { roomId: string; members: string[] }) => {
+    const rouletteRoomMembersHandler = (payload: { roomId: string; members: RouletteRoomMember[] }) => {
       if (!payload?.roomId) {
         return;
       }
@@ -526,12 +537,12 @@ export default function RouletteGame() {
 
             <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
               <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/70 p-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({rouletteRoomMembers.length})</p>
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({uniquePlayers.length})</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
-                  {rouletteRoomMembers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
-                  {rouletteRoomMembers.map((member, index) => (
-                    <span key={`${member}-${index}`} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
-                      {member}
+                  {uniquePlayers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
+                  {uniquePlayers.map((member) => (
+                    <span key={member.id} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
+                      {member.username}
                     </span>
                   ))}
                 </div>

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
+import { copyToClipboard } from '@/lib/copyToClipboard';
+
 interface PokerPlayer {
   socketId: string;
   username: string;
@@ -105,6 +107,8 @@ function cardSymbol(card: string) {
 
 export default function PokerFriendsGame({ username }: { username: string }) {
   const [pokerRoomId, setPokerRoomId] = useState('global');
+  const [pokerRoomInput, setPokerRoomInput] = useState('global');
+  const [switchingRoom, setSwitchingRoom] = useState(false);
   const [selfSocketId, setSelfSocketId] = useState<string | null>(null);
   const [state, setState] = useState<PokerState>({
     roomId: 'global',
@@ -165,6 +169,8 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     socket.on('poker_room_joined', (payload: { ok: boolean; roomId?: string }) => {
       if (payload.ok && payload.roomId) {
         setPokerRoomId(payload.roomId);
+        setPokerRoomInput(payload.roomId);
+        setSwitchingRoom(false);
       }
     });
 
@@ -188,6 +194,60 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     };
   }, [username]);
 
+  const joinPokerRoom = () => {
+    const roomId = pokerRoomInput.trim().toLowerCase();
+    if (!roomId) {
+      setNotice('Please enter a room id.');
+      return;
+    }
+
+    const socket = socketRef.current;
+    if (!socket || !socket.connected) {
+      setNotice('Socket disconnected.');
+      return;
+    }
+
+    setSwitchingRoom(true);
+    setNotice('Switching room...');
+    socket.emit('join_poker_room', { roomId }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      if (!response.ok) {
+        setSwitchingRoom(false);
+        setNotice(response.error ?? 'Could not join room.');
+        return;
+      }
+
+      setNotice(`Joined room ${response.roomId ?? roomId}.`);
+    });
+  };
+
+  const createPokerRoom = () => {
+    const socket = socketRef.current;
+    if (!socket || !socket.connected) {
+      setNotice('Socket disconnected.');
+      return;
+    }
+
+    setSwitchingRoom(true);
+    setNotice('Creating private room...');
+    socket.emit('poker_create', {}, (response: { ok: boolean; roomId?: string; error?: string }) => {
+      if (!response.ok) {
+        setSwitchingRoom(false);
+        setNotice(response.error ?? 'Could not create room.');
+        return;
+      }
+
+      const roomId = response.roomId ?? 'global';
+      setPokerRoomInput(roomId);
+      setNotice(`Private room ${roomId} created.`);
+    });
+  };
+
+  const copyInvite = async () => {
+    const roomCode = state.roomId || pokerRoomId;
+    const copied = await copyToClipboard(roomCode);
+    setNotice(copied ? 'Invite copied.' : `Room code: ${roomCode}`);
+  };
+
   const action = (nextAction: 'check' | 'call' | 'fold') => {
     socketRef.current?.emit('poker_action', { action: nextAction }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
@@ -201,12 +261,34 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em Friends</h2>
-          <p className="text-xs text-slate-400">Global table with live seats and auto-start.</p>
+          <p className="text-xs text-slate-400">Create private rooms or join by invite code.</p>
         </div>
         <div className="text-right">
           <p className="text-xs uppercase text-slate-500">Players Active</p>
           <p className="font-mono text-sm text-cyan-300">{state.players.length}</p>
         </div>
+      </div>
+
+      <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 grid gap-2 md:grid-cols-[1fr_auto_auto_auto] items-center">
+        <input
+          value={pokerRoomInput}
+          onChange={(event) => setPokerRoomInput(event.target.value)}
+          className="h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+          placeholder="room id"
+        />
+        <button
+          onClick={joinPokerRoom}
+          disabled={switchingRoom}
+          className="h-10 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+        >
+          {switchingRoom ? 'Switching...' : 'Join Room'}
+        </button>
+        <button onClick={createPokerRoom} className="h-10 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold">
+          Create Private Room
+        </button>
+        <button onClick={copyInvite} className="h-10 px-4 rounded-lg border border-cyan-700/60 bg-cyan-600/10 hover:bg-cyan-600/20 text-cyan-300 text-sm font-semibold">
+          Copy Invite
+        </button>
       </div>
 
       <div className="flex-1 min-h-0 p-4">
@@ -222,7 +304,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
               })}
             </div>
             <p className="mt-3 text-center text-sm text-slate-300">Stage: {state.stage}</p>
-            <p className="mt-1 text-center text-xs text-slate-400">Room: Global</p>
+            <p className="mt-1 text-center text-xs text-slate-400">Room: {state.roomId || pokerRoomId}</p>
             {state.winnerLabel ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{state.winnerLabel}</p> : null}
             <p className="mt-1 text-center text-xs text-slate-400">{notice}</p>
           </div>

@@ -615,7 +615,20 @@ function blackjackHandValue(cards) {
   return total;
 }
 
-function publicBlackjackState(room) {
+function getBlackjackPlayerStatus(room, socketId) {
+  const player = room.players.get(socketId);
+  if (room.stage !== 'playing') {
+    return 'ROUND_OVER';
+  }
+
+  if (!player) {
+    return 'WAITING';
+  }
+
+  return player.stood || player.busted ? 'WAITING' : 'PLAYER_TURN';
+}
+
+function publicBlackjackState(room, targetSocketId) {
   const revealDealer = room.stage === 'result';
   const visibleDealerCards = room.dealerHand.map((card, index) => {
     if (!revealDealer && index === 1) {
@@ -627,6 +640,7 @@ function publicBlackjackState(room) {
   return {
     roomId: room.id,
     stage: room.stage,
+    status: getBlackjackPlayerStatus(room, targetSocketId),
     message: room.message,
     dealerCards: visibleDealerCards,
     dealerValue: revealDealer ? blackjackHandValue(room.dealerHand) : blackjackHandValue(room.dealerHand.slice(0, 1)),
@@ -644,7 +658,9 @@ function publicBlackjackState(room) {
 
 function broadcastBlackjackState(roomId) {
   const room = getBlackjackRoom(roomId);
-  io.to(blackjackChannel(room.id)).emit('blackjack_state', publicBlackjackState(room));
+  room.sockets.forEach((socketId) => {
+    io.to(socketId).emit('blackjack_state', publicBlackjackState(room, socketId));
+  });
 }
 
 function resolveBlackjackRound(room) {
@@ -716,6 +732,86 @@ function startBlackjackRound(roomId) {
   return { ok: true };
 }
 
+function applyBlackjackHit(room, socketId) {
+  const player = room.players.get(socketId);
+
+  if (!player) {
+    return { ok: false, error: 'Not in blackjack room.' };
+  }
+
+  if (room.stage !== 'playing') {
+    return { ok: false, error: 'No active round.' };
+  }
+
+  if (player.stood || player.busted) {
+    return { ok: false, error: 'Player already done.' };
+  }
+
+  player.hand.push(room.deck.pop());
+  player.busted = blackjackHandValue(player.hand) > 21;
+  if (player.busted) {
+    player.resultText = 'Bust';
+  }
+
+  broadcastBlackjackState(room.id);
+  maybeResolveBlackjackRound(room);
+  return { ok: true };
+}
+
+function applyBlackjackStand(room, socketId) {
+  const player = room.players.get(socketId);
+
+  if (!player) {
+    return { ok: false, error: 'Not in blackjack room.' };
+  }
+
+  if (room.stage !== 'playing') {
+    return { ok: false, error: 'No active round.' };
+  }
+
+  if (player.stood || player.busted) {
+    return { ok: false, error: 'Player already done.' };
+  }
+
+  player.stood = true;
+  player.resultText = 'Stand';
+  broadcastBlackjackState(room.id);
+  maybeResolveBlackjackRound(room);
+  return { ok: true };
+}
+
+function createPokerRoomForSocket(socket, username) {
+  const roomId = `pk-${Math.random().toString(36).slice(2, 8)}`;
+  const room = attachPokerSocket(socket, roomId, username);
+  io.to(socket.id).emit('poker_state', publicPokerState(room, socket.id));
+  return room;
+}
+
+function removeDuplicateRouletteUsers(room, username, keepSocketId) {
+  const normalized = String(username || '').trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+
+  Array.from(room.sockets).forEach((socketId) => {
+    if (socketId === keepSocketId) {
+      return;
+    }
+
+    const memberName = String(onlineUsers.get(socketId) || '').trim().toLowerCase();
+    if (memberName !== normalized) {
+      return;
+    }
+
+    room.sockets.delete(socketId);
+    const duplicateSocket = io.sockets.sockets.get(socketId);
+    if (duplicateSocket) {
+      duplicateSocket.leave(rouletteChannel(room.id));
+      duplicateSocket.data.rouletteRoomId = null;
+    }
+  });
+}
+
 function publicCrashPlayers(room) {
   return Array.from(room.players.values()).map((player) => ({
     username: player.username,
@@ -733,8 +829,11 @@ function publicCrashRoomMembers(room) {
 
 function publicRouletteRoomMembers(room) {
   return Array.from(room.sockets)
-    .map((socketId) => onlineUsers.get(socketId) || `Guest-${socketId.slice(0, 6)}`)
-    .sort((left, right) => left.localeCompare(right));
+    .map((socketId) => ({
+      id: socketId,
+      username: onlineUsers.get(socketId) || `Guest-${socketId.slice(0, 6)}`,
+    }))
+    .sort((left, right) => left.username.localeCompare(right.username));
 }
 
 function broadcastOnlineUsers() {
@@ -1299,6 +1398,7 @@ function attachRouletteSocket(socket, roomId) {
 
   const room = getRouletteRoom(sanitized);
   room.sockets.add(socket.id);
+  removeDuplicateRouletteUsers(room, onlineUsers.get(socket.id), socket.id);
   socket.data.rouletteRoomId = room.id;
   socket.join(rouletteChannel(room.id));
   broadcastRouletteRoomMembers(room.id);
@@ -1627,6 +1727,15 @@ io.on('connection', (socket) => {
     setUserActivity(socket.id, "Poker");
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
+    socket.emit('poker_state', publicPokerState(nextRoom, socket.id));
+  });
+
+  socket.on('poker_create', (_payload, callback) => {
+    const nextRoom = createPokerRoomForSocket(socket, username);
+
+    setUserActivity(socket.id, 'Poker');
+    callback?.({ ok: true, roomId: nextRoom.id });
+    socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
   });
 
   socket.on('join_blackjack_room', (payload, callback) => {
@@ -1898,62 +2007,53 @@ io.on('connection', (socket) => {
     callback?.(result);
   });
 
+  socket.on('blackjack_deal', (payload, callback) => {
+    const roomId = socket.data.blackjackRoomId;
+    const result = startBlackjackRound(roomId);
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    const room = getBlackjackRoom(roomId);
+    const player = room.players.get(socket.id);
+    if (player) {
+      const amount = Math.floor(Number(payload?.amount ?? 0));
+      player.bet = Number.isFinite(amount) && amount > 0 ? amount : 0;
+    }
+
+    callback?.({ ok: true });
+  });
+
   socket.on('blackjack_hit', (_payload, callback) => {
     const roomId = socket.data.blackjackRoomId;
     const room = getBlackjackRoom(roomId);
-    const player = room.players.get(socket.id);
-
-    if (!player) {
-      callback?.({ ok: false, error: 'Not in blackjack room.' });
-      return;
-    }
-
-    if (room.stage !== 'playing') {
-      callback?.({ ok: false, error: 'No active round.' });
-      return;
-    }
-
-    if (player.stood || player.busted) {
-      callback?.({ ok: false, error: 'Player already done.' });
-      return;
-    }
-
-    player.hand.push(room.deck.pop());
-    player.busted = blackjackHandValue(player.hand) > 21;
-    if (player.busted) {
-      player.resultText = 'Bust';
-    }
-
-    broadcastBlackjackState(room.id);
-    maybeResolveBlackjackRound(room);
-    callback?.({ ok: true });
+    callback?.(applyBlackjackHit(room, socket.id));
   });
 
   socket.on('blackjack_stand', (_payload, callback) => {
     const roomId = socket.data.blackjackRoomId;
     const room = getBlackjackRoom(roomId);
-    const player = room.players.get(socket.id);
+    callback?.(applyBlackjackStand(room, socket.id));
+  });
 
-    if (!player) {
-      callback?.({ ok: false, error: 'Not in blackjack room.' });
+  socket.on('blackjack_action', (payload, callback) => {
+    const roomId = socket.data.blackjackRoomId;
+    const room = getBlackjackRoom(roomId);
+    const action = typeof payload?.action === 'string' ? payload.action.toLowerCase() : '';
+
+    if (action === 'hit') {
+      callback?.(applyBlackjackHit(room, socket.id));
       return;
     }
 
-    if (room.stage !== 'playing') {
-      callback?.({ ok: false, error: 'No active round.' });
+    if (action === 'stand') {
+      callback?.(applyBlackjackStand(room, socket.id));
       return;
     }
 
-    if (player.stood || player.busted) {
-      callback?.({ ok: false, error: 'Player already done.' });
-      return;
-    }
-
-    player.stood = true;
-    player.resultText = 'Stand';
-    broadcastBlackjackState(room.id);
-    maybeResolveBlackjackRound(room);
-    callback?.({ ok: true });
+    callback?.({ ok: false, error: 'Unknown blackjack action.' });
   });
 
   socket.on('poker_set_ready', (payload, callback) => {
