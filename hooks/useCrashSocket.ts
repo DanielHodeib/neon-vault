@@ -79,6 +79,8 @@ function shouldForcePolling(socketUrl: string) {
 
 export function useCrashSocket(username: string, opts?: { defaultRoomId?: string; balance?: string | number; xp?: number }) {
   const defaultRoomId = opts?.defaultRoomId ?? 'global';
+  const initialBalanceRef = useRef(String(opts?.balance ?? Number.MAX_SAFE_INTEGER));
+  const initialXpRef = useRef(String(opts?.xp ?? 0));
   const [connected, setConnected] = useState(false);
   const [roomId, setRoomId] = useState(defaultRoomId);
   const [phase, setPhase] = useState<CrashPhase>('waiting');
@@ -107,8 +109,8 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
       query: {
         username: normalizedUsername,
         crashRoomId: defaultRoomId,
-        xp: String(opts?.xp ?? 0),
-        balance: String(opts?.balance ?? Number.MAX_SAFE_INTEGER),
+        xp: initialXpRef.current,
+        balance: initialBalanceRef.current,
       },
     });
 
@@ -170,7 +172,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [defaultRoomId, normalizedUsername, opts?.balance, opts?.xp]);
+  }, [defaultRoomId, normalizedUsername]);
 
   const placeBet = useCallback(
     (amount: number, autoCashOut: number = 0) =>
