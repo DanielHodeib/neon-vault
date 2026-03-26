@@ -50,8 +50,13 @@ export default function CrashGame() {
   const [isPlacingBet, setIsPlacingBet] = useState(false);
   const [isSyncingCashOut, setIsSyncingCashOut] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [launchPulse, setLaunchPulse] = useState(0);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [parallax, setParallax] = useState({ x: 0, y: 0 });
   
   const socketRef = useRef<Socket | null>(null);
+  const previousPhaseRef = useRef<'waiting' | 'running' | 'crashed'>('waiting');
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   // Memoized Values
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
@@ -78,6 +83,82 @@ export default function CrashGame() {
   const trailDuration = Math.max(0.45, 4.5 / speedFactor);
   const scanDuration = Math.max(2, 18 / speedFactor);
   const altitudeMeters = Math.floor(multiplier * 100);
+
+  const playTone = useCallback((frequency: number, durationMs: number, type: OscillatorType = 'sine', gain = 0.045) => {
+    if (!soundEnabled || typeof window === 'undefined') {
+      return;
+    }
+
+    try {
+      const Ctx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) {
+        return;
+      }
+
+      if (!audioContextRef.current) {
+        audioContextRef.current = new Ctx();
+      }
+
+      const ctx = audioContextRef.current;
+      if (ctx.state === 'suspended') {
+        void ctx.resume();
+      }
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, ctx.currentTime);
+      gainNode.gain.setValueAtTime(gain, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + durationMs / 1000);
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + durationMs / 1000);
+    } catch {
+      // no-op when audio is unavailable
+    }
+  }, [soundEnabled]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch('/api/settings', { cache: 'no-store' });
+        if (!response.ok) {
+          return;
+        }
+
+        const payload = (await response.json()) as { settings?: { soundEnabled?: boolean } };
+        if (!cancelled && typeof payload.settings?.soundEnabled === 'boolean') {
+          setSoundEnabled(payload.settings.soundEnabled);
+        }
+      } catch {
+        // keep default
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    const previousPhase = previousPhaseRef.current;
+
+    if (phase === 'running' && previousPhase !== 'running') {
+      setLaunchPulse((current) => current + 1);
+      playTone(520, 160, 'triangle', 0.05);
+      window.setTimeout(() => playTone(760, 120, 'triangle', 0.04), 90);
+    }
+
+    if (phase === 'crashed' && previousPhase !== 'crashed') {
+      playTone(180, 240, 'sawtooth', 0.06);
+      window.setTimeout(() => playTone(120, 260, 'sawtooth', 0.045), 70);
+    }
+
+    previousPhaseRef.current = phase;
+  }, [phase, playTone]);
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg);
@@ -178,19 +259,50 @@ export default function CrashGame() {
       if (!res.ok) {
         showError(res.error || "Cashout failed");
         setIsSyncingCashOut(false);
+      } else {
+        playTone(900, 140, 'sine', 0.05);
       }
       // Erfolg wird über das Socket-Event 'crash_cashout_success' oder den nächsten Tick verarbeitet
     });
   };
 
+  const handleParallaxMove = (event: React.MouseEvent<HTMLDivElement>) => {
+    const target = event.currentTarget.getBoundingClientRect();
+    const x = ((event.clientX - target.left) / target.width - 0.5) * 2;
+    const y = ((event.clientY - target.top) / target.height - 0.5) * 2;
+    setParallax({ x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) });
+  };
+
+  const resetParallax = () => {
+    setParallax({ x: 0, y: 0 });
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
-      <div className="relative flex-1 min-h-0 border-b border-slate-800 overflow-hidden">
+      <div className="relative flex-1 min-h-0 border-b border-slate-800 overflow-hidden" onMouseMove={handleParallaxMove} onMouseLeave={resetParallax}>
         <motion.div
           className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.22),_rgba(2,6,23,1)_64%)]"
           animate={{ opacity: phase === 'crashed' ? [1, 0.88, 1] : 1 }}
           transition={{ duration: 0.42 }}
         />
+
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          animate={{ x: parallax.x * -8, y: parallax.y * -6 }}
+          transition={{ type: 'spring', stiffness: 80, damping: 18, mass: 0.5 }}
+        >
+          <div className="absolute top-8 left-10 h-24 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
+          <div className="absolute top-24 right-16 h-20 w-56 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute top-48 left-1/3 h-16 w-44 rounded-full bg-sky-400/10 blur-3xl" />
+        </motion.div>
+
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          animate={{ x: parallax.x * 6, y: parallax.y * 4 }}
+          transition={{ type: 'spring', stiffness: 85, damping: 20, mass: 0.45 }}
+        >
+          <div className="absolute bottom-0 left-0 right-0 h-40 bg-[linear-gradient(180deg,transparent_0%,rgba(8,47,73,0.35)_56%,rgba(2,6,23,0.95)_100%)]" />
+        </motion.div>
 
         <motion.div
           className="absolute inset-0 opacity-45"
@@ -241,6 +353,21 @@ export default function CrashGame() {
             />
           </motion.div>
         </motion.div>
+
+        <AnimatePresence>
+          {launchPulse > 0 && phase === 'running' ? (
+            <motion.div
+              key={`launch-pulse-${launchPulse}`}
+              className="absolute inset-0 z-25 pointer-events-none"
+              initial={{ opacity: 0.4, scale: 0.98 }}
+              animate={{ opacity: 0, scale: 1.08 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.45, ease: 'easeOut' }}
+            >
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_80%,rgba(34,211,238,0.32)_0%,rgba(34,211,238,0.08)_24%,transparent_60%)]" />
+            </motion.div>
+          ) : null}
+        </AnimatePresence>
 
         <AnimatePresence>
           {phase === 'crashed' ? (
