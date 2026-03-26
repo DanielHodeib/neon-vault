@@ -236,7 +236,7 @@ export async function POST(request: Request) {
         };
       }
 
-      if (action === 'bet' && current.balance < amount) {
+      if (action === 'bet' && parseFloat(current.balance) < parseFloat(amount)) {
         return {
           error: 'Insufficient balance' as const,
           balance: current.balance,
@@ -308,8 +308,8 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: result.error,
-          balance: result.balance ?? 0,
-          xp: result.xp ?? 0,
+          balance: result.balance,
+          xp: result.xp,
           daily: result.daily,
         },
         { status: 400 }

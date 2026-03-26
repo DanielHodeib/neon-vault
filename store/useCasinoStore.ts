@@ -182,9 +182,10 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
   },
   placeBet: (amount) => {
     const safeAmount = normalizeCurrency(Number.isFinite(amount) ? amount : 0);
-    const currentBalance = normalizeCurrency(get().balance);
-    if (currentBalance >= safeAmount && safeAmount > 0) {
-      set({ balance: normalizeCurrency(currentBalance - safeAmount) });
+    const currentBalance = parseFloat(get().balance);
+    const amountNum = parseFloat(safeAmount);
+    if (currentBalance >= amountNum && amountNum > 0) {
+      set({ balance: normalizeCurrency(currentBalance - amountNum) });
 
       void get()
         .persistWalletAction('bet', safeAmount)
@@ -207,7 +208,11 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
       return;
     }
 
-    set((state) => ({ balance: normalizeCurrency(state.balance + safeAmount) }));
+    set((state) => {
+      const currentBalance = parseFloat(state.balance);
+      const amountNum = parseFloat(safeAmount);
+      return { balance: normalizeCurrency(currentBalance + amountNum) };
+    });
 
     void get()
       .persistWalletAction('win', safeAmount)
@@ -235,9 +240,16 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
         daily?: DailyProgress;
       };
 
+      if (!response.ok) {
+        const error = payload.error ?? 'Wallet action failed.';
+        console.warn(`Wallet ${action} failed:`, error, payload);
+        return { ok: false, error };
+      }
+
       const parsedBalance = parseBalanceValue(payload.balance);
-      if (!response.ok || parsedBalance === null) {
-        return { ok: false, error: payload.error ?? 'Wallet action failed.' };
+      if (parsedBalance === null) {
+        console.error('Failed to parse balance:', payload.balance);
+        return { ok: false, error: 'Invalid balance format from server.' };
       }
 
       set((state) => ({
@@ -247,7 +259,8 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
       }));
 
       return { ok: true };
-    } catch {
+    } catch (error) {
+      console.error('Wallet action network error:', error);
       return { ok: false, error: 'Network error.' };
     }
   },
