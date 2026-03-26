@@ -78,17 +78,25 @@ const socketProfiles = new Map();
 const BIG_WIN_THRESHOLD = 5000;
 const RANK_RULES = [
   { tag: 'BRONZE', color: '#d97706', minLevel: 1, minBalance: 0 },
+  { tag: 'IRON', color: '#9ca3af', minLevel: 2, minBalance: 2500 },
   { tag: 'COPPER', color: '#b45309', minLevel: 3, minBalance: 5000 },
+  { tag: 'STEEL', color: '#94a3b8', minLevel: 4, minBalance: 12000 },
   { tag: 'SILVER', color: '#cbd5e1', minLevel: 6, minBalance: 25000 },
+  { tag: 'EMERALD', color: '#10b981', minLevel: 8, minBalance: 60000 },
   { tag: 'GOLD', color: '#fbbf24', minLevel: 10, minBalance: 100000 },
   { tag: 'PLATINUM', color: '#93c5fd', minLevel: 14, minBalance: 250000 },
   { tag: 'DIAMOND', color: '#60a5fa', minLevel: 18, minBalance: 500000 },
+  { tag: 'RUBY', color: '#ef4444', minLevel: 20, minBalance: 750000 },
   { tag: 'MASTER', color: '#8b5cf6', minLevel: 22, minBalance: 1000000 },
   { tag: 'ELITE', color: '#ec4899', minLevel: 26, minBalance: 2500000 },
-  { tag: 'TYCOON', color: '#22c55e', minLevel: 30, minBalance: 5000000 },
-  { tag: 'MILLIONAIRE', color: '#14b8a6', minLevel: 34, minBalance: 10000000 },
-  { tag: 'BILLIONAIRE', color: '#eab308', minLevel: 40, minBalance: 50000000 },
-  { tag: 'NEON_OVERLORD', color: '#22d3ee', minLevel: 48, minBalance: 150000000 },
+  { tag: 'HIGH_ROLLER', color: '#06b6d4', minLevel: 1, minBalance: 3500000 },
+  { tag: 'TYCOON', color: '#22c55e', minLevel: 1, minBalance: 5000000 },
+  { tag: 'CASINO_LORD', color: '#84cc16', minLevel: 1, minBalance: 7500000 },
+  { tag: 'MILLIONAIRE', color: '#14b8a6', minLevel: 1, minBalance: 10000000 },
+  { tag: 'MULTI_MILLIONAIRE', color: '#0ea5e9', minLevel: 1, minBalance: 25000000 },
+  { tag: 'BILLIONAIRE', color: '#eab308', minLevel: 1, minBalance: 50000000 },
+  { tag: 'CASINO_EMPEROR', color: '#f97316', minLevel: 1, minBalance: 100000000 },
+  { tag: 'NEON_OVERLORD', color: '#22d3ee', minLevel: 1, minBalance: 150000000 },
 ];
 
 function rankFromXp(rawXp, rawBalance = Number.MAX_SAFE_INTEGER) {

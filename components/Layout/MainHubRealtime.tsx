@@ -1648,9 +1648,10 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                                   key={rank.tag}
                                   onClick={() => {
                                     if (!unlocked) {
-                                      setSettingsNotice(
-                                        `Rank ${rank.tag} unlockt ab Level ${rank.minLevel} und ${rank.minBalance.toLocaleString()} NVC.`
-                                      );
+                                      const requirement = rank.minLevel <= 1
+                                        ? `${rank.minBalance.toLocaleString()} NVC`
+                                        : `Level ${rank.minLevel} und ${rank.minBalance.toLocaleString()} NVC`;
+                                      setSettingsNotice(`Rank ${rank.tag} unlockt ab ${requirement}.`);
                                       return;
                                     }
                                     setSelectedRankTag(rank.tag);
@@ -1666,7 +1667,11 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                                       {rank.tag.replace(/_/g, ' ')}
                                     </span>
                                     <span className="text-[11px] text-slate-500">
-                                      {unlocked ? 'Unlocked' : `Locked L${rank.minLevel} · ${rank.minBalance.toLocaleString()} NVC`}
+                                      {unlocked
+                                        ? 'Unlocked'
+                                        : rank.minLevel <= 1
+                                          ? `Locked ${rank.minBalance.toLocaleString()} NVC`
+                                          : `Locked L${rank.minLevel} · ${rank.minBalance.toLocaleString()} NVC`}
                                     </span>
                                   </div>
                                   <p className="mt-1 text-[11px] text-slate-400">Wird als Tag neben deinem Namen im Live-Chat angezeigt.</p>
