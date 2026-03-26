@@ -33,6 +33,7 @@ import SlotsGame from '@/components/games/SlotsGame';
 import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
 import CoinflipGame from '@/components/games/CoinflipGame';
+import CyberAviator from '@/components/games/CyberAviator';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
@@ -43,7 +44,7 @@ import { useCasinoStore } from '../../store/useCasinoStore';
 
 const AdminPanel = dynamic(() => import('@/components/AdminPanel'));
 
-type Tab = 'crash' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
+type Tab = 'crash' | 'crash-aviator' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
 type PokerMode = 'solo' | 'friends';
 type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
@@ -1813,7 +1814,8 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
         </div>
 
         <nav className={`flex-1 ${sidebarCollapsed ? 'p-3' : 'p-4'} space-y-2 overflow-y-auto custom-scrollbar`}>
-          <SidebarButton icon={<TrendingUp size={20} />} label="Crash" active={activeTab === 'crash'} onClick={() => setActiveTab('crash')} collapsed={sidebarCollapsed} />
+          <SidebarButton icon={<TrendingUp size={20} />} label="Neon Rocket" active={activeTab === 'crash'} onClick={() => setActiveTab('crash')} collapsed={sidebarCollapsed} />
+          <SidebarButton icon={<TrendingUp size={20} />} label="Cyber Aviator" active={activeTab === 'crash-aviator'} onClick={() => setActiveTab('crash-aviator')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Coins size={20} />} label="Slots" active={activeTab === 'slots'} onClick={() => setActiveTab('slots')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<Hand size={20} />} label="Blackjack" active={activeTab === 'blackjack'} onClick={() => setActiveTab('blackjack')} collapsed={sidebarCollapsed} />
           <SidebarButton icon={<CircleDashed size={20} />} label="Roulette" active={activeTab === 'roulette'} onClick={() => setActiveTab('roulette')} collapsed={sidebarCollapsed} />
@@ -2118,6 +2120,12 @@ export default function MainHubRealtime({ initialUsername }: { initialUsername?:
                     )}
                   </div>
                 </div>
+              </div>
+            )}
+
+            {activeTab === 'crash-aviator' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+                <CyberAviator />
               </div>
             )}
 
