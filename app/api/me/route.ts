@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
+import { getRankInfo } from '@/lib/ranks';
 
 export async function GET() {
   const session = await auth();
@@ -30,5 +31,6 @@ export async function GET() {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ user });
+  const rank = getRankInfo(user.xp);
+  return NextResponse.json({ user: { ...user, level: rank.level, rankTag: rank.tag, rankColor: rank.color } });
 }

@@ -13,6 +13,9 @@ const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')
 const ROOM_PREFIX = 'crash:';
 const POKER_ROOM_PREFIX = 'poker:';
 const BLACKJACK_ROOM_PREFIX = 'blackjack:';
+const ROULETTE_ROOM_PREFIX = 'roulette:';
+const CRASH_ROUND_WAIT_MS = 5000;
+const GLOBAL_CRASH_ROOM_ID = 'global';
 
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -22,7 +25,8 @@ const app = express();
 const allowedOrigins = new Set([CLIENT_ORIGIN, ...CLIENT_ORIGINS, 'http://localhost:3000', 'http://127.0.0.1:3000']);
 
 function isLanHost(hostname) {
-  return /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(hostname);
+  // Allow localhost, private IPs, and common tunnel domains.
+  return /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.|.*\.ngrok\.io|.*\.loca\.?lt|.*\.tunnel|.*\.localhost\.run|.*\.lhr\.life|.*\.life|.*\.ts\.net)/.test(hostname);
 }
 
 function isAllowedOrigin(origin) {
@@ -52,6 +56,7 @@ app.use(express.json());
 
 const server = http.createServer(app);
 const io = new Server(server, {
+  path: '/socket.io',
   cors: {
     origin(origin, callback) {
       callback(null, isAllowedOrigin(origin));
@@ -67,11 +72,92 @@ let chatHistory = [];
 const crashRooms = new Map();
 const pokerRooms = new Map();
 const blackjackRooms = new Map();
+const rouletteRooms = new Map();
+const socketProfiles = new Map();
+
+const BIG_WIN_THRESHOLD = 5000;
+
+function rankFromXp(rawXp) {
+  const xp = Number.isFinite(Number(rawXp)) ? Math.max(0, Math.floor(Number(rawXp))) : 0;
+  const level = Math.floor(xp / 1000) + 1;
+
+  if (level >= 40) {
+    return { xp, level, rankTag: 'NEON', rankColor: '#22d3ee' };
+  }
+  if (level >= 20) {
+    return { xp, level, rankTag: 'GOLD', rankColor: '#fbbf24' };
+  }
+  if (level >= 10) {
+    return { xp, level, rankTag: 'SILBER', rankColor: '#cbd5e1' };
+  }
+  return { xp, level, rankTag: 'BRONZE', rankColor: '#d97706' };
+}
+
+function upsertSocketProfile(socketId, username, rawXp) {
+  const rank = rankFromXp(rawXp);
+  const profile = {
+    username,
+    xp: rank.xp,
+    level: rank.level,
+    rankTag: rank.rankTag,
+    rankColor: rank.rankColor,
+  };
+
+  socketProfiles.set(socketId, profile);
+  return profile;
+}
+
+function getSocketProfile(socketId, usernameFallback) {
+  const existing = socketProfiles.get(socketId);
+  if (existing) {
+    return existing;
+  }
+
+  return upsertSocketProfile(socketId, usernameFallback, 0);
+}
+
+function emitSystemBigWin(username, amount) {
+  const numericAmount = Number.isFinite(Number(amount)) ? Math.floor(Number(amount)) : 0;
+  if (numericAmount < BIG_WIN_THRESHOLD) {
+    return;
+  }
+
+  const message = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    username: 'SYSTEM',
+    text: `🏆 MIND-BLOWING! ${username} hat ${numericAmount} NVC gewonnen!`,
+    createdAt: Date.now(),
+    rankTag: 'SYSTEM',
+    rankColor: '#ef4444',
+    system: true,
+  };
+
+  chatHistory = [...chatHistory, message].slice(-80);
+  io.emit('chat_message', message);
+}
+
+function randomRange(min, max) {
+  return min + Math.random() * (max - min);
+}
 
 function generateCrashPoint() {
-  const random = Math.random();
-  const shaped = 1.05 + Math.pow(random, 0.52) * 8.7;
-  return Number(shaped.toFixed(2));
+  const roll = Math.random();
+
+  // Weighted server RNG targeting a more stable feel:
+  // mostly low-mid rounds, some medium-high, and very rare moonshots.
+  if (roll < 0.08) {
+    return Number(randomRange(1.0, 1.15).toFixed(2));
+  }
+
+  if (roll < 0.72) {
+    return Number(randomRange(1.16, 2.8).toFixed(2));
+  }
+
+  if (roll < 0.96) {
+    return Number(randomRange(2.81, 6.0).toFixed(2));
+  }
+
+  return Number(randomRange(6.01, 18.0).toFixed(2));
 }
 
 function roomChannel(roomId) {
@@ -84,6 +170,10 @@ function pokerChannel(roomId) {
 
 function blackjackChannel(roomId) {
   return `${BLACKJACK_ROOM_PREFIX}${roomId}`;
+}
+
+function rouletteChannel(roomId) {
+  return `${ROULETTE_ROOM_PREFIX}${roomId}`;
 }
 
 function createDeck() {
@@ -122,7 +212,7 @@ function getCrashRoom(roomId) {
     history: [],
     players: new Map(),
     sockets: new Set(),
-    roundStartAt: Date.now() + 5000,
+    roundStartAt: Date.now() + CRASH_ROUND_WAIT_MS,
   };
 
   crashRooms.set(id, room);
@@ -141,7 +231,9 @@ function getPokerRoom(roomId) {
     players: new Map(),
     started: false,
     stage: 'waiting',
+    deck: [],
     board: [],
+    actedSocketIds: new Set(),
     winnerSocketId: null,
     winnerLabel: '',
   };
@@ -167,6 +259,21 @@ function getBlackjackRoom(roomId) {
   };
 
   blackjackRooms.set(id, room);
+  return room;
+}
+
+function getRouletteRoom(roomId) {
+  const id = sanitizeRoomId(roomId);
+  if (rouletteRooms.has(id)) {
+    return rouletteRooms.get(id);
+  }
+
+  const room = {
+    id,
+    sockets: new Set(),
+  };
+
+  rouletteRooms.set(id, room);
   return room;
 }
 
@@ -314,6 +421,12 @@ function publicCrashRoomMembers(room) {
     .sort((left, right) => left.localeCompare(right));
 }
 
+function publicRouletteRoomMembers(room) {
+  return Array.from(room.sockets)
+    .map((socketId) => onlineUsers.get(socketId) || `Guest-${socketId.slice(0, 6)}`)
+    .sort((left, right) => left.localeCompare(right));
+}
+
 function broadcastOnlineUsers() {
   io.emit('online_users', Array.from(onlineUsers.values()));
 }
@@ -345,7 +458,7 @@ app.get('/presence', (_req, res) => {
 
 function broadcastCrashState(roomId) {
   const room = getCrashRoom(roomId);
-  io.to(roomChannel(room.id)).emit('crash_state', {
+  const payload = {
     roomId: room.id,
     phase: room.phase,
     multiplier: room.multiplier,
@@ -353,15 +466,29 @@ function broadcastCrashState(roomId) {
     history: room.history,
     players: publicCrashPlayers(room),
     roundStartAt: room.roundStartAt,
-  });
+  };
+
+  if (room.id === GLOBAL_CRASH_ROOM_ID) {
+    io.emit('crash_state', payload);
+    return;
+  }
+
+  io.to(roomChannel(room.id)).emit('crash_state', payload);
 }
 
 function broadcastCrashRoomMembers(roomId) {
   const room = getCrashRoom(roomId);
-  io.to(roomChannel(room.id)).emit('crash_room_members', {
+  const payload = {
     roomId: room.id,
     members: publicCrashRoomMembers(room),
-  });
+  };
+
+  if (room.id === GLOBAL_CRASH_ROOM_ID) {
+    io.emit('crash_room_members', payload);
+    return;
+  }
+
+  io.to(roomChannel(room.id)).emit('crash_room_members', payload);
 }
 
 function publicPokerState(room, targetSocketId) {
@@ -395,7 +522,9 @@ function broadcastPokerState(roomId) {
 function resetPokerRound(room) {
   room.started = false;
   room.stage = 'waiting';
+  room.deck = [];
   room.board = [];
+  room.actedSocketIds = new Set();
   room.winnerSocketId = null;
   room.winnerLabel = '';
   room.players.forEach((player) => {
@@ -427,6 +556,68 @@ function resolvePokerWinner(room) {
       player.actionText = 'lost';
     }
   });
+
+  io.to(pokerChannel(room.id)).emit('poker_table_win', {
+    roomId: room.id,
+    username: winner.username,
+  });
+}
+
+function schedulePokerReset(room, delayMs = 6000) {
+  setTimeout(() => {
+    resetPokerRound(room);
+    broadcastPokerState(room.id);
+  }, delayMs);
+}
+
+function completePokerShowdown(room) {
+  if (!room.started || room.stage === 'showdown') {
+    return;
+  }
+
+  room.stage = 'showdown';
+  resolvePokerWinner(room);
+  broadcastPokerState(room.id);
+  schedulePokerReset(room);
+}
+
+function maybeAdvancePokerStage(room) {
+  if (!room.started || room.stage === 'waiting' || room.stage === 'showdown') {
+    return;
+  }
+
+  const activePlayers = Array.from(room.players.values()).filter((player) => !player.folded);
+  if (activePlayers.length <= 1) {
+    completePokerShowdown(room);
+    return;
+  }
+
+  const allActed = activePlayers.every((player) => room.actedSocketIds.has(player.socketId));
+  if (!allActed) {
+    return;
+  }
+
+  if (room.stage === 'preflop') {
+    room.stage = 'flop';
+    room.board = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+  } else if (room.stage === 'flop') {
+    room.stage = 'turn';
+    room.board.push(room.deck.pop());
+  } else if (room.stage === 'turn') {
+    room.stage = 'river';
+    room.board.push(room.deck.pop());
+  } else {
+    completePokerShowdown(room);
+    return;
+  }
+
+  room.actedSocketIds = new Set();
+  room.players.forEach((player) => {
+    if (!player.folded) {
+      player.actionText = 'in hand';
+    }
+  });
+  broadcastPokerState(room.id);
 }
 
 function startPokerRound(roomId) {
@@ -443,46 +634,19 @@ function startPokerRound(roomId) {
   const deck = createDeck();
   room.started = true;
   room.stage = 'preflop';
+  room.deck = deck;
   room.board = [];
+  room.actedSocketIds = new Set();
   room.winnerSocketId = null;
   room.winnerLabel = '';
 
   room.players.forEach((player) => {
     player.folded = false;
-    player.hand = [deck.pop(), deck.pop()];
+    player.hand = [room.deck.pop(), room.deck.pop()];
     player.actionText = 'in hand';
   });
 
   broadcastPokerState(room.id);
-
-  setTimeout(() => {
-    room.stage = 'flop';
-    room.board = [deck.pop(), deck.pop(), deck.pop()];
-    broadcastPokerState(room.id);
-  }, 1400);
-
-  setTimeout(() => {
-    room.stage = 'turn';
-    room.board.push(deck.pop());
-    broadcastPokerState(room.id);
-  }, 2800);
-
-  setTimeout(() => {
-    room.stage = 'river';
-    room.board.push(deck.pop());
-    broadcastPokerState(room.id);
-  }, 4200);
-
-  setTimeout(() => {
-    room.stage = 'showdown';
-    resolvePokerWinner(room);
-    broadcastPokerState(room.id);
-  }, 5600);
-
-  setTimeout(() => {
-    resetPokerRound(room);
-    broadcastPokerState(room.id);
-  }, 8600);
 }
 
 function startCrashRound(roomId) {
@@ -491,7 +655,7 @@ function startCrashRound(roomId) {
   room.multiplier = 1;
   room.crashPoint = generateCrashPoint();
 
-  io.to(roomChannel(room.id)).emit('crash_round_started', {
+  io.emit('crash_round_started', {
     roomId: room.id,
     crashPointHidden: true,
   });
@@ -504,7 +668,7 @@ function crashRoundNow(roomId) {
   room.phase = 'crashed';
   room.history = [room.crashPoint, ...room.history].slice(0, 16);
 
-  io.to(roomChannel(room.id)).emit('crash_crashed', {
+  io.emit('crash_crashed', {
     roomId: room.id,
     crashPoint: room.crashPoint,
     history: room.history,
@@ -513,7 +677,8 @@ function crashRoundNow(roomId) {
 
   room.players.clear();
   room.multiplier = 1;
-  room.roundStartAt = Date.now() + 5000;
+  room.phase = 'waiting';
+  room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
   broadcastCrashState(room.id);
 }
 
@@ -573,11 +738,16 @@ function detachPokerSocket(socket, roomId) {
 
   room.sockets.delete(socket.id);
   room.players.delete(socket.id);
+  room.actedSocketIds.delete(socket.id);
   socket.leave(pokerChannel(roomId));
 
   if (room.id !== 'global' && room.sockets.size === 0) {
     pokerRooms.delete(room.id);
     return;
+  }
+
+  if (room.started) {
+    maybeAdvancePokerStage(room);
   }
 
   broadcastPokerState(room.id);
@@ -599,9 +769,9 @@ function attachPokerSocket(socket, roomId, username) {
     socketId: socket.id,
     username,
     ready: false,
-    folded: false,
+    folded: room.started,
     hand: [],
-    actionText: 'waiting',
+    actionText: room.started ? 'waiting next hand' : 'waiting',
   });
   socket.data.pokerRoomId = room.id;
   socket.join(pokerChannel(room.id));
@@ -658,56 +828,103 @@ function attachBlackjackSocket(socket, roomId, username) {
   return room;
 }
 
+function detachRouletteSocket(socket, roomId) {
+  if (!roomId) {
+    return;
+  }
+
+  const room = rouletteRooms.get(roomId);
+  if (!room) {
+    return;
+  }
+
+  room.sockets.delete(socket.id);
+  socket.leave(rouletteChannel(roomId));
+
+  if (room.id !== 'global' && room.sockets.size === 0) {
+    rouletteRooms.delete(room.id);
+    return;
+  }
+
+  broadcastRouletteRoomMembers(room.id);
+}
+
+function attachRouletteSocket(socket, roomId) {
+  const sanitized = sanitizeRoomId(roomId);
+  const previousRoomId = socket.data.rouletteRoomId;
+
+  if (previousRoomId === sanitized) {
+    return getRouletteRoom(sanitized);
+  }
+
+  detachRouletteSocket(socket, previousRoomId);
+
+  const room = getRouletteRoom(sanitized);
+  room.sockets.add(socket.id);
+  socket.data.rouletteRoomId = room.id;
+  socket.join(rouletteChannel(room.id));
+  broadcastRouletteRoomMembers(room.id);
+  return room;
+}
+
+function broadcastRouletteRoomMembers(roomId) {
+  const room = getRouletteRoom(roomId);
+  io.to(rouletteChannel(room.id)).emit('roulette_room_members', {
+    roomId: room.id,
+    members: publicRouletteRoomMembers(room),
+  });
+}
+
 setInterval(() => {
-  crashRooms.forEach((room, roomId) => {
-    if (room.phase === 'waiting') {
-      if (Date.now() >= room.roundStartAt) {
-        startCrashRound(roomId);
-      }
-      return;
+  const room = getCrashRoom(GLOBAL_CRASH_ROOM_ID);
+
+  if (room.phase === 'waiting') {
+    if (Date.now() >= room.roundStartAt) {
+      startCrashRound(GLOBAL_CRASH_ROOM_ID);
     }
+    return;
+  }
 
-    if (room.phase !== 'running') {
-      return;
+  if (room.phase !== 'running') {
+    return;
+  }
+
+  room.multiplier = Number((room.multiplier + 0.01 * (room.multiplier * 1.24)).toFixed(4));
+
+  io.emit('crash_tick', {
+    roomId: room.id,
+    multiplier: room.multiplier,
+    players: publicCrashPlayers(room),
+  });
+
+  if (room.multiplier >= room.crashPoint) {
+    crashRoundNow(GLOBAL_CRASH_ROOM_ID);
+    return;
+  }
+
+  const eligible = Array.from(room.players.values()).filter((player) => player.autoCashOut >= 1 && !player.cashedOut);
+  eligible.forEach((player) => {
+    if (room.multiplier >= player.autoCashOut) {
+      const payout = Number((player.amount * player.autoCashOut).toFixed(2));
+      player.cashedOut = true;
+      player.cashedAt = player.autoCashOut;
+
+      io.to(player.socketId).emit('crash_cashout_result', {
+        ok: true,
+        payout,
+        multiplier: player.autoCashOut,
+        mode: 'auto',
+        roomId: room.id,
+      });
+
+      io.emit('crash_player_cashed_out', {
+        username: player.username,
+        multiplier: player.autoCashOut,
+        payout,
+        mode: 'auto',
+        roomId: room.id,
+      });
     }
-
-    room.multiplier = Number((room.multiplier + 0.01 * (room.multiplier * 1.24)).toFixed(4));
-
-    io.to(roomChannel(roomId)).emit('crash_tick', {
-      roomId,
-      multiplier: room.multiplier,
-      players: publicCrashPlayers(room),
-    });
-
-    if (room.multiplier >= room.crashPoint) {
-      crashRoundNow(roomId);
-      return;
-    }
-
-    const eligible = Array.from(room.players.values()).filter((player) => player.autoCashOut > 1.01 && !player.cashedOut);
-    eligible.forEach((player) => {
-      if (room.multiplier >= player.autoCashOut) {
-        const payout = Number((player.amount * player.autoCashOut).toFixed(2));
-        player.cashedOut = true;
-        player.cashedAt = player.autoCashOut;
-
-        io.to(player.socketId).emit('crash_cashout_result', {
-          ok: true,
-          payout,
-          multiplier: player.autoCashOut,
-          mode: 'auto',
-          roomId,
-        });
-
-        io.to(roomChannel(roomId)).emit('crash_player_cashed_out', {
-          username: player.username,
-          multiplier: player.autoCashOut,
-          payout,
-          mode: 'auto',
-          roomId,
-        });
-      }
-    });
   });
 }, 90);
 
@@ -734,26 +951,61 @@ app.get('/health', (_req, res) => {
     sockets: room.sockets.size,
   }));
 
+  const rouletteRoomStates = Array.from(rouletteRooms.values()).map((room) => ({
+    id: room.id,
+    sockets: room.sockets.size,
+  }));
+
   res.json({
     status: 'ok',
     onlineUsers: onlineUsers.size,
     crashRooms: crashRoomStates,
     pokerRooms: pokerRoomStates,
     blackjackRooms: blackjackRoomStates,
+    rouletteRooms: rouletteRoomStates,
   });
+});
+
+app.post('/internal/leaderboard/broadcast', (req, res) => {
+  const amount = Math.floor(Number(req.body?.amount ?? 0));
+  const username = typeof req.body?.username === 'string' ? req.body.username : undefined;
+  const reason = typeof req.body?.reason === 'string' ? req.body.reason : 'balance-change';
+
+  io.emit('leaderboard_refresh', {
+    amount,
+    username,
+    reason,
+    at: Date.now(),
+  });
+
+  res.json({ ok: true });
+});
+
+app.post('/internal/chat/win', (req, res) => {
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  const amount = Number.isFinite(Number(req.body?.amount)) ? Math.floor(Number(req.body.amount)) : 0;
+
+  if (!username || amount <= 0) {
+    return res.status(400).json({ ok: false, error: 'Invalid payload' });
+  }
+
+  emitSystemBigWin(username, amount);
+  return res.json({ ok: true });
 });
 
 io.on('connection', (socket) => {
   const rawName = socket.handshake.query.username;
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
+  const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
 
   onlineUsers.set(socket.id, username);
+  upsertSocketProfile(socket.id, username, initialXp);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
 
   socket.emit('chat_history', chatHistory);
 
-  const initialCrashRoomId = sanitizeRoomId(socket.handshake.query.crashRoomId);
+  const initialCrashRoomId = GLOBAL_CRASH_ROOM_ID;
   const crashRoom = attachSocketToRoom(socket, initialCrashRoomId);
   socket.emit('crash_room_joined', { ok: true, roomId: crashRoom.id });
 
@@ -765,8 +1017,39 @@ io.on('connection', (socket) => {
   const blackjackRoom = attachBlackjackSocket(socket, initialBlackjackRoomId, username);
   socket.emit('blackjack_room_joined', { ok: true, roomId: blackjackRoom.id });
 
+  const initialRouletteRoomId = sanitizeRoomId(socket.handshake.query.rouletteRoomId);
+  const rouletteRoom = attachRouletteSocket(socket, initialRouletteRoomId);
+  socket.emit('roulette_room_joined', { ok: true, roomId: rouletteRoom.id });
+
+  socket.on('joinRoom', (payload, callback) => {
+    const normalizedPayload = typeof payload === 'string' ? { roomId: payload } : payload;
+    const game = typeof normalizedPayload?.game === 'string' ? normalizedPayload.game.trim().toLowerCase() : 'poker';
+    const desired = sanitizeRoomId(normalizedPayload?.roomId);
+
+    if (game === 'blackjack') {
+      const nextRoom = attachBlackjackSocket(socket, desired, username);
+      setUserActivity(socket.id, 'Blackjack');
+      callback?.({ ok: true, roomId: nextRoom.id });
+      socket.emit('blackjack_room_joined', { ok: true, roomId: nextRoom.id });
+      return;
+    }
+
+    if (game === 'roulette') {
+      const nextRoom = attachRouletteSocket(socket, desired);
+      setUserActivity(socket.id, 'Roulette');
+      callback?.({ ok: true, roomId: nextRoom.id });
+      socket.emit('roulette_room_joined', { ok: true, roomId: nextRoom.id });
+      return;
+    }
+
+    const nextRoom = attachPokerSocket(socket, desired, username);
+    setUserActivity(socket.id, 'Poker');
+    callback?.({ ok: true, roomId: nextRoom.id });
+    socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
+  });
+
   socket.on('join_crash_room', (payload, callback) => {
-    const desired = sanitizeRoomId(payload?.roomId);
+    const desired = GLOBAL_CRASH_ROOM_ID;
     const nextRoom = attachSocketToRoom(socket, desired);
 
     setUserActivity(socket.id, 'Crash');
@@ -790,6 +1073,42 @@ io.on('connection', (socket) => {
     setUserActivity(socket.id, 'Blackjack');
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('blackjack_room_joined', { ok: true, roomId: nextRoom.id });
+  });
+
+  socket.on('join_roulette_room', (payload, callback) => {
+    const desired = sanitizeRoomId(payload?.roomId);
+    const nextRoom = attachRouletteSocket(socket, desired);
+
+    setUserActivity(socket.id, 'Roulette');
+    callback?.({ ok: true, roomId: nextRoom.id });
+    socket.emit('roulette_room_joined', { ok: true, roomId: nextRoom.id });
+  });
+
+  socket.on('roulette_win_announcement', (payload) => {
+    const roomId = socket.data.rouletteRoomId;
+    const amount = Math.floor(Number(payload?.amount ?? 0));
+
+    if (!roomId || !Number.isFinite(amount) || amount <= 0) {
+      return;
+    }
+
+    socket.to(rouletteChannel(roomId)).emit('roulette_win_announcement', {
+      roomId,
+      username,
+      amount,
+    });
+
+    const isRealPlayer = !String(username).startsWith('Guest-');
+    if (isRealPlayer) {
+      emitSystemBigWin(username, amount);
+    }
+  });
+
+  socket.on('profile_sync', (payload, callback) => {
+    const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
+    const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
+    const profile = upsertSocketProfile(socket.id, name, xp);
+    callback?.({ ok: true, level: profile.level, rankTag: profile.rankTag, rankColor: profile.rankColor });
   });
 
   socket.on('blackjack_start_round', (_payload, callback) => {
@@ -866,6 +1185,11 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (room.started) {
+      callback?.({ ok: false, error: 'Hand in progress.' });
+      return;
+    }
+
     player.ready = Boolean(payload?.ready);
     player.actionText = player.ready ? 'ready' : 'waiting';
     broadcastPokerState(room.id);
@@ -899,13 +1223,9 @@ io.on('connection', (socket) => {
       player.actionText = 'check';
     }
 
-    const remaining = Array.from(room.players.values()).filter((p) => !p.folded);
-    if (remaining.length <= 1) {
-      room.stage = 'showdown';
-      resolvePokerWinner(room);
-    }
-
+    room.actedSocketIds.add(socket.id);
     broadcastPokerState(room.id);
+    maybeAdvancePokerStage(room);
     callback?.({ ok: true });
   });
 
@@ -915,11 +1235,16 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const profile = getSocketProfile(socket.id, username);
+
     const message = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       username,
       text: text.slice(0, 280),
       createdAt: Date.now(),
+      rankTag: profile.rankTag,
+      rankColor: profile.rankColor,
+      level: profile.level,
     };
 
     chatHistory = [...chatHistory, message].slice(-80);
@@ -928,7 +1253,7 @@ io.on('connection', (socket) => {
 
   socket.on('crash_place_bet', (payload, callback) => {
     setUserActivity(socket.id, 'Crash');
-    const roomId = socket.data.crashRoomId;
+    const roomId = GLOBAL_CRASH_ROOM_ID;
     const roomState = getCrashRoom(roomId);
     const amount = Number(payload?.amount ?? 0);
     const autoCashOut = Number(payload?.autoCashOut ?? 0);
@@ -952,12 +1277,12 @@ io.on('connection', (socket) => {
       cashedAt: null,
     });
 
-    io.to(roomChannel(roomId)).emit('crash_players', publicCrashPlayers(roomState));
+    io.emit('crash_players', publicCrashPlayers(roomState));
     callback?.({ ok: true, roomId });
   });
 
   socket.on('crash_cashout', (_payload, callback) => {
-    const roomId = socket.data.crashRoomId;
+    const roomId = GLOBAL_CRASH_ROOM_ID;
     const roomState = getCrashRoom(roomId);
 
     if (roomState.phase !== 'running') {
@@ -976,7 +1301,15 @@ io.on('connection', (socket) => {
 
     const payout = Number((player.amount * roomState.multiplier).toFixed(2));
 
-    io.to(roomChannel(roomId)).emit('crash_player_cashed_out', {
+    io.to(socket.id).emit('crash_cashout_result', {
+      ok: true,
+      payout,
+      multiplier: roomState.multiplier,
+      mode: 'manual',
+      roomId,
+    });
+
+    io.emit('crash_player_cashed_out', {
       username: player.username,
       multiplier: roomState.multiplier,
       payout,
@@ -989,11 +1322,13 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     onlineUsers.delete(socket.id);
+    socketProfiles.delete(socket.id);
     userActivities.delete(socket.id);
     broadcastOnlineUsers();
     detachSocketFromRoom(socket, socket.data.crashRoomId);
     detachPokerSocket(socket, socket.data.pokerRoomId);
     detachBlackjackSocket(socket, socket.data.blackjackRoomId);
+    detachRouletteSocket(socket, socket.data.rouletteRoomId);
   });
 });
 

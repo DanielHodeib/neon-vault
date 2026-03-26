@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server';
 import type { Prisma } from '@prisma/client';
 
 import { auth } from '@/auth';
+import { notifyGlobalWinMessage, notifyLeaderboardRefresh } from '@/lib/leaderboardEvents';
 import { prisma } from '@/lib/prisma';
 
-type WalletAction = 'bet' | 'win' | 'faucet' | 'quest' | 'refund';
+type WalletAction = 'bet' | 'win' | 'faucet' | 'refund';
 
 const DAILY_FAUCET_REWARD = 5000;
-const DAILY_QUEST_REWARD = 3000;
-const QUEST_TARGET_BETS = 5;
-const QUEST_TARGET_WINS = 2;
 
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
@@ -17,7 +15,23 @@ function todayKey() {
 
 interface WalletRequestBody {
   action?: WalletAction;
-  amount?: number;
+  amount?: number | string;
+}
+
+const MAX_WALLET_AMOUNT = Number.MAX_SAFE_INTEGER / 100;
+
+function normalizeAmount(raw: number | string) {
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+
+  const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
+  if (rounded <= 0 || rounded > MAX_WALLET_AMOUNT) {
+    return 0;
+  }
+
+  return rounded;
 }
 
 export async function POST(request: Request) {
@@ -36,14 +50,13 @@ export async function POST(request: Request) {
   }
 
   const action = body.action;
-  const rawAmount = Number(body.amount ?? 0);
-  const amount = Number.isFinite(rawAmount) ? Math.floor(rawAmount) : 0;
+  const amount = normalizeAmount(body.amount ?? 0);
 
-  if (!action || !['bet', 'win', 'faucet', 'quest', 'refund'].includes(action)) {
+  if (!action || !['bet', 'win', 'faucet', 'refund'].includes(action)) {
     return NextResponse.json({ error: 'Invalid wallet action' }, { status: 400 });
   }
 
-  if (action !== 'faucet' && action !== 'quest' && amount <= 0) {
+  if (action !== 'faucet' && amount <= 0) {
     return NextResponse.json({ error: 'Amount must be greater than 0' }, { status: 400 });
   }
 
@@ -54,6 +67,7 @@ export async function POST(request: Request) {
       where: { id: userId },
       select: {
         id: true,
+        username: true,
         balance: true,
         xp: true,
         dailyStatsDate: true,
@@ -80,6 +94,7 @@ export async function POST(request: Request) {
         },
         select: {
           id: true,
+          username: true,
           balance: true,
           xp: true,
           dailyStatsDate: true,
@@ -115,6 +130,7 @@ export async function POST(request: Request) {
           dailyFaucetClaimed: true,
         },
         select: {
+          username: true,
           balance: true,
           xp: true,
           dailyStatsDate: true,
@@ -126,73 +142,7 @@ export async function POST(request: Request) {
       });
 
       return {
-        balance: updated.balance,
-        xp: updated.xp,
-        daily: {
-          date: updated.dailyStatsDate,
-          bets: updated.dailyBets,
-          wins: updated.dailyWins,
-          faucetClaimed: updated.dailyFaucetClaimed,
-          questClaimed: updated.dailyQuestClaimed,
-        },
-      };
-    }
-
-    if (action === 'quest') {
-      if (current.dailyQuestClaimed) {
-        return {
-          error: 'Daily quest reward already claimed.' as const,
-          balance: current.balance,
-          xp: current.xp,
-          daily: {
-            date: current.dailyStatsDate,
-            bets: current.dailyBets,
-            wins: current.dailyWins,
-            faucetClaimed: current.dailyFaucetClaimed,
-            questClaimed: current.dailyQuestClaimed,
-          },
-        };
-      }
-
-      const complete =
-        current.dailyBets >= QUEST_TARGET_BETS &&
-        current.dailyWins >= QUEST_TARGET_WINS &&
-        current.dailyFaucetClaimed;
-
-      if (!complete) {
-        return {
-          error: 'Daily quests not complete yet.' as const,
-          balance: current.balance,
-          xp: current.xp,
-          daily: {
-            date: current.dailyStatsDate,
-            bets: current.dailyBets,
-            wins: current.dailyWins,
-            faucetClaimed: current.dailyFaucetClaimed,
-            questClaimed: current.dailyQuestClaimed,
-          },
-        };
-      }
-
-      const updated = await tx.user.update({
-        where: { id: userId },
-        data: {
-          balance: { increment: DAILY_QUEST_REWARD },
-          xp: { increment: 250 },
-          dailyQuestClaimed: true,
-        },
-        select: {
-          balance: true,
-          xp: true,
-          dailyStatsDate: true,
-          dailyBets: true,
-          dailyWins: true,
-          dailyFaucetClaimed: true,
-          dailyQuestClaimed: true,
-        },
-      });
-
-      return {
+        username: updated.username,
         balance: updated.balance,
         xp: updated.xp,
         daily: {
@@ -233,6 +183,7 @@ export async function POST(request: Request) {
         dailyWins: action === 'win' ? { increment: 1 } : undefined,
       },
       select: {
+        username: true,
         balance: true,
         xp: true,
         dailyStatsDate: true,
@@ -244,6 +195,7 @@ export async function POST(request: Request) {
     });
 
     return {
+      username: updated.username,
       balance: updated.balance,
       xp: updated.xp,
       daily: {
@@ -266,6 +218,20 @@ export async function POST(request: Request) {
       },
       { status: 400 }
     );
+  }
+
+  if (amount >= 5000) {
+    void notifyLeaderboardRefresh({
+      amount,
+      reason: action,
+    });
+  }
+
+  if (action === 'win' && amount >= 5000 && result.username) {
+    void notifyGlobalWinMessage({
+      username: result.username,
+      amount,
+    });
   }
 
   return NextResponse.json({ balance: result.balance, xp: result.xp, daily: result.daily });

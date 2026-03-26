@@ -16,7 +16,7 @@ model User {
   id                  String       @id @default(cuid())
   username            String       @unique
   passwordHash        String
-  balance             Int          @default(10000)
+  balance             Float        @default(10000.0)
   xp                  Int          @default(0)
   dailyStatsDate      String       @default("") @map("daily_stats_date")
   dailyBets           Int          @default(0) @map("daily_bets")
