@@ -99,7 +99,8 @@ export async function POST(request: Request) {
     }
 
     const action = body.action;
-    const amount = normalizeAmount(body.amount ?? 0);
+    const amountStr = normalizeAmount(body.amount ?? 0);
+    const amount = parseFloat(amountStr);
 
     if (!action || !['bet', 'win', 'faucet', 'refund'].includes(action)) {
       return NextResponse.json({ error: 'Invalid wallet action' }, { status: 400 });
