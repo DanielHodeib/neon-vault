@@ -35,6 +35,7 @@ export default function CyberAviator() {
   const {
     phase,
     multiplier,
+    history,
     hasActiveBet,
     myPlayer,
     roundStartAt,
@@ -296,6 +297,25 @@ export default function CyberAviator() {
           <span>Balance: {numericBalance} NVC</span>
           {error ? <span className="text-rose-400">{error}</span> : null}
           {localError ? <span className="text-rose-400">{localError}</span> : null}
+        </div>
+
+        <div className="mt-3 flex items-center gap-2 overflow-x-auto whitespace-nowrap pb-1">
+          <span className="text-[11px] uppercase tracking-wide text-slate-500">History</span>
+          {history.length > 0 ? (
+            history.slice(0, 12).map((value, index) => {
+              const crashedLow = value < 2;
+              return (
+                <span
+                  key={`crash-history-${index}-${value}`}
+                  className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-mono ${crashedLow ? 'border-rose-500/40 bg-rose-500/10 text-rose-300' : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'}`}
+                >
+                  {value.toFixed(2)}x
+                </span>
+              );
+            })
+          ) : (
+            <span className="text-[11px] text-slate-500">No rounds yet</span>
+          )}
         </div>
       </div>
     </div>

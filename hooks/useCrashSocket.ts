@@ -18,6 +18,7 @@ interface CrashStatePayload {
   roomId?: string;
   phase: CrashPhase;
   multiplier: number;
+  history?: number[];
   players: CrashPlayer[];
   roundStartAt?: number;
 }
@@ -26,6 +27,13 @@ interface CrashTickPayload {
   roomId?: string;
   multiplier: number;
   players: CrashPlayer[];
+}
+
+interface CrashCrashedPayload {
+  roomId?: string;
+  crashPoint?: number;
+  history?: number[];
+  players?: CrashPlayer[];
 }
 
 interface CrashCashoutResult {
@@ -85,6 +93,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
   const [roomId, setRoomId] = useState(defaultRoomId);
   const [phase, setPhase] = useState<CrashPhase>('waiting');
   const [multiplier, setMultiplier] = useState(1);
+  const [history, setHistory] = useState<number[]>([]);
   const [players, setPlayers] = useState<CrashPlayer[]>([]);
   const [roundStartAt, setRoundStartAt] = useState(0);
   const [lastCashout, setLastCashout] = useState<CrashCashoutResult | null>(null);
@@ -137,6 +146,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
       }
       setPhase(payload.phase);
       setMultiplier(payload.multiplier);
+      setHistory(Array.isArray(payload.history) ? payload.history : []);
       setPlayers(payload.players ?? []);
       setRoundStartAt(Number(payload.roundStartAt ?? 0));
     });
@@ -154,9 +164,14 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
       setPlayers(payload ?? []);
     });
 
-    socket.on('crash_crashed', (payload: { crashPoint?: number; players?: CrashPlayer[] }) => {
+    socket.on('crash_crashed', (payload: CrashCrashedPayload) => {
       setPhase('crashed');
       setMultiplier((current) => Number(payload?.crashPoint ?? current));
+      if (Array.isArray(payload?.history)) {
+        setHistory(payload.history);
+      } else if (Number.isFinite(payload?.crashPoint)) {
+        setHistory((current) => [Number(payload.crashPoint), ...current].slice(0, 16));
+      }
       if (Array.isArray(payload?.players)) {
         setPlayers(payload.players);
       }
@@ -256,6 +271,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
     roomId,
     phase,
     multiplier,
+    history,
     players,
     myPlayer,
     hasActiveBet,
