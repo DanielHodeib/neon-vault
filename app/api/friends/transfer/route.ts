@@ -8,6 +8,7 @@ import { prisma } from '@/lib/prisma';
 interface TransferPayload {
   targetUserId?: string;
   amount?: number;
+  message?: string;
 }
 
 function toNumericBalance(raw: string | number): number {
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
 
   const targetUserId = (payload.targetUserId ?? '').trim();
   const amount = Number.isFinite(Number(payload.amount)) ? Math.floor(Number(payload.amount)) : 0;
+  const message = typeof payload.message === 'string' ? payload.message.trim().slice(0, 200) : '';
 
   if (!targetUserId) {
     return NextResponse.json({ error: 'Target user is required.' }, { status: 400 });
@@ -109,6 +111,14 @@ export async function POST(request: Request) {
         where: { id: targetUserId },
         data: { balance: addBalance(receiver.balance, amount) },
         select: { id: true, balance: true },
+      }),
+      tx.transaction.create({
+        data: {
+          senderId: userId,
+          receiverId: targetUserId,
+          amount: amount.toString(),
+          message,
+        },
       }),
     ]);
 

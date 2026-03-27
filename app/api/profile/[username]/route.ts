@@ -42,6 +42,7 @@ export async function GET(
     select: {
       id: true,
       username: true,
+      role: true,
       balance: true,
       xp: true,
       createdAt: true,
@@ -110,6 +111,7 @@ export async function GET(
   return NextResponse.json({
     profile: {
       username: target.username,
+      role: target.role,
       balance: Number.isFinite(Number(target.balance)) ? Number(target.balance) : 0,
       xp: target.xp,
       favoriteGame,

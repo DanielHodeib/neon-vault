@@ -1,11 +1,13 @@
 'use client';
 
 import { Ban, Eye, Trash2 } from 'lucide-react';
+import { getRoleBadge } from '@/lib/roleBadge';
 
 type FriendSummary = {
   friendshipId: string;
   userId: string;
   username: string;
+  role?: string;
 };
 
 type FriendPresence = {
@@ -61,7 +63,7 @@ export default function FriendsList({
   friendsLoading: boolean;
   showOnlinePresence: boolean;
   presenceByUsername: Record<string, FriendPresence>;
-  onSendMoney: (targetUserId: string, targetUsername: string) => void;
+  onSendMoney: (targetUserId: string, targetUsername: string, targetRole?: string) => void;
   onOpenProfile: (username: string) => void;
   onRemoveFriend: (friendshipId: string) => void;
   onBlockUser: (targetUserId: string) => void;
@@ -78,6 +80,7 @@ export default function FriendsList({
         <div className="rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
           {friends.map((friend) => {
             const displayName = (friend.username ?? '').trim() || 'Unknown Friend';
+            const roleBadge = getRoleBadge(friend.role);
             const presence = presenceByUsername[displayName.toLowerCase()] ?? { online: false, activity: 'Offline' };
             const isOnline = showOnlinePresence && presence.online;
             const activityLabel = formatActivity(presence.activity);
@@ -91,13 +94,16 @@ export default function FriendsList({
               >
                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`} />
                 <div className="min-w-0">
-                  <button
-                    type="button"
-                    onClick={() => onOpenProfile(displayName)}
-                    className="font-semibold text-slate-200 truncate hover:text-cyan-300 hover:underline"
-                  >
-                    {displayName}
-                  </button>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile(displayName)}
+                      className="font-semibold text-slate-200 truncate hover:text-cyan-300 hover:underline"
+                    >
+                      {displayName}
+                    </button>
+                    {roleBadge ? <span className={roleBadge.className}>{roleBadge.label}</span> : null}
+                  </div>
                   <p className="text-[11px] uppercase tracking-wide text-slate-500">
                     {isOnline ? activityLabel : 'Offline'}
                   </p>
@@ -118,7 +124,7 @@ export default function FriendsList({
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
-                      onSendMoney(friend.userId, displayName);
+                      onSendMoney(friend.userId, displayName, friend.role);
                     }}
                     className="h-8 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
                   >

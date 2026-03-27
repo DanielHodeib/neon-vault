@@ -7,26 +7,26 @@ type AcceptedEntry = {
   id: string;
   userId: string;
   createdAt: Date;
-  user: { id: string; username: string };
-  friend: { id: string; username: string };
+  user: { id: string; username: string; role: string };
+  friend: { id: string; username: string; role: string };
 };
 
 type PendingIncomingEntry = {
   id: string;
   createdAt: Date;
-  user: { id: string; username: string };
+  user: { id: string; username: string; role: string };
 };
 
 type PendingOutgoingEntry = {
   id: string;
   createdAt: Date;
-  friend: { id: string; username: string };
+  friend: { id: string; username: string; role: string };
 };
 
 type BlockedEntry = {
   id: string;
   createdAt: Date;
-  blockedUser: { id: string; username: string };
+  blockedUser: { id: string; username: string; role: string };
 };
 
 export async function GET() {
@@ -44,8 +44,8 @@ export async function GET() {
         OR: [{ userId }, { friendId: userId }],
       },
       include: {
-        user: { select: { id: true, username: true } },
-        friend: { select: { id: true, username: true } },
+        user: { select: { id: true, username: true, role: true } },
+        friend: { select: { id: true, username: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -55,7 +55,7 @@ export async function GET() {
         friendId: userId,
       },
       include: {
-        user: { select: { id: true, username: true } },
+        user: { select: { id: true, username: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -65,14 +65,14 @@ export async function GET() {
         userId,
       },
       include: {
-        friend: { select: { id: true, username: true } },
+        friend: { select: { id: true, username: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.block.findMany({
       where: { userId },
       include: {
-        blockedUser: { select: { id: true, username: true } },
+        blockedUser: { select: { id: true, username: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -84,6 +84,7 @@ export async function GET() {
       friendshipId: entry.id,
       userId: counterpart.id,
       username: counterpart.username,
+      role: counterpart.role,
       since: entry.createdAt,
     };
   });
@@ -92,6 +93,7 @@ export async function GET() {
     friendshipId: entry.id,
     userId: entry.user.id,
     username: entry.user.username,
+    role: entry.user.role,
     requestedAt: entry.createdAt,
   }));
 
@@ -99,6 +101,7 @@ export async function GET() {
     friendshipId: entry.id,
     userId: entry.friend.id,
     username: entry.friend.username,
+    role: entry.friend.role,
     requestedAt: entry.createdAt,
   }));
 
@@ -106,6 +109,7 @@ export async function GET() {
     blockId: entry.id,
     userId: entry.blockedUser.id,
     username: entry.blockedUser.username,
+    role: entry.blockedUser.role,
     blockedAt: entry.createdAt,
   }));
 
@@ -120,22 +124,29 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  let payload: { username?: string };
+  let payload: { username?: string; targetUserId?: string };
   try {
-    payload = (await request.json()) as { username?: string };
+    payload = (await request.json()) as { username?: string; targetUserId?: string };
   } catch {
     return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
   }
 
   const username = (payload.username ?? '').trim();
-  if (username.length < 3) {
+  const targetUserId = (payload.targetUserId ?? '').trim();
+
+  if (!targetUserId && username.length < 3) {
     return NextResponse.json({ error: 'Username must be at least 3 characters.' }, { status: 400 });
   }
 
-  const target = await prisma.user.findUnique({
-    where: { username },
-    select: { id: true, username: true },
-  });
+  const target = targetUserId
+    ? await prisma.user.findUnique({
+        where: { id: targetUserId },
+        select: { id: true, username: true },
+      })
+    : await prisma.user.findUnique({
+        where: { username },
+        select: { id: true, username: true },
+      });
 
   if (!target) {
     return NextResponse.json({ error: 'User not found.' }, { status: 404 });
