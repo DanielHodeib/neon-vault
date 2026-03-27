@@ -36,6 +36,20 @@ interface PokerState {
   winnerLabel: string;
 }
 
+const DEFAULT_POKER_STATE: PokerState = {
+  roomId: 'global',
+  started: false,
+  stage: 'waiting',
+  board: [],
+  pot: 0,
+  currentBet: 0,
+  minRaise: 0,
+  activePlayerSocketId: null,
+  turnDeadlineAt: 0,
+  players: [],
+  winnerLabel: '',
+};
+
 const OTHER_SEAT_SLOTS = [
   'top-6 left-1/2 -translate-x-1/2',
   'top-[22%] right-[7%]',
@@ -43,6 +57,7 @@ const OTHER_SEAT_SLOTS = [
   'bottom-[24%] left-[6%]',
   'top-[22%] left-[7%]',
 ];
+const OTHER_ROLE_LABELS = ['BTN', 'SB', 'BB', 'UTG', 'CO'];
 
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
@@ -136,6 +151,55 @@ function normalizeCardValue(card: PokerCard) {
   return card;
 }
 
+function normalizePokerPlayer(payload: unknown): PokerPlayer | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const source = payload as Partial<PokerPlayer>;
+  const username = typeof source.username === 'string' && source.username.trim() ? source.username : 'Player';
+  const socketId = typeof source.socketId === 'string' && source.socketId.trim() ? source.socketId : `socket:${username.toLowerCase()}`;
+
+  return {
+    socketId,
+    userId: typeof source.userId === 'string' ? source.userId : undefined,
+    username,
+    ready: Boolean(source.ready),
+    folded: Boolean(source.folded),
+    seated: Boolean(source.seated),
+    buyIn: Number.isFinite(Number(source.buyIn)) ? Number(source.buyIn) : 0,
+    roundBet: Number.isFinite(Number(source.roundBet)) ? Number(source.roundBet) : 0,
+    hand: Array.isArray(source.hand) ? source.hand : [],
+    actionText: typeof source.actionText === 'string' ? source.actionText : 'waiting buy-in',
+    isWinner: Boolean(source.isWinner),
+  };
+}
+
+function normalizePokerState(payload: unknown, fallbackRoomId: string): PokerState {
+  if (!payload || typeof payload !== 'object') {
+    return { ...DEFAULT_POKER_STATE, roomId: fallbackRoomId || 'global' };
+  }
+
+  const source = payload as Partial<PokerState>;
+  return {
+    roomId: typeof source.roomId === 'string' && source.roomId.trim() ? source.roomId : fallbackRoomId || 'global',
+    started: Boolean(source.started),
+    stage: typeof source.stage === 'string' && source.stage.trim() ? source.stage : 'waiting',
+    board: Array.isArray(source.board) ? source.board.filter((card): card is string => typeof card === 'string') : [],
+    pot: Number.isFinite(Number(source.pot)) ? Number(source.pot) : 0,
+    currentBet: Number.isFinite(Number(source.currentBet)) ? Number(source.currentBet) : 0,
+    minRaise: Number.isFinite(Number(source.minRaise)) ? Number(source.minRaise) : 0,
+    activePlayerSocketId: typeof source.activePlayerSocketId === 'string' ? source.activePlayerSocketId : null,
+    turnDeadlineAt: Number.isFinite(Number(source.turnDeadlineAt)) ? Number(source.turnDeadlineAt) : 0,
+    players: Array.isArray(source.players)
+      ? source.players
+          .map((player) => normalizePokerPlayer(player))
+          .filter((player): player is PokerPlayer => Boolean(player))
+      : [],
+    winnerLabel: typeof source.winnerLabel === 'string' ? source.winnerLabel : '',
+  };
+}
+
 export default function PokerFriendsGame({ username }: { username: string }) {
   const [pokerRoomId, setPokerRoomId] = useState('global');
   const [pokerRoomInput, setPokerRoomInput] = useState('global');
@@ -159,6 +223,11 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   const [raiseAmount, setRaiseAmount] = useState('20');
 
   const socketRef = useRef<Socket | null>(null);
+  const pokerRoomIdRef = useRef('global');
+
+  useEffect(() => {
+    pokerRoomIdRef.current = pokerRoomId;
+  }, [pokerRoomId]);
 
   const uniqueSeatedPlayers = useMemo(
     () =>
@@ -236,6 +305,8 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
     socket.on('connect', () => {
       setSelfSocketId(socket.id ?? null);
+      const roomId = pokerRoomIdRef.current || 'global';
+      socket.emit('join_poker_room', { roomId });
     });
 
     socket.on('poker_room_joined', (payload: { ok: boolean; roomId?: string }) => {
@@ -261,7 +332,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     });
 
     socket.on('poker_state', (payload: PokerState) => {
-      setState(payload);
+      setState((current) => normalizePokerState(payload, current.roomId || pokerRoomIdRef.current || 'global'));
     });
 
     socket.on('poker_table_win', (payload: { roomId: string; username: string }) => {
@@ -305,6 +376,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       }
 
       setNotice(`Joined room ${response.roomId ?? roomId}.`);
+      socket.emit('join_poker_room', { roomId: response.roomId ?? roomId });
     });
   };
 
@@ -328,6 +400,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       const roomId = response.roomId ?? 'global';
       setPokerRoomInput(roomId);
       setNotice(`Private room ${roomId} created.`);
+      socket.emit('join_poker_room', { roomId });
     });
   };
 
@@ -365,6 +438,8 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       }
 
       setNotice(`Seated with buy-in ${response.amount ?? amount}.`);
+      const roomId = pokerRoomIdRef.current || state.roomId || 'global';
+      socketRef.current?.emit('join_poker_room', { roomId });
     });
   };
 
@@ -374,7 +449,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   const minimumRaise = Math.max(Number(state.currentBet || 0) > 0 ? Number(state.currentBet || 0) * 2 : 2, Number(state.minRaise || 0) || 2);
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-slate-900">
+    <div className="poker-solo-root h-full min-h-[560px] flex flex-col bg-slate-900">
       <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em Friends</h2>
@@ -408,11 +483,12 @@ export default function PokerFriendsGame({ username }: { username: string }) {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 p-4 md:p-5">
-        <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.2),_rgba(5,15,13,1)_68%)] relative overflow-hidden">
+      <div className="poker-table-stage flex-1 min-h-0 p-4 md:p-5">
+        <div className="poker-table-frame">
+          <div className="poker-table-felt h-full min-h-[420px] rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.2),_rgba(5,15,13,1)_68%)] relative overflow-hidden">
           <div className="absolute inset-[12%_7%_16%_7%] rounded-[999px] border border-emerald-500/30 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.26),_rgba(5,14,13,0.96)_68%)] shadow-[inset_0_0_85px_rgba(0,0,0,0.58)]" />
 
-          <div className="absolute top-[46%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[620px] px-4">
+          <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
             <div className="text-center text-xs uppercase tracking-[0.26em] text-slate-400 mb-2">Board</div>
             <div className="mb-2 flex justify-center">
               <div className="px-5 py-2 rounded-full border border-amber-500/40 bg-amber-500/15 shadow-lg text-center">
@@ -420,95 +496,107 @@ export default function PokerFriendsGame({ username }: { username: string }) {
                 <p className="text-lg font-mono font-bold text-amber-300">{Number(state.pot || 0).toFixed(0)}</p>
               </div>
             </div>
-            <div className="flex items-center justify-center gap-2.5">
+            <div className="flex items-center justify-center gap-2">
               {Array.from({ length: 5 }).map((_, index) => {
                 const card = state.board[index];
                 return <CardView key={card ?? `board-${index}`} card={card ?? '??'} hidden={!card} />;
               })}
             </div>
-            <p className="mt-3 text-center text-xs text-slate-400">{state.stage === 'waiting' ? 'Waiting for players...' : `Stage: ${state.stage}`}</p>
+            <p className="mt-3 text-center text-xs text-slate-400">{state.stage === 'waiting' ? 'Waiting for players' : `Stage: ${state.stage}`}</p>
             <p className="mt-1 text-center text-xs text-slate-500">{state.roomId || pokerRoomId} | Bet {Number(state.currentBet || 0)}</p>
             {state.winnerLabel ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{state.winnerLabel}</p> : null}
           </div>
 
           {others.slice(0, OTHER_SEAT_SLOTS.length).map((player, index) => (
             <div key={player.socketId} className={`absolute z-30 ${OTHER_SEAT_SLOTS[index]}`}>
-              <SeatView player={player} isSelf={false} stage={state.stage} isActive={player.socketId === state.activePlayerSocketId} />
+              <SeatView player={player} isSelf={false} stage={state.stage} isActive={player.socketId === state.activePlayerSocketId} roleLabel={OTHER_ROLE_LABELS[index] ?? 'Seat'} />
             </div>
           ))}
 
           <div className="absolute z-30 bottom-5 left-1/2 -translate-x-1/2">
-            <SeatView player={me ?? null} isSelf stage={state.stage} isActive={Boolean(me?.socketId) && me?.socketId === state.activePlayerSocketId} />
+            <SeatView player={me ?? null} isSelf stage={state.stage} isActive={Boolean(me?.socketId) && me?.socketId === state.activePlayerSocketId} roleLabel="YOU" />
           </div>
+        </div>
         </div>
       </div>
 
-      <div className="border-t border-slate-800 bg-slate-950 p-4">
+      <div className="poker-action-bar sticky bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <p className="text-xs uppercase tracking-wide text-slate-400">
             {canAct ? 'Your turn to act' : isMyTurn ? 'Seat not ready. Buy in to play.' : 'Waiting for turn'}
           </p>
           <p className="text-xs text-slate-500 truncate">{notice}</p>
         </div>
-        <div className="flex flex-wrap gap-2 justify-end items-center">
-          <input
-            type="number"
-            min={1}
-            value={buyInAmount}
-            onChange={(event) => setBuyInAmount(event.target.value)}
-            className="h-11 w-28 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
-            placeholder="Buy-in"
-          />
-          <button onClick={submitBuyIn} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold uppercase">
-            Sit Down
-          </button>
-          {canAct ? (
-            <>
-              <button
-                onClick={() => action('check')}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
-              >
-                Check
-              </button>
-              <button
-                onClick={() => action('call')}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
-              >
-                Call
-              </button>
-              <button
-                onClick={() => action('fold')}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold uppercase"
-              >
-                Fold
-              </button>
-              <input
-                type="number"
-                min={minimumRaise}
-                value={raiseAmount}
-                onChange={(event) => setRaiseAmount(event.target.value)}
-                className="h-11 w-28 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
-                placeholder="Raise"
-              />
-              <button
-                onClick={() => action('raise')}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold uppercase"
-              >
-                Raise
-              </button>
-            </>
-          ) : null}
+        <div className="grid grid-cols-1 lg:grid-cols-[180px_180px_1fr] gap-3 items-end">
+          <div>
+            <label className="block text-xs uppercase text-slate-500 mb-1">Buy-in</label>
+            <input
+              type="number"
+              min={1}
+              value={buyInAmount}
+              onChange={(event) => setBuyInAmount(event.target.value)}
+              className="h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+              placeholder="Buy-in"
+            />
+          </div>
+          <div>
+            <label className="block text-xs uppercase text-slate-500 mb-1">Raise</label>
+            <input
+              type="number"
+              min={minimumRaise}
+              value={raiseAmount}
+              onChange={(event) => setRaiseAmount(event.target.value)}
+              className="h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+              placeholder="Raise"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2 justify-start lg:justify-end items-center">
+            <button onClick={submitBuyIn} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold uppercase">
+              Sit Down
+            </button>
+            {canAct ? (
+              <>
+                <button
+                  onClick={() => action('check')}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
+                >
+                  Check
+                </button>
+                <button
+                  onClick={() => action('call')}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
+                >
+                  Call
+                </button>
+                <button
+                  onClick={() => action('fold')}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold uppercase"
+                >
+                  Fold
+                </button>
+                <button
+                  onClick={() => action('raise')}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold uppercase"
+                >
+                  Raise
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
   );
 }
 
-const SeatView = React.memo(function SeatView({ player, isSelf, stage, isActive }: { player: PokerPlayer | null; isSelf: boolean; stage: string; isActive: boolean }) {
+const SeatView = React.memo(function SeatView({ player, isSelf, stage, isActive, roleLabel }: { player: PokerPlayer | null; isSelf: boolean; stage: string; isActive: boolean; roleLabel: string }) {
   if (!player) {
     return (
       <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-amber-300/80 shadow-[0_0_16px_rgba(252,211,77,0.55)]' : ''}`}>
-        <div className="text-xs uppercase text-slate-500">Waiting for seat...</div>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-xs uppercase text-slate-500">Waiting for seat...</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 bg-slate-950 text-slate-300 font-bold">{roleLabel}</span>
+        </div>
       </div>
     );
   }
@@ -530,9 +618,12 @@ const SeatView = React.memo(function SeatView({ player, isSelf, stage, isActive 
           : 'text-amber-300';
 
   return (
-    <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-amber-300/80 shadow-[0_0_16px_rgba(252,211,77,0.55)]' : ''}`}>
+    <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-cyan-400/75 shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''}`}>
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{player.username}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{player.username}</span>
+          <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 bg-slate-950 text-slate-300 font-bold">{roleLabel}</span>
+        </div>
         <div className="text-right">
           <p className={`text-[11px] uppercase font-semibold ${statusLabel === 'IN HAND' ? 'text-cyan-300' : player.ready ? 'text-emerald-400' : 'text-slate-500'}`}>
             {statusLabel}
@@ -565,7 +656,7 @@ const CardView = React.memo(function CardView({ card, hidden = false, compact = 
   const symbol = cardSymbol(card);
 
   return (
-    <div className={`rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between ${sizeClass}`}>
+    <div className={`rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between shadow-[0_6px_16px_rgba(2,6,23,0.45)] ${sizeClass}`}>
       <span className={`text-[10px] leading-none ${cardTone(card)}`}>{symbol.rank}</span>
       <span className={`text-center text-sm leading-none ${cardTone(card)}`}>{symbol.suit}</span>
       <span className={`text-[10px] leading-none self-end ${cardTone(card)}`}>{symbol.rank}</span>

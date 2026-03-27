@@ -151,3 +151,82 @@ button {
 .font-mono {
   font-family: var(--font-ibm-plex-mono), monospace;
 }
+
+.poker-solo-root {
+  max-height: 100dvh;
+  overflow: hidden;
+}
+
+.poker-table-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.poker-table-frame {
+  width: 100%;
+  max-width: 1180px;
+  margin-inline: auto;
+  aspect-ratio: 16 / 10;
+  min-height: 0;
+  height: 100%;
+}
+
+.poker-table-felt {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.poker-action-bar {
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+@media (min-width: 1024px) {
+  .hub-root {
+    max-height: 100vh;
+  }
+
+  .hub-main {
+    max-height: 100vh;
+  }
+
+  .poker-table-frame {
+    max-height: 65vh;
+  }
+
+  .poker-table-felt {
+    max-height: 65vh;
+  }
+}
+
+@keyframes pulse-glow-green {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(22, 163, 74, 0.4), 0 0 40px rgba(22, 163, 74, 0.2), inset 0 0 70px rgba(0, 0, 0, 0.55);
+  }
+  50% {
+    box-shadow: 0 0 35px rgba(22, 163, 74, 0.6), 0 0 60px rgba(22, 163, 74, 0.35), inset 0 0 70px rgba(0, 0, 0, 0.55);
+  }
+}
+
+.blackjack-table-glow {
+  animation: pulse-glow-green 3s ease-in-out infinite;
+}
+
+@media (max-width: 900px) {
+  .poker-table-frame {
+    aspect-ratio: 4 / 3;
+  }
+}
+
+@media (max-width: 768px) {
+  .poker-table-stage {
+    padding: 0.25rem !important;
+  }
+  
+  .poker-action-bar {
+    max-height: 40vh !important;
+  }
+}

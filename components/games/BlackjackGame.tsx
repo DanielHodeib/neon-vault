@@ -74,9 +74,23 @@ interface FriendsState {
   players: FriendPlayer[];
 }
 
+const DEFAULT_FRIENDS_STATE: FriendsState = {
+  roomId: 'global',
+  stage: 'waiting',
+  message: 'Waiting for players',
+  insuranceOpen: false,
+  insuranceDeadlineAt: 0,
+  roundSummary: null,
+  dealerCards: [],
+  dealerValue: 0,
+  players: [],
+};
+
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 const BOT_NAMES = ['StoneJack', 'LuckyLou', 'ChipQueen'];
+const SOLO_ROLE_LABELS = ['BTN', 'SB', 'BB'];
+const FRIEND_ROLE_LABELS = ['BTN', 'SB', 'BB', 'UTG'];
 const SOLO_TURN_ORDER: SoloSeatId[] = ['player', 'bot-1', 'bot-2', 'bot-3'];
 
 function getSocketUrl() {
@@ -227,6 +241,71 @@ function normalizeFriendPlayerKey(player: FriendPlayer) {
   return `socket:${player.socketId}`;
 }
 
+function normalizeFriendPlayer(payload: unknown): FriendPlayer | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const source = payload as Partial<FriendPlayer>;
+  const username = typeof source.username === 'string' && source.username.trim() ? source.username : 'Player';
+  const socketId = typeof source.socketId === 'string' && source.socketId.trim() ? source.socketId : `socket:${username.toLowerCase()}`;
+  const hand = Array.isArray(source.hand) ? source.hand.filter((card): card is string => typeof card === 'string') : [];
+  const hands = Array.isArray(source.hands)
+    ? source.hands
+        .map((entry) => ({
+          cards: Array.isArray(entry?.cards) ? entry.cards.filter((card): card is string => typeof card === 'string') : [],
+          value: Number.isFinite(Number(entry?.value)) ? Number(entry?.value) : 0,
+          bet: Number.isFinite(Number(entry?.bet)) ? Number(entry?.bet) : 0,
+          stood: Boolean(entry?.stood),
+          busted: Boolean(entry?.busted),
+          doubled: Boolean(entry?.doubled),
+          blackjack: Boolean(entry?.blackjack),
+          resultText: typeof entry?.resultText === 'string' ? entry.resultText : '',
+          payout: Number.isFinite(Number(entry?.payout)) ? Number(entry?.payout) : 0,
+        }))
+        .filter((entry) => entry.cards.length > 0)
+    : [];
+
+  return {
+    socketId,
+    userId: typeof source.userId === 'string' ? source.userId : undefined,
+    username,
+    totalBet: Number.isFinite(Number(source.totalBet)) ? Number(source.totalBet) : 0,
+    insuranceBet: Number.isFinite(Number(source.insuranceBet)) ? Number(source.insuranceBet) : 0,
+    activeHandIndex: Number.isFinite(Number(source.activeHandIndex)) ? Number(source.activeHandIndex) : 0,
+    hands,
+    hand,
+    value: Number.isFinite(Number(source.value)) ? Number(source.value) : handValue(hand),
+    stood: Boolean(source.stood),
+    busted: Boolean(source.busted),
+    resultText: typeof source.resultText === 'string' ? source.resultText : '',
+  };
+}
+
+function normalizeFriendsState(payload: unknown, fallbackRoomId: string): FriendsState {
+  if (!payload || typeof payload !== 'object') {
+    return { ...DEFAULT_FRIENDS_STATE, roomId: fallbackRoomId || 'global' };
+  }
+
+  const source = payload as Partial<FriendsState>;
+  return {
+    roomId: typeof source.roomId === 'string' && source.roomId.trim() ? source.roomId : fallbackRoomId || 'global',
+    stage: source.stage === 'playing' || source.stage === 'result' ? source.stage : 'waiting',
+    status: source.status === 'PLAYER_TURN' || source.status === 'WAITING' || source.status === 'ROUND_OVER' ? source.status : undefined,
+    message: typeof source.message === 'string' && source.message.trim() ? source.message : 'Waiting for players',
+    insuranceOpen: Boolean(source.insuranceOpen),
+    insuranceDeadlineAt: Number.isFinite(Number(source.insuranceDeadlineAt)) ? Number(source.insuranceDeadlineAt) : 0,
+    roundSummary: source.roundSummary ?? null,
+    dealerCards: Array.isArray(source.dealerCards) ? source.dealerCards.filter((card): card is string => typeof card === 'string') : [],
+    dealerValue: Number.isFinite(Number(source.dealerValue)) ? Number(source.dealerValue) : 0,
+    players: Array.isArray(source.players)
+      ? source.players
+          .map((player) => normalizeFriendPlayer(player))
+          .filter((player): player is FriendPlayer => Boolean(player))
+      : [],
+  };
+}
+
 function nextSoloTurnId(seats: SoloSeat[], fromId: SoloSeatId) {
   const startIndex = SOLO_TURN_ORDER.indexOf(fromId);
 
@@ -258,7 +337,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const [friendsRoomId, setFriendsRoomId] = useState('global');
   const [friendsRoomInput, setFriendsRoomInput] = useState('global');
-  const [friendsBetInput, setFriendsBetInput] = useState(100);
+  const [friendsBetInput, setFriendsBetInput] = useState('');
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [friendsNotice, setFriendsNotice] = useState('Create or join a room to play with friends.');
   const [friendsRoundOverlay, setFriendsRoundOverlay] = useState<{
@@ -279,6 +358,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   });
 
   const socketRef = useRef<Socket | null>(null);
+  const friendsRoomIdRef = useRef('global');
 
   const myPlayerKey = useMemo(() => {
     const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
@@ -313,6 +393,10 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const canFriendAct = gameStateStatus === 'PLAYER_TURN';
 
   useEffect(() => {
+    friendsRoomIdRef.current = friendsRoomId;
+  }, [friendsRoomId]);
+
+  useEffect(() => {
     const socketUrl = getSocketUrl();
     const forcePolling = shouldForcePolling(socketUrl);
     const socket = io(socketUrl, {
@@ -323,6 +407,11 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     });
 
     socketRef.current = socket;
+
+    socket.on('connect', () => {
+      const roomId = friendsRoomIdRef.current || 'global';
+      socket.emit('join_blackjack_room', { roomId });
+    });
 
     socket.on('blackjack_room_joined', (payload: { ok: boolean; roomId?: string }) => {
       if (!payload.ok || !payload.roomId) {
@@ -335,7 +424,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     });
 
     socket.on('blackjack_state', (payload: FriendsState) => {
-      setFriendsState(payload);
+      setFriendsState((current) => normalizeFriendsState(payload, current.roomId || friendsRoomIdRef.current || 'global'));
     });
 
     socket.on('blackjack_payout', () => {
@@ -671,7 +760,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
     setJoiningRoom(true);
 
-    socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    socket.emit('join_blackjack_room', { roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not join room.');
@@ -684,6 +773,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       }
 
       setFriendsNotice('Joined room successfully.');
+      socket.emit('join_blackjack_room', { roomId: response.roomId ?? nextRoom });
     });
   };
 
@@ -700,7 +790,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
     setJoiningRoom(true);
 
-    socket.emit('joinRoom', { game: 'blackjack', roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
+    socket.emit('join_blackjack_room', { roomId: nextRoom }, (response: { ok: boolean; roomId?: string; error?: string }) => {
       setJoiningRoom(false);
       if (!response.ok) {
         setFriendsNotice(response.error ?? 'Could not create room.');
@@ -711,6 +801,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
         setFriendsRoomId(response.roomId);
         setFriendsRoomInput(response.roomId);
       }
+
+      socket.emit('join_blackjack_room', { roomId: response.roomId ?? nextRoom });
     });
   };
 
@@ -725,7 +817,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   };
 
   const startFriendsRound = () => {
-    const amount = Math.floor(Number(friendsBetInput));
+    const amount = Math.floor(Number(friendsBetInput || 0));
     console.log('Button clicked: blackjack_deal', { amount });
     if (!Number.isFinite(amount) || amount < 1) {
       setFriendsNotice('Enter a valid bet amount.');
@@ -831,7 +923,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
         : 'Round finished';
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-slate-900">
+    <div className="h-full max-h-screen flex flex-col bg-slate-900 gap-2 lg:gap-4 xl:gap-2">
       <div className="h-14 shrink-0 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Blackjack Mode</p>
@@ -842,7 +934,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
             onClick={() => setMode('solo')}
             className={`h-9 px-3 rounded-lg border text-xs font-bold uppercase ${
               mode === 'solo'
-                ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300'
+                ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-300'
                 : 'border-slate-700 bg-slate-900 text-slate-400 hover:bg-slate-800'
             }`}
           >
@@ -863,14 +955,16 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
       {mode === 'solo' ? (
         <>
-          <div className="flex-1 min-h-0 p-4">
-            <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+          <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
+            <div className="poker-table-frame max-h-[65vh]">
+            <div className="poker-table-felt blackjack-table-glow h-full rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
               <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
               <SeatBox
                 title="Dealer"
                 subtitle={`Value ${handValue(soloDealerVisible.filter((card) => card !== '??'))}${soloPhase !== 'result' && soloDealerVisible.length > 1 ? ' + ?' : ''}`}
                 cards={soloDealerVisible}
+                roleLabel="D"
                 className="top-6 left-1/2 -translate-x-1/2"
               />
 
@@ -882,6 +976,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                     title={bot.name}
                     subtitle={`${bot.status} · ${handValue(bot.hand)}${soloCurrentTurnId === bot.id ? ' · Turn' : ''}`}
                     cards={bot.hand}
+                    roleLabel={SOLO_ROLE_LABELS[index] ?? 'Seat'}
                     className={slots[index] ?? 'bottom-24 left-14'}
                   />
                 );
@@ -891,13 +986,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 title="You"
                 subtitle={`Value ${handValue(soloPlayerSeat?.hand ?? [])}${soloCurrentTurnId === 'player' ? ' · Turn' : ''}`}
                 cards={soloPlayerSeat?.hand ?? []}
+                roleLabel="YOU"
                 className="bottom-5 left-1/2 -translate-x-1/2"
                 highlighted
               />
 
               <div className="absolute top-[47%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-center">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Table</p>
-                <p className="text-lg font-semibold text-slate-200 mt-1">{soloMessage}</p>
+                <p className="text-base font-semibold text-slate-200 mt-1">{soloMessage}</p>
                 <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {soloDealerKnownValue}{soloPhase !== 'result' && soloDealerVisible.length > 1 ? ' + ?' : ''} | You: {soloPlayerValue}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">{soloTurnLabel}</p>
                 {soloError ? <p className="text-sm font-semibold text-red-400 mt-1">{soloError}</p> : null}
@@ -915,18 +1011,20 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 </div>
               ) : null}
             </div>
+            </div>
           </div>
 
-          <div className="border-t border-slate-800 bg-slate-950 p-4 grid gap-3 lg:grid-cols-[220px_1fr] items-end">
+          <div className="poker-action-bar sticky bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur p-3 grid gap-2 lg:gap-4 xl:gap-2 lg:grid-cols-[220px_1fr] items-end">
             <div>
               <label className="block text-xs uppercase text-slate-500 mb-1">Bet Amount</label>
               <input
                 type="number"
                 min={1}
-                value={soloBet}
+                value={soloBet || ''}
                 onChange={(event) => setSoloBet(Math.max(0, parseInt(event.target.value, 10) || 0))}
                 disabled={soloPhase === 'playing'}
-                className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
+                className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-cyan-500"
+                placeholder="0"
               />
               <div className="grid grid-cols-2 gap-2 mt-2">
                 <button
@@ -948,13 +1046,13 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
             <div className="flex gap-2 justify-end flex-wrap">
               {(soloPhase === 'idle' || soloPhase === 'result') && (
-                <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                   Deal Hand
                 </button>
               )}
               {soloPhase === 'playing' && (
                 <>
-                  <button onClick={soloHit} disabled={!canPlayerAct} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                  <button onClick={soloHit} disabled={!canPlayerAct} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                     Hit
                   </button>
                   <button onClick={soloStand} disabled={!canPlayerAct} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
@@ -978,7 +1076,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               type="number"
               min={1}
               value={friendsBetInput}
-              onChange={(event) => setFriendsBetInput(Math.max(0, parseInt(event.target.value, 10) || 0))}
+              onChange={(event) => setFriendsBetInput(event.target.value ? String(Math.max(1, parseInt(event.target.value, 10) || 0)) : '')}
               className="h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
               placeholder="bet amount"
             />
@@ -993,14 +1091,16 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
             </button>
           </div>
 
-          <div className="flex-1 min-h-0 p-4">
-            <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+          <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
+            <div className="poker-table-frame max-h-[65vh]">
+            <div className="poker-table-felt blackjack-table-glow h-full rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
               <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
               <SeatBox
                 title="Dealer"
                 subtitle={`Value ${friendsState.dealerValue}`}
                 cards={friendsState.dealerCards}
+                roleLabel="D"
                 className="top-6 left-1/2 -translate-x-1/2"
               />
 
@@ -1011,6 +1111,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                     key={player.userId || player.socketId}
                     title={player.username}
                     subtitle={`${player.resultText || (player.stood ? 'Stand' : player.busted ? 'Bust' : 'Playing')}`}
+                    roleLabel={FRIEND_ROLE_LABELS[index] ?? 'Seat'}
                     hands={Array.isArray(player.hands) && player.hands.length > 0 ? player.hands.map((hand) => hand.cards) : [player.hand]}
                     handResults={Array.isArray(player.hands) ? player.hands.map((hand) => hand.resultText) : []}
                     activeHandIndex={Number(player.activeHandIndex || 0)}
@@ -1022,6 +1123,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               <PlayerHandsBox
                 title={myFriendSeat?.username ?? 'You'}
                 subtitle={myFriendSeat ? `${myFriendSeat.resultText || (myFriendSeat.stood ? 'Stand' : myFriendSeat.busted ? 'Bust' : 'Playing')} · ${myFriendValue}` : 'Not seated'}
+                roleLabel="YOU"
                 hands={myFriendHands.length > 0 ? myFriendHands.map((hand) => hand.cards) : [myFriendSeat?.hand ?? []]}
                 handResults={myFriendHands.map((hand) => hand.resultText)}
                 activeHandIndex={myActiveHandIndex}
@@ -1031,11 +1133,11 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
               <div className="absolute top-[47%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 text-center px-4">
                 <p className="text-xs uppercase tracking-[0.25em] text-slate-400">Room {friendsState.roomId}</p>
-                <p className="text-lg font-semibold text-slate-200 mt-1">{friendsState.message}</p>
+                <p className="text-xs text-slate-300 mt-1">{friendsState.message}</p>
                 <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {handValue(friendsState.dealerCards)} | {username}: {myFriendValue}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">Status: {gameStateStatus}</p>
                 {friendsState.insuranceOpen ? <p className="text-xs uppercase tracking-wide text-amber-300 mt-1">Insurance available</p> : null}
-                <p className="text-sm text-slate-300 mt-1">{friendsNotice}</p>
+                <p className="text-xs text-slate-400 mt-1">{friendsNotice}</p>
               </div>
 
               {friendsRoundOverlay ? (
@@ -1055,50 +1157,64 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 </div>
               ) : null}
             </div>
+            </div>
           </div>
 
-          <div className="border-t border-slate-800 bg-slate-950 p-4 flex gap-2 justify-end flex-wrap">
-            <button onClick={startFriendsRound} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase">
-              Deal Hand
-            </button>
-            <button
-              onClick={friendHit}
-              disabled={!canFriendAct}
-              className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Hit
-            </button>
-            <button
-              onClick={friendStand}
-              disabled={!canFriendAct}
-              className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Stand
-            </button>
-            {canFriendDouble ? (
-              <button
-                onClick={friendDouble}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm uppercase"
-              >
-                Double
+          <div className="poker-action-bar sticky bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur p-3 grid gap-2 lg:gap-4 xl:gap-2 lg:grid-cols-[220px_1fr] items-end">
+            <div>
+              <label className="block text-xs uppercase text-slate-500 mb-1">Bet Amount</label>
+              <input
+                type="number"
+                min={1}
+                value={friendsBetInput}
+                onChange={(event) => setFriendsBetInput(event.target.value ? String(Math.max(1, parseInt(event.target.value, 10))) : '')}
+                className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-cyan-500"
+                placeholder="enter bet"
+              />
+            </div>
+            <div className="flex gap-2 justify-end flex-wrap">
+              <button onClick={startFriendsRound} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase">
+                Deal Hand
               </button>
-            ) : null}
-            {canFriendSplit ? (
               <button
-                onClick={friendSplit}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-sm uppercase"
+                onClick={friendHit}
+                disabled={!canFriendAct}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Split
+                Hit
               </button>
-            ) : null}
-            {canFriendInsurance ? (
               <button
-                onClick={friendInsurance}
-                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm uppercase"
+                onClick={friendStand}
+                disabled={!canFriendAct}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Insurance
+                Stand
               </button>
-            ) : null}
+              {canFriendDouble ? (
+                <button
+                  onClick={friendDouble}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm uppercase"
+                >
+                  Double
+                </button>
+              ) : null}
+              {canFriendSplit ? (
+                <button
+                  onClick={friendSplit}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-sm uppercase"
+                >
+                  Split
+                </button>
+              ) : null}
+              {canFriendInsurance ? (
+                <button
+                  onClick={friendInsurance}
+                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm uppercase"
+                >
+                  Insurance
+                </button>
+              ) : null}
+            </div>
           </div>
         </>
       )}
@@ -1110,20 +1226,36 @@ const SeatBox = React.memo(function SeatBox({
   title,
   subtitle,
   cards,
+  roleLabel,
   className,
   highlighted = false,
+  isHandActive = false,
+  isTurn = false,
 }: {
   title: string;
   subtitle: string;
   cards: string[];
+  roleLabel?: string;
   className: string;
   highlighted?: boolean;
+  isHandActive?: boolean;
+  isTurn?: boolean;
 }) {
+  const isExpanded = isHandActive || isTurn || cards.length > 0;
+  const hasAce = cards.some(card => card[0] === 'A');
+  
   return (
-    <div className={`absolute z-30 rounded-xl border px-3 py-2 min-w-[160px] backdrop-blur-sm ${highlighted ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${className}`}>
+    <motion.div 
+      className={`absolute z-30 rounded-xl border px-3 py-2 min-w-[164px] max-w-[180px] w-full backdrop-blur-sm transition-all ${highlighted ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isTurn ? 'ring-2 ring-cyan-400/75 shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''} ${className}`}
+      animate={isExpanded ? { scale: 1.05 } : { scale: 1 }}
+      transition={{ duration: 0.2 }}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{title}</span>
-        <span className="text-[11px] uppercase font-semibold text-slate-400">{subtitle}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{title}</span>
+          {roleLabel ? <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 bg-slate-950 text-slate-300 font-bold">{roleLabel}</span> : null}
+        </div>
+        <span className={`text-[11px] uppercase font-semibold ${hasAce && isHandActive ? 'text-red-400 animate-pulse' : 'text-cyan-300'}`}>{subtitle}</span>
       </div>
       <div className="mt-2 flex gap-1.5">
         {cards.length === 0 ? <CardView card="??" hidden /> : null}
@@ -1131,43 +1263,58 @@ const SeatBox = React.memo(function SeatBox({
           <CardView key={`${card}-${index}`} card={card} hidden={card === '??'} />
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 });
 
 const PlayerHandsBox = React.memo(function PlayerHandsBox({
   title,
   subtitle,
+  roleLabel,
   hands,
   handResults,
   activeHandIndex,
   className,
   highlighted = false,
+  isHandActive = false,
+  isTurn = false,
 }: {
   title: string;
   subtitle: string;
+  roleLabel?: string;
   hands: string[][];
   handResults: string[];
   activeHandIndex: number;
   className: string;
   highlighted?: boolean;
+  isHandActive?: boolean;
+  isTurn?: boolean;
 }) {
   const safeHands = Array.isArray(hands) && hands.length > 0 ? hands : [[]];
+  const isExpanded = isHandActive || isTurn || safeHands.some(h => h.length > 0);
+  const hasAce = safeHands.flat().some(card => card[0] === 'A');
 
   return (
-    <div className={`absolute z-30 rounded-xl border px-3 py-2 min-w-[180px] backdrop-blur-sm ${highlighted ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${className}`}>
+    <motion.div 
+      className={`absolute z-30 rounded-xl border px-3 py-2 min-w-[180px] max-w-[180px] w-full backdrop-blur-sm transition-all ${highlighted ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isTurn ? 'ring-2 ring-cyan-400/75 shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''} ${className}`}
+      animate={isExpanded ? { scale: 1.05 } : { scale: 1 }}
+      transition={{ duration: 0.2 }}
+    >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{title}</span>
-        <span className="text-[11px] uppercase font-semibold text-slate-400">{subtitle}</span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{title}</span>
+          {roleLabel ? <span className="text-[10px] px-1.5 py-0.5 rounded border border-slate-700 bg-slate-950 text-slate-300 font-bold">{roleLabel}</span> : null}
+        </div>
+        <span className={`text-[11px] uppercase font-semibold ${hasAce && isHandActive ? 'text-red-400 animate-pulse' : 'text-cyan-300'}`}>{subtitle}</span>
       </div>
 
       <div className="mt-2 flex gap-2">
         {safeHands.map((cards, handIndex) => (
           <motion.div
             key={`${title}-hand-${handIndex}`}
-            initial={{ opacity: 0, x: safeHands.length > 1 ? (handIndex === 0 ? -18 : 18) : 0 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.28, ease: 'easeOut' }}
+            initial={{ opacity: 0, x: safeHands.length > 1 ? (handIndex === 0 ? -18 : 18) : 0, rotateY: 90, perspective: 1000 }}
+            animate={{ opacity: 1, x: 0, rotateY: 0 }}
+            transition={{ duration: 0.35, ease: 'easeOut' }}
             className={`rounded-md border px-1.5 py-1 ${handIndex === activeHandIndex ? 'border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_14px_rgba(34,211,238,0.28)]' : 'border-slate-700/70 bg-slate-950/70'}`}
           >
             <div className="flex gap-1.5">
@@ -1180,26 +1327,38 @@ const PlayerHandsBox = React.memo(function PlayerHandsBox({
           </motion.div>
         ))}
       </div>
-    </div>
+    </motion.div>
   );
 });
 
 const CardView = React.memo(function CardView({ card, hidden = false }: { card: string; hidden?: boolean }) {
+  const isAce = !hidden && card && card[0] === 'A';
+  
   if (hidden) {
     return (
-      <div className="h-12 w-8 rounded-md border border-blue-500/40 bg-gradient-to-br from-blue-900/80 to-slate-900 text-blue-300 flex items-center justify-center text-[10px] font-bold">
+      <motion.div 
+        initial={{ rotateY: 90, opacity: 0 }}
+        animate={{ rotateY: 0, opacity: 1 }}
+        transition={{ duration: 0.4, ease: 'easeOut' }}
+        className="h-12 w-8 rounded-md border border-cyan-500/40 bg-gradient-to-br from-cyan-900/80 to-slate-900 text-cyan-300 flex items-center justify-center text-[10px] font-bold"
+      >
         NV
-      </div>
+      </motion.div>
     );
   }
 
   const label = cardLabel(card);
 
   return (
-    <div className="h-12 w-8 rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between">
+    <motion.div 
+      initial={{ rotateY: 90, opacity: 0 }}
+      animate={{ rotateY: 0, opacity: 1 }}
+      transition={{ duration: 0.4, ease: 'easeOut' }}
+      className={`h-12 w-8 rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between shadow-[0_6px_16px_rgba(2,6,23,0.45)] ${isAce ? 'ring-1 ring-red-400/70 animate-pulse' : ''}`}
+    >
       <span className={`text-[10px] leading-none ${label.isRed ? 'text-red-400' : 'text-slate-200'}`}>{label.rank}</span>
       <span className={`text-center text-sm leading-none ${label.isRed ? 'text-red-400' : 'text-slate-200'}`}>{label.suit}</span>
       <span className={`text-[10px] leading-none self-end ${label.isRed ? 'text-red-400' : 'text-slate-200'}`}>{label.rank}</span>
-    </div>
+    </motion.div>
   );
 });

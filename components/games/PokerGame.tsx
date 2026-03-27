@@ -67,6 +67,8 @@ const SEAT_LAYOUT: Array<{ id: SeatId; cls: string }> = [
   { id: 'player', cls: 'bottom-4 left-1/2 -translate-x-1/2' },
 ];
 
+const SOLO_MODE = true;
+
 function emptyNumberMap(): Record<SeatId, number> {
   return {
     player: 0,
@@ -445,6 +447,57 @@ export default function PokerGame() {
 
     return holeCardsLabel(player.hand);
   }, [player, board]);
+
+  const setupLocalBots = useCallback(() => {
+    const positionMap = buildPositionLabels(dealerSeatId);
+    const seats: Seat[] = [
+      {
+        id: 'player',
+        name: 'You',
+        isBot: false,
+        hand: [],
+        folded: false,
+        action: 'idle',
+        actionText: 'ready',
+        blindRole: null,
+        positionLabel: positionMap.player,
+      },
+      ...BOT_NAMES.map<Seat>((name, index) => {
+        const botId = `bot-${index + 1}` as BotId;
+        return {
+          id: botId,
+          name,
+          isBot: true,
+          hand: [],
+          folded: false,
+          action: 'idle',
+          actionText: 'ready',
+          blindRole: null,
+          positionLabel: positionMap[botId],
+        };
+      }),
+    ];
+
+    setTableSeats(seats);
+    setDeck([]);
+    setBoard([]);
+    setPot(0);
+    setCurrentBet(0);
+    setStreetContrib(emptyNumberMap());
+    setActedThisStreet(emptyBoolMap());
+    setCurrentTurn(null);
+    setShowdownLabels({});
+    setStage('idle');
+    setStatus('Solo table ready. Click New Hand to deal cards.');
+    setResult('');
+    setError('');
+  }, [dealerSeatId]);
+
+  useEffect(() => {
+    if (SOLO_MODE && tableSeats.length === 0) {
+      setupLocalBots();
+    }
+  }, [setupLocalBots, tableSeats.length]);
 
   const clearErrorSoon = () => {
     window.setTimeout(() => setError(''), 2200);
@@ -1007,24 +1060,12 @@ export default function PokerGame() {
   const resetTable = () => {
     pendingBetSyncRef.current = 0;
     pendingWinSyncRef.current = 0;
-    setStage('idle');
-    setTableSeats([]);
-    setDeck([]);
-    setBoard([]);
-    setPot(0);
-    setCurrentBet(0);
-    setStreetContrib(emptyNumberMap());
-    setActedThisStreet(emptyBoolMap());
-    setCurrentTurn(null);
-    setShowdownLabels({});
-    setStatus('Click New Hand to deal cards.');
-    setResult('');
-    setError('');
+    setupLocalBots();
   };
 
   return (
-    <div className="h-full min-h-0 flex flex-col bg-slate-900">
-      <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-3">
+    <div className="poker-solo-root h-full max-h-screen flex flex-col bg-slate-900 overflow-hidden gap-2 lg:gap-4 xl:gap-2">
+      <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-3 shrink-0">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em</h2>
           <p className="text-xs text-slate-400">6-max online style table</p>
@@ -1033,64 +1074,66 @@ export default function PokerGame() {
           <div className="px-3 py-1.5 rounded-md border border-slate-700 bg-slate-900 text-xs uppercase text-slate-300">
             {stageLabel(stage)}
           </div>
-          <div className="px-3 py-1.5 rounded-md border border-blue-600/30 bg-blue-500/10 text-xs font-mono text-blue-300">
+          <div className="px-3 py-1.5 rounded-md border border-cyan-500/30 bg-cyan-500/10 text-xs font-mono text-cyan-300">
             SB {smallBlind} / BB {bigBlind}
           </div>
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 p-4">
-        <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
-          <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
+      <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
+        <div className="poker-table-frame max-h-[65vh]">
+          <div className="poker-table-felt rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+            <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
-          <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
-            <div className="text-center text-xs uppercase tracking-[0.26em] text-slate-400 mb-2">Board</div>
-            <div className="mb-2 flex justify-center">
-              <div className="px-5 py-2 rounded-full border border-amber-500/40 bg-amber-500/15 shadow-lg text-center">
-                <p className="text-[10px] uppercase tracking-[0.26em] text-amber-200">Pot</p>
-                <p className="text-lg font-mono font-bold text-amber-300">{pot.toFixed(0)}</p>
+            <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
+              <div className="text-center text-xs uppercase tracking-[0.26em] text-slate-400 mb-2">Board</div>
+              <div className="mb-2 flex justify-center">
+                <div className="px-5 py-2 rounded-full border border-amber-500/40 bg-amber-500/15 shadow-lg text-center">
+                  <p className="text-[10px] uppercase tracking-[0.26em] text-amber-200">Pot</p>
+                  <p className="text-base font-mono font-bold text-amber-300">{pot.toFixed(0)}</p>
+                </div>
               </div>
+              <div className="flex items-center justify-center gap-2">
+                {Array.from({ length: 5 }).map((_, index) => {
+                  const card = board[index];
+                  return <CardView key={card?.id ?? `board-${index}`} card={card} hidden={!card} />;
+                })}
+              </div>
+              <p className="mt-3 text-center text-sm text-slate-300">{status}</p>
+              {result ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{result}</p> : null}
             </div>
-            <div className="flex items-center justify-center gap-2">
-              {Array.from({ length: 5 }).map((_, index) => {
-                const card = board[index];
-                return <CardView key={card?.id ?? `board-${index}`} card={card} hidden={!card} />;
-              })}
-            </div>
-            <p className="mt-3 text-center text-sm text-slate-300">{status}</p>
-            {result ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{result}</p> : null}
+
+            {SEAT_LAYOUT.map((layout) => {
+              const seat = seatById(tableSeats, layout.id);
+              if (!seat) {
+                return null;
+              }
+
+              const revealedLabel = showdownLabels[seat.id];
+              const seatHandLabel =
+                seat.id === 'player'
+                  ? playerRead
+                  : stage === 'result'
+                    ? revealedLabel ?? (seat.folded ? 'Folded' : 'Hidden')
+                    : null;
+
+              return (
+                <div key={seat.id} className={`absolute z-30 ${layout.cls}`}>
+                  <SeatView
+                    seat={seat}
+                    revealCards={stage === 'showdown' || stage === 'result' || !seat.isBot}
+                    handLabel={seatHandLabel}
+                    isTurn={currentTurn === seat.id && BETTING_STAGES.includes(stage)}
+                  />
+                </div>
+              );
+            })}
           </div>
-
-          {SEAT_LAYOUT.map((layout) => {
-            const seat = seatById(tableSeats, layout.id);
-            if (!seat) {
-              return null;
-            }
-
-            const revealedLabel = showdownLabels[seat.id];
-            const seatHandLabel =
-              seat.id === 'player'
-                ? playerRead
-                : stage === 'result'
-                  ? revealedLabel ?? (seat.folded ? 'Folded' : 'Hidden')
-                  : null;
-
-            return (
-              <div key={seat.id} className={`absolute z-30 ${layout.cls}`}>
-                <SeatView
-                  seat={seat}
-                  revealCards={stage === 'showdown' || stage === 'result' || !seat.isBot}
-                  handLabel={seatHandLabel}
-                  isTurn={currentTurn === seat.id && BETTING_STAGES.includes(stage)}
-                />
-              </div>
-            );
-          })}
         </div>
       </div>
 
-      <div className="border-t border-slate-800 bg-slate-950 p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-[180px_180px_1fr] gap-3 items-end">
+      <div className="poker-action-bar sticky bottom-0 z-40 border-t border-slate-800 bg-slate-950/95 backdrop-blur p-3 shrink-0 overflow-y-auto max-h-[35vh]">
+        <div className="grid grid-cols-1 lg:grid-cols-[160px_160px_1fr] gap-2 items-end">
           <div>
             <label className="block text-xs uppercase text-slate-500 mb-1">Big Blind</label>
             <input
@@ -1100,20 +1143,20 @@ export default function PokerGame() {
               value={bigBlindInput}
               onChange={(event) => setBigBlindInput(Math.max(40, Number(event.target.value) || 40))}
               disabled={stage !== 'idle' && stage !== 'result'}
-              className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
+                className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-cyan-500 text-sm"
             />
-            <div className="grid grid-cols-2 gap-2 mt-2">
+            <div className="grid grid-cols-2 gap-2 mt-1">
               <button
                 onClick={() => setBigBlindInput((value) => Math.max(40, Math.floor(value / 2) || 40))}
                 disabled={stage !== 'idle' && stage !== 'result'}
-                className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                className="h-8 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
               >
                 1/2
               </button>
               <button
                 onClick={() => setBigBlindInput(Math.max(0, Math.floor(parseFloat(balance))))}
                 disabled={stage !== 'idle' && stage !== 'result'}
-                className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                className="h-8 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
               >
                 MAX
               </button>
@@ -1129,15 +1172,15 @@ export default function PokerGame() {
               value={raiseBy}
               onChange={(event) => setRaiseBy(Math.max(50, Number(event.target.value) || 50))}
               disabled={!canAct}
-              className="w-full h-11 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-blue-600"
+              className="w-full h-10 rounded-lg border border-slate-700 bg-slate-900 px-3 font-mono text-white outline-none focus:border-cyan-500 text-sm"
             />
           </div>
 
-          <div className="flex flex-wrap gap-2 justify-start lg:justify-end">
+          <div className="flex flex-wrap gap-1 justify-start lg:justify-end">
             {(stage === 'idle' || stage === 'result') && (
               <button
                 onClick={startHand}
-                className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold uppercase text-sm"
+                className="h-10 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold uppercase text-xs"
               >
                 New Hand
               </button>
@@ -1147,31 +1190,31 @@ export default function PokerGame() {
               <>
                 <button
                   onClick={handleCheck}
-                  className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm"
+                  className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-xs"
                 >
                   Check
                 </button>
                 <button
                   onClick={handleCall}
-                  className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm"
+                  className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-xs"
                 >
                   Call {toCall > 0 ? toCall : ''}
                 </button>
                 <button
                   onClick={handleRaise}
-                  className="h-11 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-sm"
+                  className="h-10 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-bold text-xs"
                 >
                   Raise
                 </button>
                 <button
                   onClick={handleAllIn}
-                  className="h-11 px-4 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm"
+                  className="h-10 px-3 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs"
                 >
                   All-in
                 </button>
                 <button
                   onClick={handleFold}
-                  className="h-11 px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-sm"
+                  className="h-10 px-3 rounded-lg bg-red-600 hover:bg-red-500 text-white font-bold text-xs"
                 >
                   Fold
                 </button>
@@ -1181,7 +1224,7 @@ export default function PokerGame() {
             {stage === 'result' && (
               <button
                 onClick={resetTable}
-                className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-sm"
+                className="h-10 px-3 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 font-semibold text-xs"
               >
                 Clear Table
               </button>
@@ -1189,7 +1232,7 @@ export default function PokerGame() {
           </div>
         </div>
 
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-1.5 text-xs text-slate-400">
           Current bet: <span className="font-mono text-slate-300">{currentBet}</span>
           {' | '}
           To call: <span className="font-mono text-slate-300">{toCall}</span>
@@ -1199,7 +1242,7 @@ export default function PokerGame() {
           <motion.p
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-2 text-sm font-semibold text-red-500"
+            className="mt-1 text-xs font-semibold text-red-500"
           >
             {error}
           </motion.p>
@@ -1231,9 +1274,9 @@ function SeatView({
 
   return (
     <div
-      className={`rounded-xl border px-3 py-2 min-w-[148px] backdrop-blur-sm ${
-        seat.isBot ? 'border-slate-700 bg-slate-900/90' : 'border-blue-600/50 bg-blue-950/35'
-      } ${isTurn ? 'ring-2 ring-blue-500/70' : ''}`}
+      className={`rounded-xl border px-3 py-2 min-w-[148px] max-w-[180px] w-full backdrop-blur-sm ${
+        seat.isBot ? 'border-slate-700 bg-slate-900/90' : 'border-cyan-500/50 bg-cyan-950/35'
+      } ${isTurn ? 'ring-2 ring-cyan-400/75 shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''}`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
@@ -1244,7 +1287,7 @@ function SeatView({
         </div>
         <div className="flex items-center gap-1.5">
           {seat.blindRole ? (
-            <span className="text-[10px] px-1.5 py-0.5 rounded border border-blue-500/40 bg-blue-500/10 text-blue-300 font-bold">
+            <span className="text-[10px] px-1.5 py-0.5 rounded border border-cyan-500/40 bg-cyan-500/10 text-cyan-300 font-bold">
               {seat.blindRole}
             </span>
           ) : null}
@@ -1284,7 +1327,7 @@ function CardView({ card, hidden, compact = false }: { card?: Card; hidden?: boo
     <motion.div
       initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between ${sizeClass}`}
+      className={`rounded-md border border-slate-700 bg-slate-950 p-1 flex flex-col justify-between shadow-[0_6px_16px_rgba(2,6,23,0.45)] ${sizeClass}`}
     >
       <span className={`text-[10px] leading-none ${getSuitTone(card.suit)}`}>{card.rank}</span>
       <span className={`text-center text-sm leading-none ${getSuitTone(card.suit)}`}>{getSuitSymbol(card.suit)}</span>
