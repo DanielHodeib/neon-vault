@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "prebuild": "npm run check:production-readiness",
+    "check:production-readiness": "prisma generate && npm run check:types && npm run check:viprank && npm run check:frontend-api",
+    "check:types": "tsc --noEmit",
+    "check:viprank": "node scripts/validate-viprank-export.js",
+    "check:frontend-api": "node scripts/validate-frontend-api-url.js",
     "db:ui": "prisma studio",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "dev:all": "sh -c 'npm run dev & web=$!; (cd game-server && npm run dev) & game=$!; trap \"kill $web $game\" INT TERM EXIT; wait'",
