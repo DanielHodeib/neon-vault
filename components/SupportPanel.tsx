@@ -89,10 +89,14 @@ export default function SupportPanel({
   const [subjectDraft, setSubjectDraft] = useState('');
   const [categoryDraft, setCategoryDraft] = useState(CATEGORY_OPTIONS[0]);
   const [ticketDraft, setTicketDraft] = useState('');
-  const [staffMode, setStaffMode] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const isStaff = useMemo(() => STAFF_ROLES.has(String(role ?? '').toUpperCase()), [role]);
+  const shouldShowAllTickets = useMemo(
+    () => ['OWNER', 'ADMIN', 'SUPPORT'].includes(String(role ?? '').toUpperCase()),
+    [role]
+  );
+  const [staffMode, setStaffMode] = useState(() => shouldShowAllTickets);
 
   const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
@@ -378,9 +382,10 @@ export default function SupportPanel({
             <button
               type="button"
               onClick={() => setStaffMode((current) => !current)}
-              className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase ${staffMode ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : 'border-slate-700 bg-slate-800 text-slate-300'}`}
+              disabled={shouldShowAllTickets}
+              className={`h-9 rounded-lg border px-3 text-xs font-bold uppercase transition ${shouldShowAllTickets ? 'border-cyan-500/40 bg-cyan-500/10 text-cyan-200 cursor-default' : staffMode ? 'border-rose-500/40 bg-rose-500/10 text-rose-200' : 'border-slate-700 bg-slate-800 text-slate-300'}`}
             >
-              {staffMode ? 'Staff View' : 'My Tickets'}
+              {shouldShowAllTickets ? 'All Tickets' : staffMode ? 'Staff View' : 'My Tickets'}
             </button>
           ) : null}
           <button
