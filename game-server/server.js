@@ -2355,6 +2355,53 @@ function spinRouletteResult() {
   };
 }
 
+// ─── Global Random Event Engine ────────────────────────────────────────────
+let currentActiveEvent = null;
+let globalEventEndTimer = null;
+
+const EVENT_TYPES = [
+  { type: 'GOLDEN_HOUR', label: '🌟 Golden Hour', description: '1.5x Multiplier on all Crash & Coinflip cashouts!', multiplier: 1.5, color: '#fbbf24' },
+  { type: 'HOUSE_EDGE_DROP', label: '🃏 House Edge Drop', description: 'Blackjack pays 3:2 bonus! Higher Roulette win chances!', multiplier: 1.0, color: '#22d3ee' },
+];
+
+function startRandomGlobalEvent() {
+  if (currentActiveEvent) return;
+
+  const eventDef = EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)];
+  const durationMs = (5 + Math.floor(Math.random() * 6)) * 60 * 1000; // 5–10 min
+  const endTime = Date.now() + durationMs;
+
+  currentActiveEvent = {
+    type: eventDef.type,
+    label: eventDef.label,
+    description: eventDef.description,
+    multiplier: eventDef.multiplier,
+    color: eventDef.color,
+    endTime,
+    startedAt: Date.now(),
+  };
+
+  io.emit('global_event_started', currentActiveEvent);
+  emitSystemMessage(`${eventDef.label}: ${eventDef.description} Endet in ${Math.round(durationMs / 60000)} Minuten!`);
+
+  globalEventEndTimer = setTimeout(() => {
+    const ended = currentActiveEvent;
+    currentActiveEvent = null;
+    globalEventEndTimer = null;
+    io.emit('global_event_ended', { type: ended?.type, endedAt: Date.now() });
+    emitSystemMessage(`⏰ Event beendet: ${ended?.label}`);
+    scheduleNextGlobalEvent();
+  }, durationMs);
+}
+
+function scheduleNextGlobalEvent() {
+  const delayMs = (60 + Math.floor(Math.random() * 61)) * 60 * 1000; // 60–120 min
+  setTimeout(startRandomGlobalEvent, delayMs);
+}
+
+scheduleNextGlobalEvent();
+// ─────────────────────────────────────────────────────────────────────────────
+
 const crashEngineInterval = setInterval(() => {
   const rooms = Array.from(crashRooms.values());
 
@@ -2516,6 +2563,24 @@ app.post('/internal/chat/win', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post('/internal/global-event/start', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+  if (currentActiveEvent) {
+    return res.status(400).json({ ok: false, error: 'Event already active.' });
+  }
+  startRandomGlobalEvent();
+  return res.json({ ok: true, event: currentActiveEvent });
+});
+
+app.get('/internal/global-event', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+  return res.json({ ok: true, event: currentActiveEvent });
+});
+
 app.post('/internal/global-notification', (req, res) => {
   if (!isAuthorizedInternalRequest(req)) {
     return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
@@ -2623,6 +2688,9 @@ io.on('connection', (socket) => {
 
   socket.emit('chat_history', chatHistory);
   socket.emit('coinflip_state', coinflipPublicState());
+  if (currentActiveEvent) {
+    socket.emit('global_event_started', currentActiveEvent);
+  }
   if (activeRain) {
     socket.emit('rain_started', {
       rainId: activeRain.id,
@@ -3899,6 +3967,7 @@ function gracefulShutdown(signal) {
 
   clearInterval(crashEngineInterval);
   stopRainTimers();
+  if (globalEventEndTimer) { clearTimeout(globalEventEndTimer); globalEventEndTimer = null; }
 
   settleCrashRoomsForShutdown();
   settleRouletteRoomsForShutdown();

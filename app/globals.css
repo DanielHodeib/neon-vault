@@ -202,6 +202,11 @@ button {
   }
 }
 
+@keyframes pulse-glow-admin {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.25), 0 0 12px rgba(239,68,68,0.18); }
+  50% { box-shadow: 0 0 0 1px rgba(239,68,68,0.45), 0 0 22px rgba(239,68,68,0.32); }
+}
+
 @keyframes pulse-glow-green {
   0%, 100% {
     box-shadow: 0 0 20px rgba(22, 163, 74, 0.4), 0 0 40px rgba(22, 163, 74, 0.2), inset 0 0 70px rgba(0, 0, 0, 0.55);

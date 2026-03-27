@@ -46,7 +46,9 @@ import Sidebar from '@/components/Layout/Sidebar';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
+import GlobalEventBanner from '@/components/GlobalEventBanner';
 import LegalFooter from '@/components/LegalFooter';
+import CorporateFooter from '@/components/CorporateFooter';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
 import { getRoleBadge } from '@/lib/roleBadge';
@@ -70,6 +72,15 @@ interface ChatMessage {
   rankTag?: string;
   rankColor?: string;
   system?: boolean;
+}
+
+interface GlobalEventState {
+  type: string;
+  label: string;
+  description: string;
+  multiplier: number;
+  color: string;
+  endTime: number;
 }
 
 interface RainBannerState {
@@ -359,6 +370,7 @@ export default function MainHubRealtime({
     remainingSeconds: 0,
     endsAt: 0,
   });
+  const [globalEvent, setGlobalEvent] = useState<GlobalEventState | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const hubRenderCountRef = useRef(0);
@@ -1082,6 +1094,13 @@ export default function MainHubRealtime({
       toast.success(`Rain reward: +${amount} NVC`, { id: `rain-${Date.now()}` });
     };
 
+    const globalEventStartedHandler = (payload: GlobalEventState) => {
+      setGlobalEvent(payload);
+    };
+    const globalEventEndedHandler = () => {
+      setGlobalEvent(null);
+    };
+
     const walletRefreshRequiredHandler = () => {
       void syncBalanceFromServer();
     };
@@ -1238,6 +1257,8 @@ export default function MainHubRealtime({
     socket.on('rain_tick', rainTickHandler);
     socket.on('rain_ended', rainEndedHandler);
     socket.on('rain_reward', rainRewardHandler);
+    socket.on('global_event_started', globalEventStartedHandler);
+    socket.on('global_event_ended', globalEventEndedHandler);
     socket.on('wallet_refresh_required', walletRefreshRequiredHandler);
     socket.on('crash_room_joined', crashRoomJoinedHandler);
     socket.on('crash_room_members', crashRoomMembersHandler);
@@ -1268,6 +1289,8 @@ export default function MainHubRealtime({
       socket.off('rain_tick', rainTickHandler);
       socket.off('rain_ended', rainEndedHandler);
       socket.off('rain_reward', rainRewardHandler);
+      socket.off('global_event_started', globalEventStartedHandler);
+      socket.off('global_event_ended', globalEventEndedHandler);
       socket.off('wallet_refresh_required', walletRefreshRequiredHandler);
       socket.off('crash_room_joined', crashRoomJoinedHandler);
       socket.off('crash_room_members', crashRoomMembersHandler);
@@ -2089,7 +2112,7 @@ export default function MainHubRealtime({
         onClaimFaucet={handleFaucet}
       />
 
-      <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0 max-h-screen">
+      <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0 max-h-screen pb-80 md:pb-96">
         <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 z-10 gap-3">
           <div className="flex items-center gap-2 text-slate-400">
             <button
@@ -2151,6 +2174,8 @@ export default function MainHubRealtime({
             </button>
           </div>
         </header>
+
+        <GlobalEventBanner event={globalEvent} />
 
         {hadSocketConnection && !socketConnected ? (
           <div className="mx-4 lg:mx-6 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200">
@@ -2762,6 +2787,7 @@ export default function MainHubRealtime({
         </div>
       </main>
 
+      <CorporateFooter />
     </div>
   );
 }
@@ -2797,12 +2823,39 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
   const clanLabel = typeof event.clanTag === 'string' ? event.clanTag.trim() : '';
   const roleBadge = getRoleBadge(normalizedRole);
 
+  // Role-based glow styles
+  const roleGlow = (() => {
+    if (event.system) return {};
+    if (normalizedRole === 'OWNER' || normalizedRole === 'ADMIN') {
+      return {
+        boxShadow: '0 0 0 1px rgba(239,68,68,0.25), 0 0 12px rgba(239,68,68,0.18)',
+        borderColor: 'rgba(239,68,68,0.35)',
+        animation: 'pulse-glow-admin 3s ease-in-out infinite',
+      };
+    }
+    if (normalizedRole === 'MODERATOR') {
+      return { boxShadow: '0 0 0 1px rgba(34,211,238,0.2), 0 0 10px rgba(34,211,238,0.12)', borderColor: 'rgba(34,211,238,0.3)' };
+    }
+    if (normalizedRole === 'VIP') {
+      return { borderColor: 'rgba(251,191,36,0.35)', boxShadow: '0 0 0 1px rgba(251,191,36,0.15)' };
+    }
+    return {};
+  })();
+
+  const usernameGlow = (() => {
+    if (event.system) return {};
+    if (normalizedRole === 'OWNER' || normalizedRole === 'ADMIN') return { textShadow: '0 0 10px rgba(239,68,68,0.7)' };
+    if (normalizedRole === 'MODERATOR') return { textShadow: '0 0 8px rgba(34,211,238,0.6)' };
+    return {};
+  })();
+
   return (
     <motion.div
       initial={reducedMotion ? { opacity: 1 } : { opacity: 0, y: 10 }}
       animate={reducedMotion ? { opacity: 1 } : { opacity: 1, y: 0 }}
       exit={reducedMotion ? { opacity: 1 } : { opacity: 0 }}
       className="p-3 rounded-lg bg-slate-950 border border-slate-800 hover:border-slate-700 hover:bg-slate-900 transition-all group"
+      style={roleGlow}
     >
       <div className="flex items-start justify-between gap-3 mb-1.5">
         <div className="flex items-center gap-2 flex-wrap min-w-0">
@@ -2811,7 +2864,7 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
               [{clanLabel}]
             </span>
           ) : null}
-          <span className="font-bold text-[15px] leading-5 truncate" style={{ color: event.system ? '#f87171' : usernameColor }}>
+          <span className="font-bold text-[15px] leading-5 truncate" style={{ color: event.system ? '#f87171' : usernameColor, ...usernameGlow }}>
             {event.username}
           </span>
           {!event.system && event.isKing ? <span className="text-[14px] leading-5">👑</span> : null}
