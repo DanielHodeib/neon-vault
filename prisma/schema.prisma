@@ -20,6 +20,13 @@ enum UserRole {
   USER
 }
 
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  ANSWERED
+  CLOSED
+}
+
 model User {
   id                  String       @id @default(cuid())
   username            String       @unique
@@ -40,6 +47,10 @@ model User {
   friendshipsReceived Friendship[] @relation("FriendshipsReceived")
   blocksSent          Block[]      @relation("BlocksSent")
   blocksReceived      Block[]      @relation("BlocksReceived")
+  transactionsSent    Transaction[] @relation("TransactionsSent")
+  transactionsReceived Transaction[] @relation("TransactionsReceived")
+  tickets             Ticket[]
+  ticketMessagesSent  TicketMessage[] @relation("TicketMessagesSent")
 
   @@map("users")
 }
@@ -101,4 +112,53 @@ model QuestProgress {
   updatedAt         String   @default("") @map("updated_at")
 
   @@map("quest_progress")
+}
+
+model Transaction {
+  id         String   @id @default(cuid())
+  senderId   String   @map("sender_id")
+  receiverId String   @map("receiver_id")
+  amount     String
+  message    String   @default("")
+  createdAt  DateTime @default(now())
+
+  sender   User @relation("TransactionsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver User @relation("TransactionsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("transactions")
+}
+
+model Ticket {
+  id        String       @id @default(uuid())
+  userId    String       @map("user_id")
+  subject   String
+  category  String
+  status    TicketStatus @default(OPEN)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("tickets")
+}
+
+model TicketMessage {
+  id           String   @id @default(uuid())
+  ticketId     String   @map("ticket_id")
+  senderId     String   @map("sender_id")
+  content      String
+  isStaffReply Boolean  @default(false) @map("is_staff_reply")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender User   @relation("TicketMessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId])
+  @@index([senderId])
+  @@map("ticket_messages")
 }
