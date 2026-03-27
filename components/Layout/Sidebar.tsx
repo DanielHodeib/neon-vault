@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane } from 'lucide-react';
+import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane, Users } from 'lucide-react';
 
 type SidebarItem = {
   label: string;
@@ -15,21 +15,23 @@ type SidebarItem = {
 export default function Sidebar({
   collapsed,
   onToggle,
+  mobileOpen,
+  onCloseMobile,
   activeTab,
   onSelectTab,
-  isAdmin,
+  canAccessAdmin,
   dailyFaucetClaimed,
   onClaimFaucet,
-  onOpenLeaderboard,
 }: {
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
   activeTab: string;
   onSelectTab: (tab: string) => void;
-  isAdmin: boolean;
+  canAccessAdmin: boolean;
   dailyFaucetClaimed: boolean;
   onClaimFaucet: () => void;
-  onOpenLeaderboard: () => void;
 }) {
   const sidebarItems: SidebarItem[] = [
     { label: 'Neon Rocket', icon: <TrendingUp size={20} />, tabKey: 'crash', onClick: () => onSelectTab('crash') },
@@ -39,15 +41,18 @@ export default function Sidebar({
     { label: 'Roulette', icon: <CircleDashed size={20} />, tabKey: 'roulette', onClick: () => onSelectTab('roulette') },
     { label: 'Poker', icon: <Spade size={20} />, tabKey: 'poker', onClick: () => onSelectTab('poker') },
     { label: 'Coinflip', icon: <Coins size={20} />, tabKey: 'coinflip', onClick: () => onSelectTab('coinflip') },
-    { label: 'Leaderboard', icon: <Trophy size={20} />, onClick: onOpenLeaderboard },
+    { label: 'Friends', icon: <Users size={20} />, tabKey: 'friends', onClick: () => onSelectTab('friends') },
+    { label: 'Leaderboard', icon: <Trophy size={20} />, tabKey: 'leaderboard', onClick: () => onSelectTab('leaderboard') },
     { label: 'Settings', icon: <Settings size={20} />, tabKey: 'settings', onClick: () => onSelectTab('settings') },
     { label: 'Admin', icon: <Shield size={20} />, tabKey: 'admin', onClick: () => onSelectTab('admin'), adminOnly: true },
   ];
 
-  const visibleItems = sidebarItems.filter((item) => !item.adminOnly || isAdmin);
+  const visibleItems = sidebarItems.filter((item) => !item.adminOnly || canAccessAdmin);
 
   return (
-    <aside className={`hub-sidebar ${collapsed ? 'w-20' : 'w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-20 transition-[width] duration-300 ease-out`}>
+    <aside
+      className={`hub-sidebar fixed inset-y-0 left-0 w-64 md:relative md:inset-auto ${collapsed ? 'md:w-20' : 'md:w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-40 transition-transform md:transition-[width] duration-300 ease-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+    >
       <div className={`h-16 flex items-center ${collapsed ? 'px-3 justify-between' : 'px-5'} border-b border-slate-800 transition-[padding] duration-300`}>
         {!collapsed ? (
           <Link href="/" className="inline-flex items-center gap-2 text-lg font-black tracking-wide text-white hover:text-cyan-200 transition-all duration-300">
@@ -62,7 +67,7 @@ export default function Sidebar({
 
         <button
           onClick={onToggle}
-          className={`w-8 h-8 bg-blue-600 rounded flex items-center justify-center hover:bg-blue-500 transition-all duration-300 ${collapsed ? 'rotate-180' : 'rotate-0'}`}
+          className={`hidden md:flex w-8 h-8 bg-blue-600 rounded items-center justify-center hover:bg-blue-500 transition-all duration-300 ${collapsed ? 'rotate-180' : 'rotate-0'}`}
           aria-label="Toggle sidebar"
           type="button"
         >
@@ -85,7 +90,10 @@ export default function Sidebar({
             <button
               key={item.label}
               type="button"
-              onClick={item.onClick}
+              onClick={() => {
+                item.onClick?.();
+                onCloseMobile();
+              }}
               className={sharedClassName}
               title={collapsed ? item.label : undefined}
             >
@@ -98,7 +106,10 @@ export default function Sidebar({
 
       <div className={`${collapsed ? 'p-2' : 'p-4'} border-t border-slate-800`}>
         <button
-          onClick={onClaimFaucet}
+          onClick={() => {
+            onClaimFaucet();
+            onCloseMobile();
+          }}
           disabled={dailyFaucetClaimed}
           className={`w-full py-3 rounded text-sm font-medium transition-colors text-slate-300 active:scale-95 ${
             dailyFaucetClaimed ? 'bg-slate-800/60 cursor-not-allowed opacity-70' : 'bg-slate-800 hover:bg-slate-700'

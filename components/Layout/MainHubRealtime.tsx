@@ -1,7 +1,7 @@
 'use client';
 
 import React, { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   House,
   Wallet,
@@ -16,7 +16,9 @@ import {
   Users,
   Settings,
   Send,
+  MessageSquare,
   LogOut,
+  X,
   Eye,
   Trash2,
   Ban,
@@ -37,6 +39,7 @@ import PokerGame from '@/components/games/PokerGame';
 import PokerFriendsGame from '@/components/games/PokerFriendsGame';
 import CoinflipGame from '@/components/games/CoinflipGame';
 import CyberAviator from '@/components/games/CyberAviator';
+import Friends from '@/components/Friends';
 import Sidebar from '@/components/Layout/Sidebar';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
@@ -174,7 +177,7 @@ function RenderChatMessage({ text, onMentionClick }: { text: string; onMentionCl
 }
 
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   if (typeof window === 'undefined') {
     return fromEnv ?? 'http://localhost:4001';
@@ -253,8 +256,10 @@ export default function MainHubRealtime({
   } = useCasinoStore();
 
   const [activeTab, setActiveTab] = useState<Tab>(initialTab);
-  const [leaderboardModalOpen, setLeaderboardModalOpen] = useState(initialTab === 'leaderboard');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [hadSocketConnection, setHadSocketConnection] = useState(false);
 
@@ -283,6 +288,7 @@ export default function MainHubRealtime({
   const [pokerMode, setPokerMode] = useState<PokerMode>('friends');
 
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [presenceByUsername, setPresenceByUsername] = useState<Record<string, { online: boolean; activity: string }>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatInputCaret, setChatInputCaret] = useState(0);
@@ -348,6 +354,7 @@ export default function MainHubRealtime({
   const crashBetCommittedRef = useRef(false);
   const committedCrashBetAmountRef = useRef<number>(0);
   const announcementTimeoutRef = useRef<number | null>(null);
+  const lastCrashUiTickAtRef = useRef(0);
 
   hubRenderCountRef.current += 1;
 
@@ -402,9 +409,9 @@ export default function MainHubRealtime({
     const trimmedInitial = (initialUsername ?? '').trim();
     return trimmedInitial || 'Guest';
   }, [username, initialUsername]);
-  const isDanielAdmin = useMemo(
-    () => effectiveUsername === 'Daniel' && chatRole === 'ADMIN' && serverAdminAccess,
-    [effectiveUsername, chatRole, serverAdminAccess]
+  const hasAdminPanelAccess = useMemo(
+    () => serverAdminAccess && ['OWNER', 'ADMIN', 'MODERATOR'].includes(chatRole),
+    [chatRole, serverAdminAccess]
   );
   const normalizedEffectiveUsername = useMemo(() => effectiveUsername.trim().toLowerCase(), [effectiveUsername]);
   const isCurrentCrashPlayer = useCallback(
@@ -413,23 +420,16 @@ export default function MainHubRealtime({
   );
 
   useEffect(() => {
-    if (adminAccessResolved && activeTab === 'admin' && !isDanielAdmin) {
+    if (adminAccessResolved && activeTab === 'admin' && !hasAdminPanelAccess) {
       setActiveTab('settings');
     }
-  }, [activeTab, isDanielAdmin, adminAccessResolved]);
+  }, [activeTab, hasAdminPanelAccess, adminAccessResolved]);
 
   useEffect(() => {
     if (initialTab && initialTab !== activeTab) {
       setActiveTab(initialTab);
     }
   }, [initialTab, activeTab]);
-
-  useEffect(() => {
-    if (activeTab === 'leaderboard') {
-      setLeaderboardModalOpen(true);
-      setActiveTab('crash');
-    }
-  }, [activeTab]);
 
   const level = useMemo(() => Math.floor(xp / 1000) + 1, [xp]);
   const levelBaseXp = useMemo(() => (level - 1) * 1000, [level]);
@@ -612,6 +612,26 @@ export default function MainHubRealtime({
   }, [compactSidebar]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(max-width: 767px)');
+    const syncViewport = () => {
+      const mobile = mediaQuery.matches;
+      setIsMobileViewport(mobile);
+      if (mobile) {
+        setSidebarCollapsed(true);
+      }
+    };
+
+    syncViewport();
+
+    mediaQuery.addEventListener('change', syncViewport);
+    return () => mediaQuery.removeEventListener('change', syncViewport);
+  }, []);
+
+  useEffect(() => {
     setBetInput(String(quickBetPreset));
   }, [quickBetPreset]);
 
@@ -681,6 +701,36 @@ export default function MainHubRealtime({
     }
   }, []);
 
+  const loadPresence = useCallback(async () => {
+    try {
+      const response = await fetch('/api/presence', { cache: 'no-store' });
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as {
+        users?: Array<{ username: string; activity?: string; online?: boolean }>;
+      };
+
+      const next: Record<string, { online: boolean; activity: string }> = {};
+      for (const user of payload.users ?? []) {
+        const username = String(user?.username ?? '').trim();
+        if (!username) {
+          continue;
+        }
+
+        next[username.toLowerCase()] = {
+          online: Boolean(user?.online),
+          activity: String(user?.activity ?? 'Hub').trim() || 'Hub',
+        };
+      }
+
+      setPresenceByUsername(next);
+    } catch {
+      // Keep previous presence snapshot on request failures.
+    }
+  }, []);
+
   const loadSettings = useCallback(async () => {
     try {
       const response = await fetch('/api/settings', { cache: 'no-store' });
@@ -717,14 +767,16 @@ export default function MainHubRealtime({
 
   useEffect(() => {
     void loadFriends();
+    void loadPresence();
     void loadSettings();
 
     const interval = window.setInterval(() => {
       void loadFriends();
+      void loadPresence();
     }, 7000);
 
     return () => window.clearInterval(interval);
-  }, [loadFriends, loadSettings]);
+  }, [loadFriends, loadPresence, loadSettings]);
 
   useEffect(() => {
     if (!friendRealtimeNotice) {
@@ -761,8 +813,8 @@ export default function MainHubRealtime({
 
         const adminResponse = await fetch('/api/admin/me', { cache: 'no-store' });
         if (adminResponse.ok) {
-          const adminPayload = (await adminResponse.json()) as { isAdmin?: boolean };
-          setServerAdminAccess(Boolean(adminPayload.isAdmin));
+          const adminPayload = (await adminResponse.json()) as { canAccessAdminPanel?: boolean; isAdmin?: boolean };
+          setServerAdminAccess(Boolean(adminPayload.canAccessAdminPanel ?? adminPayload.isAdmin));
         } else {
           setServerAdminAccess(false);
         }
@@ -984,6 +1036,10 @@ export default function MainHubRealtime({
       toast.success(`Rain reward: +${amount} NVC`, { id: `rain-${Date.now()}` });
     };
 
+    const walletRefreshRequiredHandler = () => {
+      void syncBalanceFromServer();
+    };
+
     const crashRoomJoinedHandler = (payload: { ok: boolean; roomId?: string }) => {
       if (!payload.ok || !payload.roomId) {
         return;
@@ -1024,6 +1080,12 @@ export default function MainHubRealtime({
     };
 
     const crashTickHandler = ({ multiplier, players }: { multiplier: number; players: CrashPlayer[] }) => {
+      const now = Date.now();
+      if (now - lastCrashUiTickAtRef.current < 100) {
+        return;
+      }
+      lastCrashUiTickAtRef.current = now;
+
       setCrashState((prev) => ({ ...prev, multiplier, players, phase: 'running' }));
       const activeBet = (players ?? []).some((player) => isCurrentCrashPlayer(player) && !player.cashedOut);
       setHasBet(activeBet);
@@ -1114,6 +1176,7 @@ export default function MainHubRealtime({
     socket.on('rain_tick', rainTickHandler);
     socket.on('rain_ended', rainEndedHandler);
     socket.on('rain_reward', rainRewardHandler);
+    socket.on('wallet_refresh_required', walletRefreshRequiredHandler);
     socket.on('crash_room_joined', crashRoomJoinedHandler);
     socket.on('crash_room_members', crashRoomMembersHandler);
     socket.on('crash_state', crashStateHandler);
@@ -1138,6 +1201,7 @@ export default function MainHubRealtime({
       socket.off('rain_tick', rainTickHandler);
       socket.off('rain_ended', rainEndedHandler);
       socket.off('rain_reward', rainRewardHandler);
+      socket.off('wallet_refresh_required', walletRefreshRequiredHandler);
       socket.off('crash_room_joined', crashRoomJoinedHandler);
       socket.off('crash_room_members', crashRoomMembersHandler);
       socket.off('crash_state', crashStateHandler);
@@ -1153,7 +1217,7 @@ export default function MainHubRealtime({
         announcementTimeoutRef.current = null;
       }
     };
-  }, [addWin, chatClanTag, chatRole, commitPendingCrashBet, isCurrentCrashPlayer, refundCommittedCrashBet, setAnnouncement]);
+  }, [addWin, chatClanTag, chatRole, commitPendingCrashBet, isCurrentCrashPlayer, refundCommittedCrashBet, setAnnouncement, syncBalanceFromServer]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -1575,7 +1639,10 @@ export default function MainHubRealtime({
       body: JSON.stringify({ friendshipId, action }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      receiverUsername?: string;
+    };
     if (!response.ok) {
       setFriendNotice(payload.error ?? 'Could not update request.');
       return;
@@ -1590,7 +1657,10 @@ export default function MainHubRealtime({
       method: 'DELETE',
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      receiverUsername?: string;
+    };
     if (!response.ok) {
       setFriendNotice(payload.error ?? 'Could not remove friendship.');
       return;
@@ -1607,7 +1677,10 @@ export default function MainHubRealtime({
       body: JSON.stringify({ targetUserId }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      receiverUsername?: string;
+    };
     if (!response.ok) {
       setFriendNotice(payload.error ?? 'Could not block user.');
       return;
@@ -1650,7 +1723,10 @@ export default function MainHubRealtime({
       body: JSON.stringify({ targetUserId, amount }),
     });
 
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      error?: string;
+      receiverUsername?: string;
+    };
 
     if (!response.ok) {
       setFriendNotice(payload.error ?? 'Could not send money.');
@@ -1828,33 +1904,78 @@ export default function MainHubRealtime({
 
   const handleSelectSidebarTab = (tab: string) => {
     const nextTab = tab as Tab;
-    if (nextTab === 'admin' && !isDanielAdmin) {
+    if (nextTab === 'admin' && !hasAdminPanelAccess) {
       setErrorMsg('Admin access required.');
       return;
     }
 
     setErrorMsg('');
     setActiveTab(nextTab);
+    setMobileSidebarOpen(false);
     router.push(`/hub?game=${nextTab}`);
+  };
+
+  const handleJoinFriendGame = (activity: string) => {
+    const normalized = String(activity ?? '').trim().toLowerCase();
+    let tab: Tab | null = null;
+
+    if (normalized.includes('poker')) {
+      tab = 'poker';
+      setPokerMode('friends');
+    } else if (normalized.includes('blackjack')) {
+      tab = 'blackjack';
+    } else if (normalized.includes('roulette')) {
+      tab = 'roulette';
+    } else if (normalized.includes('crash')) {
+      tab = 'crash';
+    } else if (normalized.includes('coinflip')) {
+      tab = 'coinflip';
+    }
+
+    if (!tab) {
+      return;
+    }
+
+    setErrorMsg('');
+    setActiveTab(tab);
+    setMobileSidebarOpen(false);
+    router.push(`/hub?game=${tab}`);
   };
 
   return (
     <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
       <AnnouncementOverlay message={announcement} />
+      {mobileSidebarOpen ? (
+        <button
+          type="button"
+          onClick={() => setMobileSidebarOpen(false)}
+          aria-label="Close sidebar"
+          className="fixed inset-0 z-30 bg-slate-950/55 md:hidden"
+        />
+      ) : null}
       <Sidebar
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed((current) => !current)}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
         activeTab={activeTab}
         onSelectTab={handleSelectSidebarTab}
-        isAdmin={isDanielAdmin}
+        canAccessAdmin={hasAdminPanelAccess}
         dailyFaucetClaimed={daily.faucetClaimed}
         onClaimFaucet={handleFaucet}
-        onOpenLeaderboard={() => setLeaderboardModalOpen(true)}
       />
 
       <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0">
         <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 z-10 gap-3">
           <div className="flex items-center gap-2 text-slate-400">
+            <button
+              type="button"
+              onClick={() => setMobileSidebarOpen((current) => !current)}
+              className="md:hidden h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 inline-flex items-center justify-center"
+              aria-label="Open navigation"
+            >
+              <Menu size={18} />
+            </button>
             <ShieldCheck size={18} className="text-emerald-500" />
             <span className="text-sm font-medium">{socketConnected ? 'Realtime Connected' : 'Realtime Offline'}</span>
           </div>
@@ -1864,10 +1985,10 @@ export default function MainHubRealtime({
               <div className="text-right min-w-0">
                 <div className="flex items-center justify-end gap-2">
                   <p className="text-xs uppercase tracking-wide text-slate-500 truncate">{effectiveUsername}</p>
-                  {isDanielAdmin ? (
+                  {hasAdminPanelAccess ? (
                     <span className="inline-flex items-center gap-1 rounded-full border border-rose-400/40 bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-200 shadow-[0_0_10px_rgba(244,63,94,0.25)]">
                       <span className="h-1.5 w-1.5 rounded-full bg-rose-300" />
-                      Admin Verified
+                      {chatRole} Access
                     </span>
                   ) : null}
                 </div>
@@ -1893,6 +2014,14 @@ export default function MainHubRealtime({
             >
               <LogOut size={14} /> Logout
             </button>
+            <button
+              type="button"
+              onClick={() => setMobileChatOpen((current) => !current)}
+              className="md:hidden h-10 w-10 rounded-lg border border-slate-700 bg-slate-900 text-slate-200 inline-flex items-center justify-center"
+              aria-label="Toggle chat"
+            >
+              <MessageSquare size={16} />
+            </button>
           </div>
         </header>
 
@@ -1902,7 +2031,7 @@ export default function MainHubRealtime({
           </div>
         ) : null}
 
-        <div className="flex-1 min-h-0 min-w-0 flex p-4 lg:p-6 gap-4 overflow-hidden">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-3 lg:p-6 gap-3 lg:gap-4 overflow-hidden">
           <div className="hub-panel relative flex-1 min-h-0 min-w-0 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -1917,8 +2046,10 @@ export default function MainHubRealtime({
             )}
 
             {activeTab === 'blackjack' && (
-              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
-                <BlackjackGame username={effectiveUsername} />
+              <div className="flex-1 min-h-0 min-w-0 overflow-auto">
+                <div className="min-w-[860px] sm:min-w-[920px] md:min-w-0 origin-top scale-[0.82] sm:scale-[0.92] md:scale-100">
+                  <BlackjackGame username={effectiveUsername} />
+                </div>
               </div>
             )}
             {activeTab === 'roulette' && (
@@ -1932,7 +2063,7 @@ export default function MainHubRealtime({
               </div>
             )}
             {activeTab === 'poker' && (
-              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto flex flex-col">
+              <div className="flex-1 min-h-0 min-w-0 overflow-auto flex flex-col">
                 <div className="h-14 shrink-0 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-500">Poker Mode</p>
@@ -1962,7 +2093,11 @@ export default function MainHubRealtime({
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0">{pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={effectiveUsername} />}</div>
+                <div className="flex-1 min-h-0">
+                  <div className="min-w-[860px] sm:min-w-[920px] md:min-w-0 origin-top scale-[0.82] sm:scale-[0.92] md:scale-100">
+                    {pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={effectiveUsername} />}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1973,281 +2108,48 @@ export default function MainHubRealtime({
             )}
 
             {activeTab === 'friends' && (
-              <div className="flex-1 min-h-0 min-w-0 p-6 overflow-y-auto">
-                <h2 className="text-2xl font-bold text-slate-100">Friends & Presence</h2>
-                <p className="text-sm text-slate-400 mt-1">Send requests, accept invites, and track online status in real time.</p>
-                {friendRealtimeNotice ? (
-                  <p className="mt-2 text-sm font-semibold text-cyan-300">{friendRealtimeNotice}</p>
-                ) : null}
-
-                <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                  <label className="block text-xs uppercase tracking-wide text-slate-500 mb-2">Find Player</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder="Username..."
-                      value={friendSearch}
-                      onChange={(event) => setFriendSearch(event.target.value)}
-                      className="h-11 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-blue-500"
-                    />
-                    <button
-                      onClick={handleSendFriendRequest}
-                      className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-semibold"
-                    >
-                      Add
-                    </button>
-                  </div>
-                  {friendNotice ? <p className="mt-2 text-xs text-slate-400">{friendNotice}</p> : null}
-                </div>
-
-                <div className="mt-5 grid grid-cols-1 xl:grid-cols-2 gap-4">
-                  <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Friends</p>
-                    {friendsLoading ? <p className="text-sm text-slate-500">Loading...</p> : null}
-                    {!friendsLoading && friendsAccepted.length === 0 ? (
-                      <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg">No accepted friends yet.</p>
-                    ) : null}
-                    {friendsAccepted.length > 0 ? (
-                      <div className="rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
-                        {friendsAccepted.map((friend) => {
-                          const isOnline = showOnlinePresence && onlineUsersSet.has(friend.username.trim().toLowerCase());
-                          const displayName = (friend.username ?? '').trim() || 'Unknown Friend';
-                          return (
-                            <div
-                              key={friend.friendshipId}
-                              onClick={() => openProfileModal(displayName)}
-                              className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800/40 transition-colors"
-                            >
-                              <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`} />
-                              <button
-                                type="button"
-                                onClick={() => openProfileModal(displayName)}
-                                className="font-semibold text-slate-200 truncate hover:text-cyan-300 hover:underline"
-                              >
-                                {displayName}
-                              </button>
-                              <div className="ml-auto flex items-center gap-1.5">
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleSendMoneyToFriend(friend.userId, displayName);
-                                  }}
-                                  className="h-8 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
-                                >
-                                  Send
-                                </button>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    openProfileModal(displayName);
-                                  }}
-                                  className="h-8 px-2.5 rounded-md bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 text-xs inline-flex items-center gap-1"
-                                >
-                                  <Eye size={13} />
-                                  View
-                                </button>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleRemoveFriendship(friend.friendshipId);
-                                  }}
-                                  className="h-8 w-8 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800/80 inline-flex items-center justify-center"
-                                  title="Remove friend"
-                                  aria-label={`Remove ${displayName}`}
-                                >
-                                  <Trash2 size={13} />
-                                </button>
-                                <button
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void handleBlockUser(friend.userId);
-                                  }}
-                                  className="h-8 w-8 rounded-md text-slate-500 hover:text-red-400 hover:bg-slate-800/80 inline-flex items-center justify-center"
-                                  title="Block user"
-                                  aria-label={`Block ${displayName}`}
-                                >
-                                  <Ban size={13} />
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </section>
-
-                  <div className="space-y-4">
-                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                      <button
-                        type="button"
-                        onClick={() => setIncomingOpen((current) => !current)}
-                        className="w-full flex items-center justify-between"
-                      >
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Incoming Requests</span>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
-                            {pendingIncoming.length}
-                          </span>
-                          {incomingOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
-                        </span>
-                      </button>
-                      {incomingOpen ? (
-                        pendingIncoming.length === 0 ? (
-                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No incoming requests.</p>
-                        ) : (
-                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
-                            {pendingIncoming.map((request) => (
-                              <div key={request.friendshipId} className="flex items-center gap-3 px-3 py-2.5">
-                                <span className="font-medium text-slate-200 truncate">{request.username}</span>
-                                <div className="ml-auto flex items-center gap-2">
-                                  <button
-                                    onClick={() => handleRespondFriendRequest(request.friendshipId, 'accept')}
-                                    className="h-8 px-2.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold"
-                                  >
-                                    Accept
-                                  </button>
-                                  <button
-                                    onClick={() => handleRespondFriendRequest(request.friendshipId, 'decline')}
-                                    className="h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
-                                  >
-                                    Decline
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      ) : null}
-                    </section>
-
-                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                      <button
-                        type="button"
-                        onClick={() => setOutgoingOpen((current) => !current)}
-                        className="w-full flex items-center justify-between"
-                      >
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Outgoing Requests</span>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
-                            {pendingOutgoing.length}
-                          </span>
-                          {outgoingOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
-                        </span>
-                      </button>
-                      {outgoingOpen ? (
-                        pendingOutgoing.length === 0 ? (
-                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No pending requests.</p>
-                        ) : (
-                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
-                            {pendingOutgoing.map((request) => (
-                              <div key={request.friendshipId} className="flex items-center gap-3 px-3 py-2.5">
-                                <span className="font-medium text-slate-200 truncate">{request.username}</span>
-                                <span className="text-xs uppercase tracking-wide text-amber-400">Pending</span>
-                                <button
-                                  onClick={() => handleRemoveFriendship(request.friendshipId)}
-                                  className="ml-auto h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      ) : null}
-                    </section>
-
-                    <section className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                      <button
-                        type="button"
-                        onClick={() => setBlockedOpen((current) => !current)}
-                        className="w-full flex items-center justify-between"
-                      >
-                        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Blocked Users</span>
-                        <span className="inline-flex items-center gap-2">
-                          <span className="h-5 min-w-5 px-1 rounded-full bg-slate-800 border border-slate-700 text-[11px] text-slate-300 inline-flex items-center justify-center">
-                            {blockedUsers.length}
-                          </span>
-                          {blockedOpen ? <ChevronDown size={14} className="text-slate-500" /> : <ChevronRight size={14} className="text-slate-500" />}
-                        </span>
-                      </button>
-                      {blockedOpen ? (
-                        blockedUsers.length === 0 ? (
-                          <p className="mt-3 text-slate-500 italic text-sm p-3 text-center border border-dashed border-slate-800 rounded-lg">No blocked users.</p>
-                        ) : (
-                          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
-                            {blockedUsers.map((blocked) => (
-                              <div key={blocked.blockId} className="flex items-center gap-3 px-3 py-2.5">
-                                <span className="font-medium text-slate-200 truncate">{blocked.username}</span>
-                                <button
-                                  onClick={() => handleUnblockUser(blocked.blockId)}
-                                  className="ml-auto h-8 px-2.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold"
-                                >
-                                  Unblock
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      ) : null}
-                    </section>
-                  </div>
-                </div>
-
-                <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">All Online Players</p>
-                  {uniqueOnlineUsers.length === 0 ? (
-                    <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg">No players online right now.</p>
-                  ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {uniqueOnlineUsers.map((user) => (
-                        <button
-                          key={user}
-                          type="button"
-                          onClick={() => openProfileModal(user)}
-                          className="flex items-center justify-between p-4 bg-slate-900 rounded-lg border border-slate-800 text-left hover:border-cyan-500/40 hover:bg-slate-800/80 transition-colors"
-                        >
-                          <span className="font-medium text-slate-200 truncate">{user}</span>
-                          <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shrink-0" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-5 rounded-xl border border-cyan-700/30 bg-gradient-to-br from-slate-950/80 to-slate-900/80 p-4 shadow-[0_0_30px_rgba(6,182,212,0.12)]">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Activity size={16} className="text-cyan-300" />
-                      <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Friend Profile Preview</p>
-                    </div>
-                    {profileLoading ? <span className="text-xs text-slate-400">Loading...</span> : null}
-                  </div>
-
-                  {!selectedProfile && !profileLoading ? (
-                    <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg mt-3">
-                      Select a friend and click View Profile.
-                    </p>
-                  ) : null}
-
-                  {selectedProfile ? (
-                    <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/90 p-4">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-100">{selectedProfile.username}</p>
-                        <span className="text-xs uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
-                      </div>
-                      <p className="mt-1 text-xs text-slate-400">
-                        Balance {formatUserBalance(selectedProfile.balance, false)} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
-                      </p>
-                      <p className="mt-1 text-xs text-cyan-300">Favorite: {selectedProfile.favoriteGame}</p>
-                      <p className="mt-2 text-sm text-slate-300">{selectedProfile.bio || 'No bio yet.'}</p>
-                      <p className="mt-2 text-[11px] text-slate-500">
-                        Joined {new Date(selectedProfile.createdAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ) : null}
-                </div>
-
-              </div>
+              <Friends
+                friendRealtimeNotice={friendRealtimeNotice}
+                friendSearch={friendSearch}
+                friendNotice={friendNotice}
+                friendsAccepted={friendsAccepted}
+                pendingIncoming={pendingIncoming}
+                pendingOutgoing={pendingOutgoing}
+                blockedUsers={blockedUsers}
+                friendsLoading={friendsLoading}
+                uniqueOnlineUsers={uniqueOnlineUsers}
+                showOnlinePresence={showOnlinePresence}
+                presenceByUsername={presenceByUsername}
+                selectedProfile={selectedProfile}
+                profileLoading={profileLoading}
+                incomingOpen={incomingOpen}
+                outgoingOpen={outgoingOpen}
+                blockedOpen={blockedOpen}
+                setFriendSearch={setFriendSearch}
+                setIncomingOpen={setIncomingOpen}
+                setOutgoingOpen={setOutgoingOpen}
+                setBlockedOpen={setBlockedOpen}
+                onSendFriendRequest={() => {
+                  void handleSendFriendRequest();
+                }}
+                onRespondFriendRequest={(friendshipId, action) => {
+                  void handleRespondFriendRequest(friendshipId, action);
+                }}
+                onRemoveFriendship={(friendshipId) => {
+                  void handleRemoveFriendship(friendshipId);
+                }}
+                onBlockUser={(targetUserId) => {
+                  void handleBlockUser(targetUserId);
+                }}
+                onUnblockUser={(blockId) => {
+                  void handleUnblockUser(blockId);
+                }}
+                onSendMoneyToFriend={(targetUserId, targetUsername) => {
+                  void handleSendMoneyToFriend(targetUserId, targetUsername);
+                }}
+                onOpenProfile={openProfileModal}
+                onJoinFriendGame={handleJoinFriendGame}
+              />
             )}
 
             {activeTab === 'leaderboard' && (
@@ -2262,7 +2164,7 @@ export default function MainHubRealtime({
               </div>
             )}
 
-            {activeTab === 'admin' && isDanielAdmin ? (
+            {activeTab === 'admin' && hasAdminPanelAccess ? (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
                 <AdminPanel />
               </div>
@@ -2644,6 +2546,8 @@ export default function MainHubRealtime({
           </div>
 
           <LiveChatPanel
+            mobileOpen={mobileChatOpen}
+            onCloseMobile={() => setMobileChatOpen(false)}
             chatMessages={chatMessages}
             chatInput={chatInput}
             rainBanner={rainBanner}
@@ -2659,6 +2563,15 @@ export default function MainHubRealtime({
             onMentionClick={handleMentionClick}
             onSubmitChat={submitChat}
           />
+
+          {mobileChatOpen && isMobileViewport ? (
+            <button
+              type="button"
+              onClick={() => setMobileChatOpen(false)}
+              aria-label="Close chat"
+              className="fixed inset-0 z-30 bg-slate-950/45 md:hidden"
+            />
+          ) : null}
 
           {profileModalOpen ? (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-4 sm:p-6">
@@ -2706,41 +2619,6 @@ export default function MainHubRealtime({
         </div>
       </main>
 
-      <AnimatePresence>
-        {leaderboardModalOpen ? (
-          <motion.div
-            className="fixed inset-0 z-50 bg-slate-950/75 backdrop-blur-sm p-4 md:p-8"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <motion.div
-              className="mx-auto h-full max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl border border-cyan-500/35 bg-slate-900 shadow-[0_0_45px_rgba(34,211,238,0.22)]"
-              initial={{ y: 24, opacity: 0.8 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 24, opacity: 0.8 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex items-center justify-between border-b border-slate-800 px-4 py-3 bg-slate-950">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.2em] text-cyan-300">Live Rankings</p>
-                  <h3 className="text-lg font-bold text-slate-100">Leaderboard</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLeaderboardModalOpen(false)}
-                  className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-3 text-sm font-semibold text-slate-200 hover:bg-slate-800"
-                >
-                  Close
-                </button>
-              </div>
-              <div className="h-[calc(92vh-64px)] overflow-y-auto">
-                <LeaderboardPanel />
-              </div>
-            </motion.div>
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
     </div>
   );
 }
@@ -2834,6 +2712,8 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
 });
 
 const LiveChatPanel = React.memo(function LiveChatPanel({
+  mobileOpen,
+  onCloseMobile,
   chatMessages,
   chatInput,
   rainBanner,
@@ -2849,6 +2729,8 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
   onMentionClick,
   onSubmitChat,
 }: {
+  mobileOpen: boolean;
+  onCloseMobile: () => void;
   chatMessages: ChatMessage[];
   chatInput: string;
   rainBanner: RainBannerState;
@@ -2946,11 +2828,19 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
   }, [chatMessages.length]);
 
   return (
-    <div className="hub-chat relative w-80 lg:w-80 flex-shrink-0 bg-slate-900 rounded-xl border border-slate-800 flex flex-col overflow-hidden hidden lg:flex shadow-lg">
+    <div className={`hub-chat fixed md:relative inset-y-0 right-0 z-40 md:z-10 w-[88vw] max-w-[360px] md:w-80 flex-shrink-0 bg-slate-900 rounded-none md:rounded-xl border-l md:border border-slate-800 flex flex-col overflow-hidden shadow-lg transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
       <div className="p-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center gap-3">
         <Activity size={18} className="text-emerald-400" />
         <h3 className="font-bold text-slate-100">Live Chat</h3>
         <div className="ml-auto w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        <button
+          type="button"
+          onClick={onCloseMobile}
+          className="md:hidden h-8 w-8 rounded-md border border-slate-700 text-slate-300 hover:bg-slate-800 inline-flex items-center justify-center"
+          aria-label="Close chat drawer"
+        >
+          <X size={15} />
+        </button>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3 custom-scrollbar space-y-2" ref={chatScrollRef}>

@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 
 import { copyToClipboard } from '@/lib/copyToClipboard';
@@ -23,7 +24,22 @@ interface SoloSeat {
 
 interface FriendPlayer {
   socketId: string;
+  userId?: string;
   username: string;
+  totalBet?: number;
+  insuranceBet?: number;
+  activeHandIndex?: number;
+  hands?: Array<{
+    cards: string[];
+    value: number;
+    bet: number;
+    stood: boolean;
+    busted: boolean;
+    doubled: boolean;
+    blackjack: boolean;
+    resultText: string;
+    payout: number;
+  }>;
   hand: string[];
   value: number;
   stood: boolean;
@@ -31,11 +47,28 @@ interface FriendPlayer {
   resultText: string;
 }
 
+interface BlackjackRoundWinner {
+  socketId: string;
+  username: string;
+  payout: number;
+  result: string;
+}
+
+interface BlackjackRoundSummary {
+  dealerValue?: number;
+  dealerBlackjack?: boolean;
+  winners?: BlackjackRoundWinner[];
+  at?: number;
+}
+
 interface FriendsState {
   roomId: string;
   stage: 'waiting' | 'playing' | 'result';
   status?: 'PLAYER_TURN' | 'WAITING' | 'ROUND_OVER';
   message: string;
+  insuranceOpen?: boolean;
+  insuranceDeadlineAt?: number;
+  roundSummary?: BlackjackRoundSummary | null;
   dealerCards: string[];
   dealerValue: number;
   players: FriendPlayer[];
@@ -47,7 +80,7 @@ const BOT_NAMES = ['StoneJack', 'LuckyLou', 'ChipQueen'];
 const SOLO_TURN_ORDER: SoloSeatId[] = ['player', 'bot-1', 'bot-2', 'bot-3'];
 
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   if (typeof window === 'undefined') {
     return fromEnv ?? 'http://localhost:4001';
@@ -166,6 +199,34 @@ function isPlayerDone(player: FriendPlayer) {
   return player.stood || player.busted;
 }
 
+function splitValue(card: string) {
+  const rank = String(card || '')[0];
+  if (rank === 'A') {
+    return 11;
+  }
+
+  if (['K', 'Q', 'J', 'T'].includes(rank)) {
+    return 10;
+  }
+
+  const numeric = Number(rank);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function normalizeFriendPlayerKey(player: FriendPlayer) {
+  const normalizedUserId = typeof player.userId === 'string' ? player.userId.trim() : '';
+  if (normalizedUserId) {
+    return normalizedUserId;
+  }
+
+  const normalizedUsername = typeof player.username === 'string' ? player.username.trim().toLowerCase() : '';
+  if (normalizedUsername) {
+    return `name:${normalizedUsername}`;
+  }
+
+  return `socket:${player.socketId}`;
+}
+
 function nextSoloTurnId(seats: SoloSeat[], fromId: SoloSeatId) {
   const startIndex = SOLO_TURN_ORDER.indexOf(fromId);
 
@@ -181,7 +242,7 @@ function nextSoloTurnId(seats: SoloSeat[], fromId: SoloSeatId) {
 }
 
 export default function BlackjackGame({ username = 'You' }: { username?: string }) {
-  const { balance, placeBet, addWin } = useCasinoStore();
+  const { balance, placeBet, addWin, syncBalanceFromServer } = useCasinoStore();
 
   const [mode, setMode] = useState<BlackjackMode>('solo');
 
@@ -200,10 +261,18 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const [friendsBetInput, setFriendsBetInput] = useState(100);
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [friendsNotice, setFriendsNotice] = useState('Create or join a room to play with friends.');
+  const [friendsRoundOverlay, setFriendsRoundOverlay] = useState<{
+    headline: string;
+    detail: string;
+    tone: 'win' | 'lose' | 'push' | 'blackjack';
+  } | null>(null);
   const [friendsState, setFriendsState] = useState<FriendsState>({
     roomId: 'global',
     stage: 'waiting',
     message: 'Waiting for players',
+    insuranceOpen: false,
+    insuranceDeadlineAt: 0,
+    roundSummary: null,
     dealerCards: [],
     dealerValue: 0,
     players: [],
@@ -211,9 +280,32 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const socketRef = useRef<Socket | null>(null);
 
+  const myPlayerKey = useMemo(() => {
+    const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
+    return normalizedUsername;
+  }, [username]);
+
+  const dedupedFriendPlayers = useMemo(() => {
+    const latestByKey = new Map<string, FriendPlayer>();
+
+    friendsState.players.forEach((player) => {
+      latestByKey.set(normalizeFriendPlayerKey(player), player);
+    });
+
+    return Array.from(latestByKey.values());
+  }, [friendsState.players]);
+
   const myFriendSeat = useMemo(
-    () => friendsState.players.find((player) => player.username === username),
-    [friendsState.players, username]
+    () =>
+      dedupedFriendPlayers.find((player) => {
+        const playerKey = normalizeFriendPlayerKey(player);
+        if (myPlayerKey && (playerKey === myPlayerKey || playerKey === `name:${myPlayerKey}`)) {
+          return true;
+        }
+
+        return player.username.trim().toLowerCase() === username.trim().toLowerCase();
+      }),
+    [dedupedFriendPlayers, myPlayerKey, username]
   );
 
   const myFriendTurnDone = myFriendSeat ? isPlayerDone(myFriendSeat) : true;
@@ -246,11 +338,67 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       setFriendsState(payload);
     });
 
+    socket.on('blackjack_payout', () => {
+      void syncBalanceFromServer();
+    });
+
+    socket.on('blackjack_round_result', (payload: BlackjackRoundSummary) => {
+      const winners = Array.isArray(payload?.winners) ? payload.winners : [];
+      const meWinner = winners.find((winner) => winner.username.trim().toLowerCase() === username.trim().toLowerCase());
+
+      if (meWinner) {
+        const normalizedResult = String(meWinner.result || '').toLowerCase();
+        const tone = normalizedResult.includes('blackjack')
+          ? 'blackjack'
+          : normalizedResult.includes('push')
+            ? 'push'
+            : normalizedResult.includes('win')
+              ? 'win'
+              : 'lose';
+        setFriendsRoundOverlay({
+          headline: meWinner.result || 'WINNER',
+          detail: `${meWinner.username} +${Number(meWinner.payout || 0).toFixed(2)} NVC`,
+          tone,
+        });
+        return;
+      }
+
+      if (winners.length > 0) {
+        const topWinner = winners[0];
+        setFriendsRoundOverlay({
+          headline: String(topWinner.result || 'WINNER').toUpperCase(),
+          detail: `${topWinner.username} +${Number(topWinner.payout || 0).toFixed(2)} NVC`,
+          tone: 'win',
+        });
+        return;
+      }
+
+      setFriendsRoundOverlay({
+        headline: 'BUST',
+        detail: 'Dealer scooped the table',
+        tone: 'lose',
+      });
+    });
+
     return () => {
+      socket.off('blackjack_payout');
+      socket.off('blackjack_round_result');
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [username]);
+  }, [syncBalanceFromServer, username]);
+
+  useEffect(() => {
+    if (!friendsRoundOverlay) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setFriendsRoundOverlay(null);
+    }, 3000);
+
+    return () => window.clearTimeout(timer);
+  }, [friendsRoundOverlay]);
 
   const clearSoloErrorSoon = () => {
     window.setTimeout(() => setSoloError(''), 2200);
@@ -584,14 +732,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       return;
     }
 
-    if (!placeBet(amount)) {
-      setFriendsNotice('Not enough funds for this bet.');
-      return;
-    }
-
     socketRef.current?.emit('blackjack_deal', { amount }, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
-        addWin(amount);
         setFriendsNotice(response.error ?? 'Could not start round.');
       }
     });
@@ -615,6 +757,33 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     });
   };
 
+  const friendDouble = () => {
+    socketRef.current?.emit('blackjack_action', { action: 'double' }, (response: { ok: boolean; error?: string }) => {
+      if (!response.ok) {
+        setFriendsNotice(response.error ?? 'Double failed.');
+      }
+    });
+  };
+
+  const friendSplit = () => {
+    socketRef.current?.emit('blackjack_action', { action: 'split' }, (response: { ok: boolean; error?: string }) => {
+      if (!response.ok) {
+        setFriendsNotice(response.error ?? 'Split failed.');
+      }
+    });
+  };
+
+  const friendInsurance = () => {
+    socketRef.current?.emit('blackjack_action', { action: 'insurance' }, (response: { ok: boolean; error?: string }) => {
+      if (!response.ok) {
+        setFriendsNotice(response.error ?? 'Insurance failed.');
+        return;
+      }
+
+      setFriendsNotice('Insurance placed.');
+    });
+  };
+
   const soloPlayerSeat = useMemo(() => soloSeats.find((seat) => seat.id === 'player') ?? null, [soloSeats]);
   const soloBots = useMemo(() => soloSeats.filter((seat) => seat.isBot), [soloSeats]);
   const canPlayerAct = soloPhase === 'playing' && soloCurrentTurnId === 'player';
@@ -622,8 +791,37 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const canDealSolo = (soloPhase === 'idle' || soloPhase === 'result') && soloBet >= 1 && soloBet <= Number(balance);
   const soloPlayerValue = handValue(soloPlayerSeat?.hand ?? []);
   const soloDealerKnownValue = handValue(soloDealerVisible.filter((card) => card !== '??'));
-  const myFriendValue = handValue(myFriendSeat?.hand ?? []);
-  const friendsOtherPlayers = friendsState.players.filter((player) => player.username !== username);
+  const myFriendHands = Array.isArray(myFriendSeat?.hands) ? myFriendSeat?.hands : [];
+  const myActiveHandIndex = Number.isFinite(Number(myFriendSeat?.activeHandIndex)) ? Number(myFriendSeat?.activeHandIndex) : 0;
+  const myActiveHand = myFriendHands[myActiveHandIndex] ?? null;
+  const myFriendValue = myActiveHand?.value ?? handValue(myFriendSeat?.hand ?? []);
+  const canFriendDouble =
+    canFriendAct &&
+    Boolean(myActiveHand) &&
+    Array.isArray(myActiveHand?.cards) &&
+    myActiveHand.cards.length === 2 &&
+    !Boolean(myActiveHand?.doubled) &&
+    !Boolean(myActiveHand?.busted) &&
+    Number(balance) >= Number(myActiveHand?.bet || 0);
+  const canFriendSplit =
+    canFriendAct &&
+    Boolean(myActiveHand) &&
+    Array.isArray(myActiveHand?.cards) &&
+    myActiveHand.cards.length === 2 &&
+    splitValue(myActiveHand.cards[0]) === splitValue(myActiveHand.cards[1]) &&
+    Number(balance) >= Number(myActiveHand?.bet || 0);
+  const canFriendInsurance =
+    Boolean(friendsState.insuranceOpen) &&
+    canFriendAct &&
+    Number(myFriendSeat?.insuranceBet || 0) <= 0 &&
+    Number(balance) >= Math.floor(Number(myFriendSeat?.totalBet || 0) / 2);
+  const friendsOtherPlayers = dedupedFriendPlayers.filter((player) => {
+    if (!myFriendSeat) {
+      return player.username !== username;
+    }
+
+    return normalizeFriendPlayerKey(player) !== normalizeFriendPlayerKey(myFriendSeat);
+  });
 
   const soloTurnLabel =
     soloCurrentTurnId === 'player'
@@ -734,14 +932,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 <button
                   onClick={() => setSoloBet((value) => Math.max(0, Math.floor(value / 2) || 0))}
                   disabled={soloPhase === 'playing'}
-                  className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                  className="h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >
                   1/2
                 </button>
                 <button
                   onClick={() => setSoloBet(Math.max(0, Math.floor(parseFloat(balance))))}
                   disabled={soloPhase === 'playing'}
-                  className="h-9 rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                  className="h-11 min-h-[44px] rounded-md border border-slate-700 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
                 >
                   MAX
                 </button>
@@ -750,16 +948,16 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
             <div className="flex gap-2 justify-end flex-wrap">
               {(soloPhase === 'idle' || soloPhase === 'result') && (
-                <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                   Deal Hand
                 </button>
               )}
               {soloPhase === 'playing' && (
                 <>
-                  <button onClick={soloHit} disabled={!canPlayerAct} className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                  <button onClick={soloHit} disabled={!canPlayerAct} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                     Hit
                   </button>
-                  <button onClick={soloStand} disabled={!canPlayerAct} className="h-11 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
+                  <button onClick={soloStand} disabled={!canPlayerAct} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                     Stand
                   </button>
                 </>
@@ -808,22 +1006,25 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
               {friendsOtherPlayers.slice(0, 4).map((player, index) => {
                 const slots = ['top-24 left-8', 'top-24 right-8', 'bottom-24 left-8', 'bottom-24 right-8'];
-                const value = handValue(player.hand);
                 return (
-                  <SeatBox
-                    key={player.socketId}
+                  <PlayerHandsBox
+                    key={player.userId || player.socketId}
                     title={player.username}
-                    subtitle={`${player.resultText || (player.stood ? 'Stand' : player.busted ? 'Bust' : 'Playing')} · ${value}`}
-                    cards={player.hand}
+                    subtitle={`${player.resultText || (player.stood ? 'Stand' : player.busted ? 'Bust' : 'Playing')}`}
+                    hands={Array.isArray(player.hands) && player.hands.length > 0 ? player.hands.map((hand) => hand.cards) : [player.hand]}
+                    handResults={Array.isArray(player.hands) ? player.hands.map((hand) => hand.resultText) : []}
+                    activeHandIndex={Number(player.activeHandIndex || 0)}
                     className={slots[index] ?? 'bottom-24 left-8'}
                   />
                 );
               })}
 
-              <SeatBox
+              <PlayerHandsBox
                 title={myFriendSeat?.username ?? 'You'}
                 subtitle={myFriendSeat ? `${myFriendSeat.resultText || (myFriendSeat.stood ? 'Stand' : myFriendSeat.busted ? 'Bust' : 'Playing')} · ${myFriendValue}` : 'Not seated'}
-                cards={myFriendSeat?.hand ?? []}
+                hands={myFriendHands.length > 0 ? myFriendHands.map((hand) => hand.cards) : [myFriendSeat?.hand ?? []]}
+                handResults={myFriendHands.map((hand) => hand.resultText)}
+                activeHandIndex={myActiveHandIndex}
                 className="bottom-5 left-1/2 -translate-x-1/2"
                 highlighted
               />
@@ -833,31 +1034,71 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 <p className="text-lg font-semibold text-slate-200 mt-1">{friendsState.message}</p>
                 <p className="text-sm font-semibold text-cyan-300 mt-1">Dealer: {handValue(friendsState.dealerCards)} | {username}: {myFriendValue}</p>
                 <p className="text-xs uppercase tracking-wide text-slate-400 mt-1">Status: {gameStateStatus}</p>
+                {friendsState.insuranceOpen ? <p className="text-xs uppercase tracking-wide text-amber-300 mt-1">Insurance available</p> : null}
                 <p className="text-sm text-slate-300 mt-1">{friendsNotice}</p>
               </div>
+
+              {friendsRoundOverlay ? (
+                <div
+                  className={`absolute top-4 left-1/2 -translate-x-1/2 z-40 rounded-lg border px-4 py-2 text-sm font-bold ${
+                    friendsRoundOverlay.tone === 'blackjack'
+                      ? 'border-fuchsia-500/60 bg-fuchsia-500/20 text-fuchsia-200'
+                      : friendsRoundOverlay.tone === 'win'
+                        ? 'border-emerald-500/50 bg-emerald-500/20 text-emerald-300'
+                        : friendsRoundOverlay.tone === 'push'
+                          ? 'border-amber-500/50 bg-amber-500/20 text-amber-300'
+                          : 'border-red-500/50 bg-red-500/20 text-red-300'
+                  }`}
+                >
+                  <p>{friendsRoundOverlay.headline}</p>
+                  <p className="text-xs font-semibold opacity-90">{friendsRoundOverlay.detail}</p>
+                </div>
+              ) : null}
             </div>
           </div>
 
           <div className="border-t border-slate-800 bg-slate-950 p-4 flex gap-2 justify-end flex-wrap">
-            {friendsState.stage !== 'playing' ? (
-              <button onClick={startFriendsRound} className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase">
-                Deal Hand
-              </button>
-            ) : null}
+            <button onClick={startFriendsRound} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase">
+              Deal Hand
+            </button>
             <button
               onClick={friendHit}
               disabled={!canFriendAct}
-              className="h-11 px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Hit
             </button>
             <button
               onClick={friendStand}
               disabled={!canFriendAct}
-              className="h-11 px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Stand
             </button>
+            {canFriendDouble ? (
+              <button
+                onClick={friendDouble}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-bold text-sm uppercase"
+              >
+                Double
+              </button>
+            ) : null}
+            {canFriendSplit ? (
+              <button
+                onClick={friendSplit}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-bold text-sm uppercase"
+              >
+                Split
+              </button>
+            ) : null}
+            {canFriendInsurance ? (
+              <button
+                onClick={friendInsurance}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-sm uppercase"
+              >
+                Insurance
+              </button>
+            ) : null}
           </div>
         </>
       )}
@@ -865,7 +1106,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   );
 }
 
-function SeatBox({
+const SeatBox = React.memo(function SeatBox({
   title,
   subtitle,
   cards,
@@ -892,9 +1133,58 @@ function SeatBox({
       </div>
     </div>
   );
-}
+});
 
-function CardView({ card, hidden = false }: { card: string; hidden?: boolean }) {
+const PlayerHandsBox = React.memo(function PlayerHandsBox({
+  title,
+  subtitle,
+  hands,
+  handResults,
+  activeHandIndex,
+  className,
+  highlighted = false,
+}: {
+  title: string;
+  subtitle: string;
+  hands: string[][];
+  handResults: string[];
+  activeHandIndex: number;
+  className: string;
+  highlighted?: boolean;
+}) {
+  const safeHands = Array.isArray(hands) && hands.length > 0 ? hands : [[]];
+
+  return (
+    <div className={`absolute z-30 rounded-xl border px-3 py-2 min-w-[180px] backdrop-blur-sm ${highlighted ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${className}`}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{title}</span>
+        <span className="text-[11px] uppercase font-semibold text-slate-400">{subtitle}</span>
+      </div>
+
+      <div className="mt-2 flex gap-2">
+        {safeHands.map((cards, handIndex) => (
+          <motion.div
+            key={`${title}-hand-${handIndex}`}
+            initial={{ opacity: 0, x: safeHands.length > 1 ? (handIndex === 0 ? -18 : 18) : 0 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.28, ease: 'easeOut' }}
+            className={`rounded-md border px-1.5 py-1 ${handIndex === activeHandIndex ? 'border-cyan-400/70 bg-cyan-500/10 shadow-[0_0_14px_rgba(34,211,238,0.28)]' : 'border-slate-700/70 bg-slate-950/70'}`}
+          >
+            <div className="flex gap-1.5">
+              {cards.length === 0 ? <CardView card="??" hidden /> : null}
+              {cards.map((card, index) => (
+                <CardView key={`${card}-${handIndex}-${index}`} card={card} hidden={card === '??'} />
+              ))}
+            </div>
+            {handResults[handIndex] ? <p className="mt-1 text-[10px] uppercase tracking-wide text-slate-400 text-center">{handResults[handIndex]}</p> : null}
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+const CardView = React.memo(function CardView({ card, hidden = false }: { card: string; hidden?: boolean }) {
   if (hidden) {
     return (
       <div className="h-12 w-8 rounded-md border border-blue-500/40 bg-gradient-to-br from-blue-900/80 to-slate-900 text-blue-300 flex items-center justify-center text-[10px] font-bold">
@@ -912,4 +1202,4 @@ function CardView({ card, hidden = false }: { card: string; hidden?: boolean }) 
       <span className={`text-[10px] leading-none self-end ${label.isRed ? 'text-red-400' : 'text-slate-200'}`}>{label.rank}</span>
     </div>
   );
-}
+});

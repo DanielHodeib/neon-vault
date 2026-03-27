@@ -1,17 +1,23 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
 import { copyToClipboard } from '@/lib/copyToClipboard';
 
+type PokerCard = string | { hidden?: boolean } | null;
+
 interface PokerPlayer {
   socketId: string;
+  userId?: string;
   username: string;
   ready: boolean;
   folded: boolean;
-  hand: string[];
+  seated?: boolean;
+  buyIn?: number;
+  roundBet?: number;
+  hand: PokerCard[];
   actionText: string;
   isWinner: boolean;
 }
@@ -21,20 +27,25 @@ interface PokerState {
   started: boolean;
   stage: string;
   board: string[];
+  pot?: number;
+  currentBet?: number;
+  minRaise?: number;
+  activePlayerSocketId?: string | null;
+  turnDeadlineAt?: number;
   players: PokerPlayer[];
   winnerLabel: string;
 }
 
 const OTHER_SEAT_SLOTS = [
   'top-6 left-1/2 -translate-x-1/2',
-  'top-20 left-8',
-  'top-20 right-8',
-  'bottom-28 left-8',
-  'bottom-28 right-8',
+  'top-[22%] right-[7%]',
+  'bottom-[24%] right-[6%]',
+  'bottom-[24%] left-[6%]',
+  'top-[22%] left-[7%]',
 ];
 
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   if (typeof window === 'undefined') {
     return fromEnv ?? 'http://localhost:4001';
@@ -105,6 +116,26 @@ function cardSymbol(card: string) {
   return { rank, suit: suitMap[suitRaw] ?? '?' };
 }
 
+function isHiddenCard(card: PokerCard) {
+  if (!card) {
+    return true;
+  }
+
+  if (typeof card === 'object') {
+    return card.hidden === true;
+  }
+
+  return card === '??';
+}
+
+function normalizeCardValue(card: PokerCard) {
+  if (!card || typeof card !== 'string') {
+    return '??';
+  }
+
+  return card;
+}
+
 export default function PokerFriendsGame({ username }: { username: string }) {
   const [pokerRoomId, setPokerRoomId] = useState('global');
   const [pokerRoomInput, setPokerRoomInput] = useState('global');
@@ -115,29 +146,70 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     started: false,
     stage: 'waiting',
     board: [],
+    pot: 0,
+    currentBet: 0,
+    minRaise: 0,
+    activePlayerSocketId: null,
+    turnDeadlineAt: 0,
     players: [],
     winnerLabel: '',
   });
   const [notice, setNotice] = useState('Global poker table. Round starts automatically with 2 players.');
+  const [buyInAmount, setBuyInAmount] = useState('100');
+  const [raiseAmount, setRaiseAmount] = useState('20');
 
   const socketRef = useRef<Socket | null>(null);
 
+  const uniqueSeatedPlayers = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          state.players.map((player) => [
+            (player.userId && player.userId.trim()) || player.socketId,
+            player,
+          ])
+        ).values()
+      ),
+    [state.players]
+  );
+
+  const uniquePlayers = useMemo(() => {
+    if (!selfSocketId) {
+      return uniqueSeatedPlayers;
+    }
+
+    return uniqueSeatedPlayers.map((player) => {
+      const normalizedPlayerUserId = typeof player.userId === 'string' ? player.userId.trim() : '';
+      if (!normalizedPlayerUserId) {
+        return player;
+      }
+
+      const ownBySocket = state.players.find((entry) => entry.socketId === selfSocketId);
+      const ownUserId = typeof ownBySocket?.userId === 'string' ? ownBySocket.userId.trim() : '';
+      if (ownUserId && ownUserId === normalizedPlayerUserId && ownBySocket) {
+        return ownBySocket;
+      }
+
+      return player;
+    });
+  }, [uniqueSeatedPlayers, selfSocketId, state.players]);
+
   const me = useMemo(() => {
     if (selfSocketId) {
-      const bySocket = state.players.find((player) => player.socketId === selfSocketId);
+      const bySocket = uniquePlayers.find((player) => player.socketId === selfSocketId);
       if (bySocket) {
         return bySocket;
       }
     }
 
-    return state.players.find((player) => player.username === username) ?? null;
-  }, [state.players, selfSocketId, username]);
+    return uniquePlayers.find((player) => player.username === username) ?? null;
+  }, [uniquePlayers, selfSocketId, username]);
 
   const others = useMemo(() => {
     const ownSocketId = me?.socketId ?? selfSocketId;
     const ownUsername = me?.username ?? username;
 
-    return state.players.filter((player) => {
+    return uniquePlayers.filter((player) => {
       if (ownSocketId && player.socketId === ownSocketId) {
         return false;
       }
@@ -148,7 +220,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
 
       return true;
     });
-  }, [state.players, selfSocketId, username, me]);
+  }, [uniquePlayers, selfSocketId, username, me]);
 
   useEffect(() => {
     const socketUrl = getSocketUrl();
@@ -157,7 +229,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       path: '/socket.io',
       transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
       upgrade: !forcePolling,
-      query: { username, pokerRoomId: 'global' },
+      query: { username, userId: username, pokerRoomId: 'global' },
     });
 
     socketRef.current = socket;
@@ -179,11 +251,13 @@ export default function PokerFriendsGame({ username }: { username: string }) {
         return;
       }
 
-      setPokerRoomId(payload.roomId);
-      setPokerRoomInput(payload.roomId);
+      const nextRoomId = payload.roomId;
+
+      setPokerRoomId(nextRoomId);
+      setPokerRoomInput(nextRoomId);
       setSwitchingRoom(false);
-      setState((current) => ({ ...current, roomId: payload.roomId }));
-      setNotice(`Private room ${payload.roomId} ready.`);
+      setState((current) => ({ ...current, roomId: nextRoomId }));
+      setNotice(`Private room ${nextRoomId} ready.`);
     });
 
     socket.on('poker_state', (payload: PokerState) => {
@@ -263,13 +337,41 @@ export default function PokerFriendsGame({ username }: { username: string }) {
     setNotice(copied ? 'Invite copied.' : `Room code: ${roomCode}`);
   };
 
-  const action = (nextAction: 'check' | 'call' | 'fold') => {
-    socketRef.current?.emit('poker_action', { action: nextAction }, (response: { ok: boolean; error?: string }) => {
+  const action = (nextAction: 'check' | 'call' | 'fold' | 'raise') => {
+    const payload: { action: 'check' | 'call' | 'fold' | 'raise'; amount?: number } = { action: nextAction };
+    if (nextAction === 'raise') {
+      const value = Math.floor(Number(raiseAmount));
+      payload.amount = Number.isFinite(value) ? value : 0;
+    }
+
+    socketRef.current?.emit('poker_action', payload, (response: { ok: boolean; error?: string }) => {
       if (!response.ok) {
         setNotice(response.error ?? 'Action failed.');
       }
     });
   };
+
+  const submitBuyIn = () => {
+    const amount = parseInt(buyInAmount, 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setNotice('Enter a valid buy-in amount.');
+      return;
+    }
+
+    socketRef.current?.emit('poker_buy_in', { amount }, (response: { ok: boolean; amount?: number; error?: string }) => {
+      if (!response.ok) {
+        setNotice(response.error ?? 'Buy-in failed.');
+        return;
+      }
+
+      setNotice(`Seated with buy-in ${response.amount ?? amount}.`);
+    });
+  };
+
+  const hasSeat = Boolean(me?.seated) && Number(me?.buyIn || 0) > 0;
+  const isMyTurn = Boolean(me?.socketId) && me?.socketId === state.activePlayerSocketId;
+  const canAct = hasSeat && isMyTurn && state.started && state.stage !== 'waiting' && state.stage !== 'showdown' && !Boolean(me?.folded);
+  const minimumRaise = Math.max(Number(state.currentBet || 0) > 0 ? Number(state.currentBet || 0) * 2 : 2, Number(state.minRaise || 0) || 2);
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-slate-900">
@@ -280,7 +382,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
         </div>
         <div className="text-right">
           <p className="text-xs uppercase text-slate-500">Players Active</p>
-          <p className="font-mono text-sm text-cyan-300">{state.players.length}</p>
+          <p className="font-mono text-sm text-cyan-300">{uniquePlayers.length}</p>
         </div>
       </div>
 
@@ -306,61 +408,117 @@ export default function PokerFriendsGame({ username }: { username: string }) {
         </button>
       </div>
 
-      <div className="flex-1 min-h-0 p-4">
-        <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
-          <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
+      <div className="flex-1 min-h-0 p-4 md:p-5">
+        <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.2),_rgba(5,15,13,1)_68%)] relative overflow-hidden">
+          <div className="absolute inset-[12%_7%_16%_7%] rounded-[999px] border border-emerald-500/30 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.26),_rgba(5,14,13,0.96)_68%)] shadow-[inset_0_0_85px_rgba(0,0,0,0.58)]" />
 
-          <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
+          <div className="absolute top-[46%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[620px] px-4">
             <div className="text-center text-xs uppercase tracking-[0.26em] text-slate-400 mb-2">Board</div>
-            <div className="flex items-center justify-center gap-2">
+            <div className="mb-2 flex justify-center">
+              <div className="px-5 py-2 rounded-full border border-amber-500/40 bg-amber-500/15 shadow-lg text-center">
+                <p className="text-[10px] uppercase tracking-[0.26em] text-amber-200">Pot</p>
+                <p className="text-lg font-mono font-bold text-amber-300">{Number(state.pot || 0).toFixed(0)}</p>
+              </div>
+            </div>
+            <div className="flex items-center justify-center gap-2.5">
               {Array.from({ length: 5 }).map((_, index) => {
                 const card = state.board[index];
                 return <CardView key={card ?? `board-${index}`} card={card ?? '??'} hidden={!card} />;
               })}
             </div>
-            <p className="mt-3 text-center text-sm text-slate-300">Stage: {state.stage}</p>
-            <p className="mt-1 text-center text-xs text-slate-400">Room: {state.roomId || pokerRoomId}</p>
+            <p className="mt-3 text-center text-xs text-slate-400">{state.stage === 'waiting' ? 'Waiting for players...' : `Stage: ${state.stage}`}</p>
+            <p className="mt-1 text-center text-xs text-slate-500">{state.roomId || pokerRoomId} | Bet {Number(state.currentBet || 0)}</p>
             {state.winnerLabel ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{state.winnerLabel}</p> : null}
-            <p className="mt-1 text-center text-xs text-slate-400">{notice}</p>
           </div>
 
           {others.slice(0, OTHER_SEAT_SLOTS.length).map((player, index) => (
             <div key={player.socketId} className={`absolute z-30 ${OTHER_SEAT_SLOTS[index]}`}>
-              <SeatView player={player} isSelf={false} />
+              <SeatView player={player} isSelf={false} stage={state.stage} isActive={player.socketId === state.activePlayerSocketId} />
             </div>
           ))}
 
-          <div className="absolute z-30 bottom-4 left-1/2 -translate-x-1/2">
-            <SeatView player={me ?? null} isSelf />
+          <div className="absolute z-30 bottom-5 left-1/2 -translate-x-1/2">
+            <SeatView player={me ?? null} isSelf stage={state.stage} isActive={Boolean(me?.socketId) && me?.socketId === state.activePlayerSocketId} />
           </div>
         </div>
       </div>
 
       <div className="border-t border-slate-800 bg-slate-950 p-4">
-        <div className="flex flex-wrap gap-2 justify-end">
-          <button onClick={() => action('check')} className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase">
-            Check
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <p className="text-xs uppercase tracking-wide text-slate-400">
+            {canAct ? 'Your turn to act' : isMyTurn ? 'Seat not ready. Buy in to play.' : 'Waiting for turn'}
+          </p>
+          <p className="text-xs text-slate-500 truncate">{notice}</p>
+        </div>
+        <div className="flex flex-wrap gap-2 justify-end items-center">
+          <input
+            type="number"
+            min={1}
+            value={buyInAmount}
+            onChange={(event) => setBuyInAmount(event.target.value)}
+            className="h-11 w-28 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+            placeholder="Buy-in"
+          />
+          <button onClick={submitBuyIn} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold uppercase">
+            Sit Down
           </button>
-          <button onClick={() => action('call')} className="h-11 px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase">
-            Call
-          </button>
-          <button onClick={() => action('fold')} className="h-11 px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold uppercase">
-            Fold
-          </button>
+          {canAct ? (
+            <>
+              <button
+                onClick={() => action('check')}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
+              >
+                Check
+              </button>
+              <button
+                onClick={() => action('call')}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
+              >
+                Call
+              </button>
+              <button
+                onClick={() => action('fold')}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold uppercase"
+              >
+                Fold
+              </button>
+              <input
+                type="number"
+                min={minimumRaise}
+                value={raiseAmount}
+                onChange={(event) => setRaiseAmount(event.target.value)}
+                className="h-11 w-28 rounded-lg border border-slate-700 bg-slate-900 px-3 text-slate-100 outline-none focus:border-cyan-500"
+                placeholder="Raise"
+              />
+              <button
+                onClick={() => action('raise')}
+                className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold uppercase"
+              >
+                Raise
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function SeatView({ player, isSelf }: { player: PokerPlayer | null; isSelf: boolean }) {
+const SeatView = React.memo(function SeatView({ player, isSelf, stage, isActive }: { player: PokerPlayer | null; isSelf: boolean; stage: string; isActive: boolean }) {
   if (!player) {
     return (
-      <div className={`rounded-xl border px-3 py-2 min-w-[148px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'}`}>
+      <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-amber-300/80 shadow-[0_0_16px_rgba(252,211,77,0.55)]' : ''}`}>
         <div className="text-xs uppercase text-slate-500">Waiting for seat...</div>
       </div>
     );
   }
+
+  const statusLabel =
+    !player.ready || Number(player.buyIn || 0) <= 0
+      ? 'NOT READY'
+      : !player.folded && (player.actionText === 'in hand' || player.actionText === 'check' || player.actionText === 'call') && stage !== 'waiting'
+        ? 'IN HAND'
+        : 'READY';
 
   const actionTone =
     player.isWinner
@@ -372,27 +530,28 @@ function SeatView({ player, isSelf }: { player: PokerPlayer | null; isSelf: bool
           : 'text-amber-300';
 
   return (
-    <div className={`rounded-xl border px-3 py-2 min-w-[148px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'}`}>
+    <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-amber-300/80 shadow-[0_0_16px_rgba(252,211,77,0.55)]' : ''}`}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{player.username}</span>
         <div className="text-right">
-          <p className={`text-[11px] uppercase font-semibold ${player.ready ? 'text-emerald-400' : 'text-slate-500'}`}>
-            {player.ready ? 'Ready' : 'Not ready'}
+          <p className={`text-[11px] uppercase font-semibold ${statusLabel === 'IN HAND' ? 'text-cyan-300' : player.ready ? 'text-emerald-400' : 'text-slate-500'}`}>
+            {statusLabel}
           </p>
           <p className={`text-[11px] uppercase font-semibold ${actionTone}`}>{player.actionText}</p>
         </div>
       </div>
       <div className="mt-2 flex gap-1.5">
-        {(player.hand.length > 0 ? player.hand : ['??', '??']).map((card, index) => (
-          <CardView key={`${card}-${index}`} card={card} hidden={card === '??'} compact />
+        {(player.hand.length > 0 ? player.hand : [{ hidden: true }, { hidden: true }]).map((card, index) => (
+          <CardView key={`${JSON.stringify(card)}-${index}`} card={normalizeCardValue(card)} hidden={isHiddenCard(card)} compact />
         ))}
       </div>
+      <p className="mt-1 text-[11px] text-slate-400">Round Bet: {Number(player.roundBet || 0)}</p>
       {player.isWinner ? <p className="mt-1 text-[11px] text-emerald-400 font-semibold">Winner</p> : null}
     </div>
   );
-}
+});
 
-function CardView({ card, hidden = false, compact = false }: { card: string; hidden?: boolean; compact?: boolean }) {
+const CardView = React.memo(function CardView({ card, hidden = false, compact = false }: { card: string; hidden?: boolean; compact?: boolean }) {
   const sizeClass = compact ? 'h-12 w-8' : 'h-16 w-11';
 
   if (hidden) {
@@ -412,4 +571,4 @@ function CardView({ card, hidden = false, compact = false }: { card: string; hid
       <span className={`text-[10px] leading-none self-end ${cardTone(card)}`}>{symbol.rank}</span>
     </div>
   );
-}
+});

@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
     "daniels-macbook.tail0bc6b8.ts.net",
   ],
   async rewrites() {
+    if (process.env.NODE_ENV === 'production') {
+      return [];
+    }
+
     return [
       // Keep Socket.IO on same origin so one public app tunnel is enough.
       {

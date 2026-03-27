@@ -3,9 +3,13 @@ export async function notifyLeaderboardRefresh(payload: {
   amount: number;
   reason: string;
 }) {
-  const base = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const base =
+    process.env.GAME_SERVER_INTERNAL_URL ??
+    process.env.NEXT_PUBLIC_SOCKET_URL ??
+    process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   let target = 'http://127.0.0.1:4001';
+  const internalToken = (process.env.INTERNAL_API_TOKEN ?? '').trim();
   if (base && base !== 'same-origin') {
     try {
       target = new URL(base).toString().replace(/\/$/, '');
@@ -17,7 +21,10 @@ export async function notifyLeaderboardRefresh(payload: {
   try {
     await fetch(`${target}/internal/leaderboard/broadcast`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(internalToken ? { 'x-internal-token': internalToken } : {}),
+      },
       body: JSON.stringify(payload),
       cache: 'no-store',
     });
@@ -33,9 +40,13 @@ export async function notifyGlobalWinMessage(payload: {
   tier?: string;
   multiplier?: number;
 }) {
-  const base = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const base =
+    process.env.GAME_SERVER_INTERNAL_URL ??
+    process.env.NEXT_PUBLIC_SOCKET_URL ??
+    process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   let target = 'http://127.0.0.1:4001';
+  const internalToken = (process.env.INTERNAL_API_TOKEN ?? '').trim();
   if (base && base !== 'same-origin') {
     try {
       target = new URL(base).toString().replace(/\/$/, '');
@@ -47,7 +58,10 @@ export async function notifyGlobalWinMessage(payload: {
   try {
     await fetch(`${target}/internal/chat/win`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(internalToken ? { 'x-internal-token': internalToken } : {}),
+      },
       body: JSON.stringify(payload),
       cache: 'no-store',
     });

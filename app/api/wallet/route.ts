@@ -245,7 +245,7 @@ export async function POST(request: Request) {
         };
       }
 
-      if (action === 'bet' && parseFloat(current.balance) < parseFloat(amount)) {
+      if (action === 'bet' && parseFloat(current.balance) < amount) {
         return {
           error: 'Insufficient balance' as const,
           balance: current.balance,
@@ -313,7 +313,7 @@ export async function POST(request: Request) {
       };
     });
 
-    if ('error' in result) {
+    if (typeof result.error === 'string') {
       const status =
         result.error === 'User not found'
           ? 404

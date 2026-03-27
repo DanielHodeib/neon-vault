@@ -45,7 +45,7 @@ interface CrashCashoutResult {
 }
 
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   if (typeof window === 'undefined') {
     return fromEnv ?? 'http://localhost:4001';

@@ -33,7 +33,7 @@ ipconfig getifaddr en0
 
 ```env
 NEXTAUTH_URL="http://YOUR_IP:3000"
-NEXT_PUBLIC_GAME_SERVER_URL="http://YOUR_IP:4001"
+NEXT_PUBLIC_SOCKET_URL="http://YOUR_IP:4001"
 ```
 
 3. Start both services with LAN host binding:
@@ -80,7 +80,7 @@ Edit `.env.production`:
 DATABASE_URL="file:/app/prisma/prod.db"
 NEXTAUTH_SECRET="your-long-random-secret"
 NEXTAUTH_URL="https://your-domain.com"
-NEXT_PUBLIC_GAME_SERVER_URL="https://your-domain.com:4001"
+NEXT_PUBLIC_SOCKET_URL="https://your-domain.com:4001"
 ```
 
 Edit `game-server/.env.production`:
@@ -115,3 +115,32 @@ npm run deploy:down
 - Open inbound ports `3000` and `4001` on your host/firewall.
 - For public internet deployment, place a reverse proxy in front (for HTTPS and domain routing).
 - Prisma data is persisted in the Docker volume `prisma_data`.
+
+## Vercel Deployment
+
+### Realtime architecture on Vercel
+
+Vercel does not keep long-lived Socket.IO servers inside Next.js serverless functions. Deploy the game server separately (Railway, Render, Fly.io, VPS, etc.) and point the app to it.
+
+### Environment variables
+
+Use `.env.example` as the base for local/prod values.
+
+Required on Vercel:
+
+```env
+NEXTAUTH_URL=https://your-vercel-domain.vercel.app
+NEXTAUTH_SECRET=your-long-random-secret
+DATABASE_URL=your-database-connection
+NEXT_PUBLIC_SOCKET_URL=https://your-game-server-domain.com
+GAME_SERVER_INTERNAL_URL=https://your-game-server-domain.com
+INTERNAL_API_TOKEN=shared-internal-token
+```
+
+### Build behavior
+
+The root build script runs Prisma generation before Next build:
+
+```bash
+npm run build
+```

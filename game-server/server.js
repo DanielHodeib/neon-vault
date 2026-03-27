@@ -17,10 +17,29 @@ const ROULETTE_ROOM_PREFIX = 'roulette:';
 const COINFLIP_ROOM_ID = 'coinflip:global';
 const CRASH_ROUND_WAIT_MS = 4000;
 const CRASH_ROUND_CRASHED_MS = 1500;
+const CRASH_TICK_MS = 75;
+const CRASH_BROADCAST_MS = 120;
+const POKER_TURN_MS = 20000;
 const GLOBAL_CRASH_ROOM_ID = 'global';
+const POKER_ANTE = Math.max(1, Math.floor(Number(process.env.POKER_ANTE || 10)));
 const CHAT_ACTIVITY_WINDOW_MS = 10 * 60 * 1000;
 const COINFLIP_HOUSE_FEE_RATE = 0.05;
+const OWNER_USERNAMES = new Set(
+  String(process.env.OWNER_USERNAMES || 'Daniel')
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean)
+);
+const VALID_USER_ROLES = new Set(['OWNER', 'ADMIN', 'MODERATOR', 'SUPPORT', 'USER']);
+const ROLE_RANK = {
+  USER: 0,
+  SUPPORT: 1,
+  MODERATOR: 2,
+  ADMIN: 3,
+  OWNER: 4,
+};
 const ROULETTE_WHEEL_NUMBERS = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
+const APP_INTERNAL_URL = (process.env.APP_INTERNAL_URL || CLIENT_ORIGIN || 'http://localhost:3000').replace(/\/$/, '');
 
 const SUITS = ['S', 'H', 'D', 'C'];
 const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
@@ -83,9 +102,11 @@ const rouletteRooms = new Map();
 const genericRooms = new Map();
 const socketProfiles = new Map();
 const chatActiveUsers = new Map();
+const pokerBroadcastTimers = new Map();
 
 const coinflipState = {
-  openLobby: null,
+  openLobbies: [],
+  status: 'waiting',
   lastResult: null,
 };
 
@@ -136,9 +157,85 @@ function rankFromSelection(level, balance, selectedRankTag) {
   return { rankTag: fallback.tag, rankColor: fallback.color };
 }
 
-function normalizeRole(rawRole) {
+function isTrustedOwnerUsername(username) {
+  const normalized = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  return Boolean(normalized) && OWNER_USERNAMES.has(normalized);
+}
+
+function normalizeRole(rawRole, username = '') {
+  if (isTrustedOwnerUsername(username)) {
+    return 'OWNER';
+  }
+
   const role = typeof rawRole === 'string' ? rawRole.trim().toUpperCase() : '';
-  return role || 'USER';
+  if (VALID_USER_ROLES.has(role)) {
+    return role;
+  }
+
+  return 'USER';
+}
+
+function hasRoleAtLeast(candidateRole, minimumRole) {
+  const normalizedCandidate = normalizeRole(candidateRole);
+  const normalizedMinimum = normalizeRole(minimumRole);
+  return (ROLE_RANK[normalizedCandidate] || 0) >= (ROLE_RANK[normalizedMinimum] || 0);
+}
+
+function checkPermission(socket, requiredRole, callback) {
+  const profile = getSocketProfile(socket.id, onlineUsers.get(socket.id) || `Guest-${socket.id.slice(0, 6)}`);
+  const actorRole = normalizeRole(profile.role, profile.username);
+
+  if (hasRoleAtLeast(actorRole, requiredRole)) {
+    return { ok: true, profile, role: actorRole };
+  }
+
+  callback?.({ ok: false, error: 'Insufficient permissions.' });
+  return { ok: false, profile, role: actorRole };
+}
+
+function getInternalToken() {
+  const token = typeof process.env.INTERNAL_API_TOKEN === 'string' ? process.env.INTERNAL_API_TOKEN.trim() : '';
+  return token || null;
+}
+
+function isAuthorizedInternalRequest(req) {
+  const expected = getInternalToken();
+  if (!expected) {
+    return true;
+  }
+
+  const provided = typeof req.get('x-internal-token') === 'string' ? req.get('x-internal-token').trim() : '';
+  return provided.length > 0 && provided === expected;
+}
+
+async function callFriendsSocketApi(action, payload) {
+  const token = getInternalToken();
+
+  try {
+    const response = await fetch(`${APP_INTERNAL_URL}/api/internal/friends/socket`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'x-internal-token': token } : {}),
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: typeof data?.error === 'string' ? data.error : 'Social API request failed.',
+      };
+    }
+
+    return {
+      ok: true,
+      ...data,
+    };
+  } catch {
+    return { ok: false, error: 'Social API unreachable.' };
+  }
 }
 
 function normalizeClanTag(rawClanTag) {
@@ -165,7 +262,7 @@ function upsertSocketProfile(
   const displayed = rankFromSelection(rank.level, balance, selectedRankTag);
   const profile = {
     username,
-    role: normalizeRole(rawRole),
+    role: normalizeRole(rawRole, username),
     clanTag: normalizeClanTag(rawClanTag),
     balance,
     isKing: Boolean(rawIsKing),
@@ -240,8 +337,11 @@ function emitSystemMessage(text) {
 }
 
 function coinflipPublicState() {
+  const openLobbies = Array.isArray(coinflipState.openLobbies) ? coinflipState.openLobbies : [];
   return {
-    openLobby: coinflipState.openLobby,
+    openLobbies,
+    openLobby: openLobbies[0] ?? null,
+    status: coinflipState.status,
     lastResult: coinflipState.lastResult,
   };
 }
@@ -499,6 +599,58 @@ function sanitizeRoomId(value) {
   return raw || 'global';
 }
 
+function normalizePokerUserKey(rawUserId, username) {
+  const fromUserId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
+  if (fromUserId) {
+    return fromUserId;
+  }
+
+  const fromName = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  return fromName || `guest-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function removePokerGhostUsers(currentSocket, pokerUserId) {
+  pokerRooms.forEach((room) => {
+    let changed = false;
+
+    Array.from(room.players.entries()).forEach(([socketId, player]) => {
+      if (socketId === currentSocket.id) {
+        return;
+      }
+
+      if (String(player.userId || '') !== String(pokerUserId)) {
+        return;
+      }
+
+      if (Number(player.buyIn || 0) > 0) {
+        const profile = getSocketProfile(socketId, player.username);
+        if (Number.isFinite(Number(profile.balance))) {
+          profile.balance = Number(profile.balance) + Number(player.buyIn || 0);
+          socketProfiles.set(socketId, profile);
+        }
+      }
+
+      room.players.delete(socketId);
+      room.sockets.delete(socketId);
+      room.actedSocketIds.delete(socketId);
+      changed = true;
+
+      const ghostSocket = io.sockets.sockets.get(socketId);
+      if (ghostSocket) {
+        ghostSocket.leave(pokerChannel(room.id));
+        ghostSocket.data.pokerRoomId = null;
+      }
+    });
+
+    if (changed) {
+      if (room.started) {
+        maybeAdvancePokerStage(room);
+      }
+      broadcastPokerState(room.id);
+    }
+  });
+}
+
 function getCrashRoom(roomId) {
   const id = sanitizeRoomId(roomId);
   if (crashRooms.has(id)) {
@@ -517,6 +669,7 @@ function getCrashRoom(roomId) {
     players: new Map(),
     sockets: new Set(),
     roundStartAt: 0,
+    lastTickBroadcastAt: 0,
   };
 
   crashRooms.set(id, room);
@@ -544,6 +697,15 @@ function getPokerRoom(roomId) {
     deck: [],
     board: [],
     actedSocketIds: new Set(),
+    pendingActionSocketIds: new Set(),
+    pot: 0,
+    currentBet: 0,
+    minRaise: 0,
+    turnOrder: [],
+    activePlayerIndex: -1,
+    activePlayerSocketId: null,
+    turnDeadlineAt: 0,
+    turnTimer: null,
     winnerSocketId: null,
     winnerLabel: '',
   };
@@ -566,6 +728,9 @@ function getBlackjackRoom(roomId) {
     dealerHand: [],
     stage: 'waiting',
     message: 'Waiting for players',
+    insuranceOpen: false,
+    insuranceDeadlineAt: 0,
+    lastRoundSummary: null,
   };
 
   blackjackRooms.set(id, room);
@@ -615,21 +780,114 @@ function blackjackHandValue(cards) {
   return total;
 }
 
-function getBlackjackPlayerStatus(room, socketId) {
-  const player = room.players.get(socketId);
-  if (room.stage !== 'playing') {
-    return 'ROUND_OVER';
+function blackjackCardValueForSplit(card) {
+  if (!card || typeof card !== 'string') {
+    return 0;
   }
 
+  const rank = card[0];
+  if (rank === 'A') {
+    return 11;
+  }
+
+  if (['K', 'Q', 'J', 'T'].includes(rank)) {
+    return 10;
+  }
+
+  return Number(rank);
+}
+
+function createBlackjackHand(cards, bet, meta = {}) {
+  const value = blackjackHandValue(cards);
+  const naturalBlackjack = value === 21 && Array.isArray(cards) && cards.length === 2;
+
+  return {
+    cards,
+    bet,
+    doubled: Boolean(meta.doubled),
+    stood: Boolean(meta.stood) || naturalBlackjack,
+    busted: value > 21,
+    resultText: typeof meta.resultText === 'string' ? meta.resultText : naturalBlackjack ? 'Blackjack' : '',
+    payout: Number.isFinite(Number(meta.payout)) ? Number(meta.payout) : 0,
+    blackjack: naturalBlackjack,
+  };
+}
+
+function getBlackjackActiveHand(player) {
+  const hands = Array.isArray(player?.hands) ? player.hands : [];
+  const index = Number.isFinite(Number(player?.activeHandIndex)) ? Number(player.activeHandIndex) : 0;
+  const safeIndex = Math.max(0, Math.min(index, Math.max(0, hands.length - 1)));
+  return { hand: hands[safeIndex] || null, index: safeIndex, hands };
+}
+
+function isBlackjackHandDone(hand) {
+  if (!hand) {
+    return true;
+  }
+
+  return Boolean(hand.stood || hand.busted || hand.blackjack);
+}
+
+function isBlackjackPlayerDone(player) {
+  const hands = Array.isArray(player?.hands) ? player.hands : [];
+  if (hands.length === 0) {
+    return true;
+  }
+
+  return hands.every((hand) => isBlackjackHandDone(hand));
+}
+
+function advanceBlackjackHand(player) {
   if (!player) {
+    return;
+  }
+
+  const hands = Array.isArray(player.hands) ? player.hands : [];
+  const currentIndex = Number.isFinite(Number(player.activeHandIndex)) ? Number(player.activeHandIndex) : 0;
+
+  for (let index = currentIndex + 1; index < hands.length; index += 1) {
+    if (!isBlackjackHandDone(hands[index])) {
+      player.activeHandIndex = index;
+      player.status = 'PLAYER_TURN';
+      return;
+    }
+  }
+
+  player.activeHandIndex = Math.max(0, hands.length - 1);
+  player.status = 'WAITING';
+}
+
+function blackjackCanSplit(hand) {
+  if (!hand || !Array.isArray(hand.cards) || hand.cards.length !== 2) {
+    return false;
+  }
+
+  return blackjackCardValueForSplit(hand.cards[0]) === blackjackCardValueForSplit(hand.cards[1]);
+}
+
+function blackjackCanDouble(hand) {
+  if (!hand || !Array.isArray(hand.cards)) {
+    return false;
+  }
+
+  return hand.cards.length === 2 && !hand.doubled && !isBlackjackHandDone(hand);
+}
+
+function getBlackjackPlayerStatus(room, socketId) {
+  const player = room.players.get(socketId);
+  if (!player || Number(player.bet || 0) <= 0) {
     return 'WAITING';
+  }
+
+  if (room.stage !== 'playing') {
+    return 'ROUND_OVER';
   }
 
   if (typeof player.status === 'string') {
     return player.status;
   }
 
-  return player.stood || player.busted ? 'WAITING' : 'PLAYER_TURN';
+  return isBlackjackPlayerDone(player) ? 'WAITING' : 'PLAYER_TURN';
 }
 
 function publicBlackjackState(room, targetSocketId) {
@@ -646,16 +904,43 @@ function publicBlackjackState(room, targetSocketId) {
     stage: room.stage,
     status: getBlackjackPlayerStatus(room, targetSocketId),
     message: room.message,
+    insuranceOpen: Boolean(room.insuranceOpen),
+    insuranceDeadlineAt: Number(room.insuranceDeadlineAt || 0),
+    roundSummary: room.lastRoundSummary,
     dealerCards: visibleDealerCards,
     dealerValue: revealDealer ? blackjackHandValue(room.dealerHand) : blackjackHandValue(room.dealerHand.slice(0, 1)),
     players: Array.from(room.players.values()).map((player) => ({
       socketId: player.socketId,
+      userId: player.userId,
       username: player.username,
-      hand: player.hand,
-      value: blackjackHandValue(player.hand),
-      stood: player.stood,
-      busted: player.busted,
-      resultText: player.resultText,
+      hand: (() => {
+        const active = getBlackjackActiveHand(player).hand;
+        return active && Array.isArray(active.cards) ? active.cards : [];
+      })(),
+      value: (() => {
+        const active = getBlackjackActiveHand(player).hand;
+        return active && Array.isArray(active.cards) ? blackjackHandValue(active.cards) : 0;
+      })(),
+      stood: isBlackjackPlayerDone(player),
+      busted: Array.isArray(player.hands) ? player.hands.every((hand) => Boolean(hand.busted)) : false,
+      resultText: (() => {
+        const active = getBlackjackActiveHand(player).hand;
+        return active?.resultText || player.resultText || '';
+      })(),
+      totalBet: Number(player.bet || 0),
+      insuranceBet: Number(player.insuranceBet || 0),
+      activeHandIndex: Number(player.activeHandIndex || 0),
+      hands: (Array.isArray(player.hands) ? player.hands : []).map((hand) => ({
+        cards: hand.cards,
+        value: blackjackHandValue(hand.cards),
+        bet: Number(hand.bet || 0),
+        stood: Boolean(hand.stood),
+        busted: Boolean(hand.busted),
+        doubled: Boolean(hand.doubled),
+        blackjack: Boolean(hand.blackjack),
+        resultText: hand.resultText || '',
+        payout: Number(hand.payout || 0),
+      })),
     })),
   };
 }
@@ -668,45 +953,128 @@ function broadcastBlackjackState(roomId) {
 }
 
 function resolveBlackjackRound(room) {
+  room.insuranceOpen = false;
+  room.insuranceDeadlineAt = 0;
+
   while (blackjackHandValue(room.dealerHand) < 17) {
     room.dealerHand.push(room.deck.pop());
   }
 
   const dealerValue = blackjackHandValue(room.dealerHand);
+  const dealerBlackjack = dealerValue === 21 && room.dealerHand.length === 2;
+  const roundWinners = [];
+
   room.players.forEach((player) => {
-    const value = blackjackHandValue(player.hand);
+    const totalBet = Math.max(0, Math.floor(Number(player.bet) || 0));
+    const hands = Array.isArray(player.hands) ? player.hands : [];
+
+    if (!Number.isFinite(Number(totalBet)) || totalBet <= 0 || hands.length === 0) {
+      player.resultText = '';
+      player.status = 'WAITING';
+      return;
+    }
+
+    let payout = 0;
+    let summaryLabel = 'Lose';
     player.status = 'ROUND_OVER';
 
-    if (value > 21) {
-      player.resultText = 'Bust';
-      return;
+    hands.forEach((hand) => {
+      const handValue = blackjackHandValue(hand.cards);
+      const handBet = Math.max(0, Math.floor(Number(hand.bet) || 0));
+      const handBlackjack = handValue === 21 && Array.isArray(hand.cards) && hand.cards.length === 2 && !hand.doubled;
+      let handPayout = 0;
+
+      if (handValue > 21) {
+        hand.resultText = 'Bust';
+      } else if (handBlackjack && !dealerBlackjack) {
+        hand.resultText = 'Blackjack';
+        handPayout = Number((handBet * 2.5).toFixed(2));
+      } else if (dealerValue > 21 || handValue > dealerValue) {
+        hand.resultText = 'Win';
+        handPayout = Number((handBet * 2).toFixed(2));
+      } else if (handValue === dealerValue) {
+        hand.resultText = 'Push';
+        handPayout = Number(handBet.toFixed(2));
+      } else {
+        hand.resultText = 'Lose';
+      }
+
+      hand.payout = handPayout;
+      payout += handPayout;
+    });
+
+    const insuranceBet = Math.max(0, Math.floor(Number(player.insuranceBet || 0)));
+    if (insuranceBet > 0 && dealerBlackjack) {
+      payout += Number((insuranceBet * 3).toFixed(2));
     }
 
-    if (dealerValue > 21 || value > dealerValue) {
-      player.resultText = 'Win';
-      return;
+    const winningHands = hands.filter((hand) => Number(hand.payout || 0) > 0 && hand.resultText !== 'Push').length;
+    const pushHands = hands.filter((hand) => hand.resultText === 'Push').length;
+    if (winningHands > 0) {
+      summaryLabel = hands.some((hand) => hand.resultText === 'Blackjack') ? 'Blackjack' : 'Win';
+    } else if (pushHands > 0) {
+      summaryLabel = 'Push';
+    } else if (hands.some((hand) => hand.resultText === 'Bust')) {
+      summaryLabel = 'Bust';
     }
 
-    if (value === dealerValue) {
-      player.resultText = 'Push';
-      return;
+    player.resultText = summaryLabel;
+
+    if (payout > 0) {
+      const profile = getSocketProfile(player.socketId, player.username);
+      if (Number.isFinite(Number(profile.balance))) {
+        profile.balance = Number(profile.balance) + payout;
+        socketProfiles.set(player.socketId, profile);
+      }
+
+      io.to(player.socketId).emit('blackjack_payout', {
+        ok: true,
+        payout,
+        balance: profile.balance,
+        result: summaryLabel,
+      });
+
+      roundWinners.push({
+        socketId: player.socketId,
+        username: player.username,
+        payout,
+        result: summaryLabel,
+      });
+
+      emitSystemBigWin(player.username, payout, 'blackjack');
     }
 
-    player.resultText = 'Lose';
+    player.bet = 0;
+    player.insuranceBet = 0;
+    player.stood = true;
+    player.busted = hands.every((hand) => Boolean(hand.busted));
   });
 
   room.stage = 'result';
   room.message = 'Round complete';
+  room.lastRoundSummary = {
+    dealerValue,
+    dealerBlackjack,
+    winners: roundWinners,
+    at: Date.now(),
+  };
+  io.to(blackjackChannel(room.id)).emit('blackjack_round_result', {
+    roomId: room.id,
+    dealerValue,
+    dealerBlackjack,
+    winners: roundWinners,
+    at: Date.now(),
+  });
   broadcastBlackjackState(room.id);
 }
 
 function maybeResolveBlackjackRound(room) {
-  const activePlayers = Array.from(room.players.values());
+  const activePlayers = Array.from(room.players.values()).filter((player) => Number(player.bet || 0) > 0);
   if (activePlayers.length === 0) {
     return;
   }
 
-  const done = activePlayers.every((player) => player.stood || player.busted);
+  const done = activePlayers.every((player) => isBlackjackPlayerDone(player));
   if (!done) {
     return;
   }
@@ -716,21 +1084,47 @@ function maybeResolveBlackjackRound(room) {
 
 function startBlackjackRound(roomId) {
   const room = getBlackjackRoom(roomId);
-  if (room.players.size === 0) {
+  if (room.stage === 'playing') {
+    return { ok: false, error: 'Round already in progress.' };
+  }
+
+  const seatedPlayers = Array.from(room.players.values()).filter((player) => Number(player.bet || 0) > 0);
+  if (seatedPlayers.length === 0) {
     return { ok: false, error: 'No players in room.' };
   }
 
   room.deck = createDeck();
   room.dealerHand = [room.deck.pop(), room.deck.pop()];
   room.stage = 'playing';
-  room.message = 'Players turn';
+  room.insuranceOpen = room.dealerHand[0]?.[0] === 'A';
+  room.insuranceDeadlineAt = room.insuranceOpen ? Date.now() + 10000 : 0;
+  room.lastRoundSummary = null;
+  room.message = room.insuranceOpen ? 'Insurance available' : 'Players turn';
 
   room.players.forEach((player) => {
-    player.hand = [room.deck.pop(), room.deck.pop()];
-    player.stood = false;
-    player.busted = blackjackHandValue(player.hand) > 21;
-    player.status = player.busted ? 'WAITING' : 'PLAYER_TURN';
-    player.resultText = '';
+    if (Number(player.bet || 0) > 0) {
+      const startingCards = [room.deck.pop(), room.deck.pop()];
+      const hand = createBlackjackHand(startingCards, Number(player.bet || 0));
+      player.hands = [hand];
+      player.activeHandIndex = 0;
+      player.stood = false;
+      player.busted = Boolean(hand.busted);
+      player.status = isBlackjackHandDone(hand) ? 'WAITING' : 'PLAYER_TURN';
+      player.resultText = hand.resultText || '';
+      player.hand = hand.cards;
+      player.insuranceBet = 0;
+      player.insuranceLocked = false;
+    } else {
+      player.hand = [];
+      player.hands = [];
+      player.activeHandIndex = 0;
+      player.stood = false;
+      player.busted = false;
+      player.status = 'WAITING';
+      player.resultText = '';
+      player.insuranceBet = 0;
+      player.insuranceLocked = false;
+    }
   });
 
   broadcastBlackjackState(room.id);
@@ -749,16 +1143,41 @@ function applyBlackjackHit(room, socketId) {
     return { ok: false, error: 'No active round.' };
   }
 
-  if (player.stood || player.busted) {
+  if (Number(player.bet || 0) <= 0) {
+    return { ok: false, error: 'Place a bet first.' };
+  }
+
+  const { hand } = getBlackjackActiveHand(player);
+
+  if (!hand || isBlackjackHandDone(hand)) {
     return { ok: false, error: 'Player already done.' };
   }
 
-  player.hand.push(room.deck.pop());
-  player.busted = blackjackHandValue(player.hand) > 21;
-  if (player.busted) {
-    player.status = 'WAITING';
-    player.resultText = 'Bust';
+  const nextCard = room.deck.pop();
+  if (!nextCard) {
+    profile.balance = Number(profile.balance) + doubleCost;
+    socketProfiles.set(player.socketId, profile);
+    hand.bet = Number(hand.bet) - doubleCost;
+    return { ok: false, error: 'Deck empty.' };
   }
+
+  hand.cards.push(nextCard);
+  hand.busted = blackjackHandValue(hand.cards) > 21;
+  if (hand.busted) {
+    hand.resultText = 'Bust';
+  }
+
+  player.insuranceLocked = true;
+  if (hand.busted) {
+    advanceBlackjackHand(player);
+  } else {
+    player.status = 'PLAYER_TURN';
+  }
+
+  player.hand = hand.cards;
+  player.busted = Array.isArray(player.hands) ? player.hands.every((candidate) => Boolean(candidate.busted)) : hand.busted;
+  player.stood = isBlackjackPlayerDone(player);
+  player.resultText = hand.resultText || '';
 
   broadcastBlackjackState(room.id);
   maybeResolveBlackjackRound(room);
@@ -776,16 +1195,182 @@ function applyBlackjackStand(room, socketId) {
     return { ok: false, error: 'No active round.' };
   }
 
-  if (player.stood || player.busted) {
+  if (Number(player.bet || 0) <= 0) {
+    return { ok: false, error: 'Place a bet first.' };
+  }
+
+  const { hand } = getBlackjackActiveHand(player);
+
+  if (!hand || isBlackjackHandDone(hand)) {
     return { ok: false, error: 'Player already done.' };
   }
 
-  player.stood = true;
-  player.status = 'WAITING';
-  player.resultText = 'Stand';
+  hand.stood = true;
+  hand.resultText = hand.resultText || 'Stand';
+  player.insuranceLocked = true;
+  advanceBlackjackHand(player);
+  player.hand = hand.cards;
+  player.stood = isBlackjackPlayerDone(player);
+  player.busted = Array.isArray(player.hands) ? player.hands.every((candidate) => Boolean(candidate.busted)) : false;
+  player.resultText = hand.resultText || '';
+
   broadcastBlackjackState(room.id);
   maybeResolveBlackjackRound(room);
   return { ok: true };
+}
+
+function applyBlackjackDouble(room, socketId) {
+  const player = room.players.get(socketId);
+
+  if (!player) {
+    return { ok: false, error: 'Not in blackjack room.' };
+  }
+
+  if (room.stage !== 'playing') {
+    return { ok: false, error: 'No active round.' };
+  }
+
+  const { hand } = getBlackjackActiveHand(player);
+  if (!hand) {
+    return { ok: false, error: 'No active hand.' };
+  }
+
+  if (!blackjackCanDouble(hand)) {
+    return { ok: false, error: 'Double not allowed now.' };
+  }
+
+  const profile = getSocketProfile(player.socketId, player.username);
+  const doubleCost = Math.max(0, Math.floor(Number(hand.bet) || 0));
+  if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < doubleCost) {
+    return { ok: false, error: 'Insufficient balance to double.' };
+  }
+
+  profile.balance = Number(profile.balance) - doubleCost;
+  socketProfiles.set(player.socketId, profile);
+
+  hand.bet = Number(hand.bet) + doubleCost;
+  hand.doubled = true;
+
+  const nextCard = room.deck.pop();
+  if (!nextCard) {
+    return { ok: false, error: 'Deck empty.' };
+  }
+
+  hand.cards.push(nextCard);
+  hand.busted = blackjackHandValue(hand.cards) > 21;
+  hand.stood = true;
+  hand.resultText = hand.busted ? 'Bust' : 'Stand';
+
+  player.bet = Number(player.bet || 0) + doubleCost;
+  player.insuranceLocked = true;
+  advanceBlackjackHand(player);
+  player.hand = hand.cards;
+  player.stood = isBlackjackPlayerDone(player);
+  player.busted = Array.isArray(player.hands) ? player.hands.every((candidate) => Boolean(candidate.busted)) : hand.busted;
+  player.resultText = hand.resultText;
+
+  broadcastBlackjackState(room.id);
+  maybeResolveBlackjackRound(room);
+  return { ok: true };
+}
+
+function applyBlackjackSplit(room, socketId) {
+  const player = room.players.get(socketId);
+
+  if (!player) {
+    return { ok: false, error: 'Not in blackjack room.' };
+  }
+
+  if (room.stage !== 'playing') {
+    return { ok: false, error: 'No active round.' };
+  }
+
+  const { hand, index, hands } = getBlackjackActiveHand(player);
+  if (!hand) {
+    return { ok: false, error: 'No active hand.' };
+  }
+
+  if (!blackjackCanSplit(hand)) {
+    return { ok: false, error: 'Split not allowed now.' };
+  }
+
+  const profile = getSocketProfile(player.socketId, player.username);
+  const splitCost = Math.max(0, Math.floor(Number(hand.bet) || 0));
+  if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < splitCost) {
+    return { ok: false, error: 'Insufficient balance to split.' };
+  }
+
+  profile.balance = Number(profile.balance) - splitCost;
+  socketProfiles.set(player.socketId, profile);
+
+  const [leftCard, rightCard] = hand.cards;
+  const leftDraw = room.deck.pop();
+  const rightDraw = room.deck.pop();
+  if (!leftDraw || !rightDraw) {
+    profile.balance = Number(profile.balance) + splitCost;
+    socketProfiles.set(player.socketId, profile);
+    return { ok: false, error: 'Deck empty.' };
+  }
+
+  const leftHand = createBlackjackHand([leftCard, leftDraw], hand.bet);
+  const rightHand = createBlackjackHand([rightCard, rightDraw], hand.bet);
+  hands.splice(index, 1, leftHand, rightHand);
+
+  player.hands = hands;
+  player.activeHandIndex = index;
+  player.bet = Number(player.bet || 0) + splitCost;
+  player.insuranceLocked = true;
+  player.status = isBlackjackPlayerDone(player) ? 'WAITING' : 'PLAYER_TURN';
+  player.hand = leftHand.cards;
+  player.stood = isBlackjackPlayerDone(player);
+  player.busted = hands.every((candidate) => Boolean(candidate.busted));
+  player.resultText = leftHand.resultText || '';
+
+  broadcastBlackjackState(room.id);
+  maybeResolveBlackjackRound(room);
+  return { ok: true };
+}
+
+function applyBlackjackInsurance(room, socketId) {
+  const player = room.players.get(socketId);
+
+  if (!player) {
+    return { ok: false, error: 'Not in blackjack room.' };
+  }
+
+  if (room.stage !== 'playing' || !room.insuranceOpen) {
+    return { ok: false, error: 'Insurance is not available.' };
+  }
+
+  if (player.insuranceLocked) {
+    return { ok: false, error: 'Insurance window has closed.' };
+  }
+
+  if (Number(player.insuranceBet || 0) > 0) {
+    return { ok: false, error: 'Insurance already placed.' };
+  }
+
+  const baseBet = Math.max(0, Math.floor(Number(player.bet) || 0));
+  if (baseBet <= 0) {
+    return { ok: false, error: 'Place a bet first.' };
+  }
+
+  const insuranceBet = Math.floor(baseBet / 2);
+  if (insuranceBet <= 0) {
+    return { ok: false, error: 'Insurance unavailable for current bet.' };
+  }
+
+  const profile = getSocketProfile(player.socketId, player.username);
+  if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < insuranceBet) {
+    return { ok: false, error: 'Insufficient balance for insurance.' };
+  }
+
+  profile.balance = Number(profile.balance) - insuranceBet;
+  socketProfiles.set(player.socketId, profile);
+  player.insuranceBet = insuranceBet;
+
+  broadcastBlackjackState(room.id);
+  return { ok: true, insuranceBet };
 }
 
 function createPokerRoomForSocket(socket, username) {
@@ -996,13 +1581,133 @@ function emitToCrashRoom(roomId, event, payload) {
   io.to(roomChannel(room.id)).emit(event, payload);
 }
 
-function publicPokerState(room) {
+function clearPokerTurnTimer(room) {
+  if (room.turnTimer) {
+    clearTimeout(room.turnTimer);
+    room.turnTimer = null;
+  }
+  room.turnDeadlineAt = 0;
+}
+
+function getActivePokerPlayers(room) {
+  return room.turnOrder
+    .map((socketId) => room.players.get(socketId))
+    .filter((player) => player && !player.folded && player.ready && player.hand.length > 0);
+}
+
+function getNextPokerTurnIndex(room, fromIndex = -1) {
+  if (!Array.isArray(room.turnOrder) || room.turnOrder.length === 0) {
+    return -1;
+  }
+
+  for (let step = 1; step <= room.turnOrder.length; step += 1) {
+    const index = (fromIndex + step + room.turnOrder.length) % room.turnOrder.length;
+    const socketId = room.turnOrder[index];
+    const player = room.players.get(socketId);
+    if (!player || player.folded || !player.ready || player.hand.length === 0) {
+      continue;
+    }
+
+    if (!room.pendingActionSocketIds.has(socketId)) {
+      continue;
+    }
+
+    return index;
+  }
+
+  return -1;
+}
+
+function assignPokerTurn(room, targetIndex = -1) {
+  clearPokerTurnTimer(room);
+
+  const nextIndex = targetIndex >= 0 ? targetIndex : getNextPokerTurnIndex(room, room.activePlayerIndex);
+  if (nextIndex < 0) {
+    room.activePlayerIndex = -1;
+    room.activePlayerSocketId = null;
+    return;
+  }
+
+  room.activePlayerIndex = nextIndex;
+  room.activePlayerSocketId = room.turnOrder[nextIndex] || null;
+  room.turnDeadlineAt = Date.now() + POKER_TURN_MS;
+
+  room.turnTimer = setTimeout(() => {
+    const activeSocketId = room.activePlayerSocketId;
+    if (!activeSocketId) {
+      return;
+    }
+
+    const activePlayer = room.players.get(activeSocketId);
+    if (!activePlayer || activePlayer.folded || !room.pendingActionSocketIds.has(activeSocketId)) {
+      return;
+    }
+
+    activePlayer.folded = true;
+    activePlayer.actionText = 'folded (timeout)';
+    room.pendingActionSocketIds.delete(activeSocketId);
+    room.actedSocketIds.add(activeSocketId);
+
+    const alive = getActivePokerPlayers(room);
+    if (alive.length <= 1) {
+      completePokerShowdown(room);
+      return;
+    }
+
+    if (room.pendingActionSocketIds.size === 0) {
+      maybeAdvancePokerStage(room);
+      return;
+    }
+
+    assignPokerTurn(room);
+    broadcastPokerState(room.id);
+  }, POKER_TURN_MS);
+}
+
+function resetPokerBettingRound(room, stageName) {
+  room.stage = stageName;
+  room.currentBet = 0;
+  room.minRaise = Math.max(POKER_ANTE, 1);
+  room.pendingActionSocketIds = new Set();
+  room.actedSocketIds = new Set();
+
+  room.players.forEach((player, socketId) => {
+    if (player.folded || !player.ready || player.hand.length === 0) {
+      player.roundBet = 0;
+      return;
+    }
+
+    player.roundBet = 0;
+    player.actionText = 'in hand';
+    room.pendingActionSocketIds.add(socketId);
+  });
+
+  if (room.pendingActionSocketIds.size === 0) {
+    room.activePlayerIndex = -1;
+    room.activePlayerSocketId = null;
+    clearPokerTurnTimer(room);
+    return;
+  }
+
+  const firstIndex = getNextPokerTurnIndex(room, -1);
+  assignPokerTurn(room, firstIndex);
+}
+
+function publicPokerState(room, targetSocketId = null) {
+  const revealAll = room.stage === 'showdown';
   const players = Array.from(room.players.values()).map((player) => ({
     socketId: player.socketId,
+    userId: player.userId,
     username: player.username,
     ready: player.ready,
+    seated: Boolean(player.seated),
+    buyIn: Number(player.buyIn || 0),
     folded: player.folded,
-    hand: player.hand,
+    roundBet: Number(player.roundBet || 0),
+    hand:
+      revealAll || player.socketId === targetSocketId
+        ? player.hand
+        : (player.hand.length > 0 ? player.hand : ['??', '??']).map(() => ({ hidden: true })),
     actionText: player.actionText,
     isWinner: player.socketId === room.winnerSocketId,
   }));
@@ -1012,6 +1717,11 @@ function publicPokerState(room) {
     started: room.started,
     stage: room.stage,
     board: room.board,
+    pot: Number(room.pot || 0),
+    currentBet: Number(room.currentBet || 0),
+    minRaise: Number(room.minRaise || 0),
+    activePlayerSocketId: room.activePlayerSocketId,
+    turnDeadlineAt: Number(room.turnDeadlineAt || 0),
     players,
     winnerLabel: room.winnerLabel,
   };
@@ -1019,22 +1729,42 @@ function publicPokerState(room) {
 
 function broadcastPokerState(roomId) {
   const room = getPokerRoom(roomId);
-  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room));
+  if (pokerBroadcastTimers.has(room.id)) {
+    return;
+  }
+
+  const timer = setTimeout(() => {
+    pokerBroadcastTimers.delete(room.id);
+    const liveRoom = getPokerRoom(room.id);
+    liveRoom.sockets.forEach((socketId) => {
+      io.to(socketId).emit('poker_state', publicPokerState(liveRoom, socketId));
+    });
+  }, 34);
+
+  pokerBroadcastTimers.set(room.id, timer);
 }
 
 function resetPokerRound(room) {
+  clearPokerTurnTimer(room);
   room.started = false;
   room.stage = 'waiting';
   room.deck = [];
   room.board = [];
   room.actedSocketIds = new Set();
+  room.pendingActionSocketIds = new Set();
+  room.pot = 0;
+  room.currentBet = 0;
+  room.minRaise = 0;
+  room.activePlayerIndex = -1;
+  room.activePlayerSocketId = null;
   room.winnerSocketId = null;
   room.winnerLabel = '';
   room.players.forEach((player) => {
-    player.ready = false;
-    player.folded = false;
+    player.ready = Boolean(player.seated && Number(player.buyIn || 0) > 0);
+    player.folded = !player.ready;
+    player.roundBet = 0;
     player.hand = [];
-    player.actionText = 'waiting';
+    player.actionText = player.ready ? 'seated' : 'waiting buy-in';
   });
 }
 
@@ -1047,8 +1777,12 @@ function resolvePokerWinner(room) {
   }
 
   const winner = contenders[Math.floor(Math.random() * contenders.length)];
+  const pot = Number(room.pot || 0);
+  if (pot > 0) {
+    winner.buyIn = Number(winner.buyIn || 0) + pot;
+  }
   room.winnerSocketId = winner.socketId;
-  room.winnerLabel = `${winner.username} wins`;
+  room.winnerLabel = pot > 0 ? `${winner.username} wins ${pot}` : `${winner.username} wins`;
 
   room.players.forEach((player) => {
     if (player.socketId === winner.socketId) {
@@ -1078,6 +1812,10 @@ function completePokerShowdown(room) {
     return;
   }
 
+  clearPokerTurnTimer(room);
+  room.pendingActionSocketIds = new Set();
+  room.activePlayerIndex = -1;
+  room.activePlayerSocketId = null;
   room.stage = 'showdown';
   resolvePokerWinner(room);
   broadcastPokerState(room.id);
@@ -1089,44 +1827,37 @@ function maybeAdvancePokerStage(room) {
     return;
   }
 
-  const activePlayers = Array.from(room.players.values()).filter((player) => !player.folded);
+  const activePlayers = getActivePokerPlayers(room);
   if (activePlayers.length <= 1) {
     completePokerShowdown(room);
     return;
   }
 
-  const allActed = activePlayers.every((player) => room.actedSocketIds.has(player.socketId));
-  if (!allActed) {
+  if (room.pendingActionSocketIds.size > 0) {
     return;
   }
 
-  if (room.stage === 'preflop') {
-    room.stage = 'flop';
+  if (room.stage === 'dealing' || room.stage === 'preflop') {
     room.board = [room.deck.pop(), room.deck.pop(), room.deck.pop()];
+    resetPokerBettingRound(room, 'flop');
   } else if (room.stage === 'flop') {
-    room.stage = 'turn';
     room.board.push(room.deck.pop());
+    resetPokerBettingRound(room, 'turn');
   } else if (room.stage === 'turn') {
-    room.stage = 'river';
     room.board.push(room.deck.pop());
+    resetPokerBettingRound(room, 'river');
   } else {
     completePokerShowdown(room);
     return;
   }
 
-  room.actedSocketIds = new Set();
-  room.players.forEach((player) => {
-    if (!player.folded) {
-      player.actionText = 'in hand';
-    }
-  });
   broadcastPokerState(room.id);
 }
 
 function startPokerRound(roomId) {
   const room = getPokerRoom(roomId);
-  const players = Array.from(room.players.values());
-  if (players.length < 2) {
+  const seatedPlayers = Array.from(room.players.values()).filter((player) => Boolean(player.seated) && Number(player.buyIn || 0) >= POKER_ANTE);
+  if (seatedPlayers.length < 2) {
     return;
   }
 
@@ -1135,20 +1866,40 @@ function startPokerRound(roomId) {
   }
 
   const deck = createDeck();
+  clearPokerTurnTimer(room);
   room.started = true;
-  room.stage = 'preflop';
+  room.stage = 'dealing';
   room.deck = deck;
   room.board = [];
   room.actedSocketIds = new Set();
+  room.pendingActionSocketIds = new Set();
+  room.pot = 0;
+  room.currentBet = 0;
+  room.minRaise = Math.max(POKER_ANTE, 1);
+  room.activePlayerIndex = -1;
+  room.activePlayerSocketId = null;
   room.winnerSocketId = null;
   room.winnerLabel = '';
+  room.turnOrder = Array.from(room.players.keys());
 
   room.players.forEach((player) => {
-    player.ready = true;
-    player.folded = false;
-    player.hand = [room.deck.pop(), room.deck.pop()];
-    player.actionText = 'in hand';
+    const inHand = Boolean(player.seated) && Number(player.buyIn || 0) >= POKER_ANTE;
+    player.ready = inHand;
+    player.folded = !inHand;
+    if (inHand) {
+      player.buyIn = Number(player.buyIn || 0) - POKER_ANTE;
+      room.pot += POKER_ANTE;
+      player.hand = [room.deck.pop(), room.deck.pop()];
+      player.roundBet = 0;
+      player.actionText = 'in hand';
+    } else {
+      player.hand = [];
+      player.roundBet = 0;
+      player.actionText = 'waiting buy-in';
+    }
   });
+
+  resetPokerBettingRound(room, 'preflop');
 
   broadcastPokerState(room.id);
 }
@@ -1169,6 +1920,7 @@ function startCrashRound(roomId) {
   room.multiplier = 1;
   room.crashPoint = generateCrashPoint();
   room.roundStartAt = 0;
+  room.lastTickBroadcastAt = 0;
 
   emitToCrashRoom(room.id, 'crash_round_started', {
     roomId: room.id,
@@ -1274,9 +2026,20 @@ function detachPokerSocket(socket, roomId) {
     return;
   }
 
+  const leavingPlayer = room.players.get(socket.id);
+  if (leavingPlayer && Number(leavingPlayer.buyIn || 0) > 0) {
+    const profile = getSocketProfile(socket.id, leavingPlayer.username);
+    if (Number.isFinite(Number(profile.balance))) {
+      profile.balance = Number(profile.balance) + Number(leavingPlayer.buyIn || 0);
+      socketProfiles.set(socket.id, profile);
+    }
+  }
+
   room.sockets.delete(socket.id);
   room.players.delete(socket.id);
   room.actedSocketIds.delete(socket.id);
+  room.pendingActionSocketIds.delete(socket.id);
+  room.turnOrder = room.turnOrder.filter((id) => id !== socket.id);
   socket.leave(pokerChannel(roomId));
 
   if (room.id !== 'global' && room.sockets.size === 0) {
@@ -1285,7 +2048,16 @@ function detachPokerSocket(socket, roomId) {
   }
 
   if (room.started) {
-    maybeAdvancePokerStage(room);
+    const activePlayers = getActivePokerPlayers(room);
+    if (activePlayers.length <= 1) {
+      completePokerShowdown(room);
+    } else if (room.pendingActionSocketIds.size === 0) {
+      maybeAdvancePokerStage(room);
+    } else if (room.activePlayerSocketId === socket.id || !room.activePlayerSocketId) {
+      assignPokerTurn(room, getNextPokerTurnIndex(room, room.activePlayerIndex));
+      broadcastPokerState(room.id);
+      return;
+    }
   }
 
   broadcastPokerState(room.id);
@@ -1294,31 +2066,132 @@ function detachPokerSocket(socket, roomId) {
 function attachPokerSocket(socket, roomId, username) {
   const sanitized = sanitizeRoomId(roomId);
   const previousRoomId = socket.data.pokerRoomId;
+  const pokerUserId = normalizePokerUserKey(socket.data.pokerUserId, username);
+
+  removePokerGhostUsers(socket, pokerUserId);
 
   if (previousRoomId === sanitized) {
-    return getPokerRoom(sanitized);
+    const existingRoom = getPokerRoom(sanitized);
+
+    Array.from(existingRoom.players.entries()).forEach(([socketId, roomPlayer]) => {
+      if (socketId === socket.id) {
+        return;
+      }
+
+      if (String(roomPlayer.userId || '') !== String(pokerUserId)) {
+        return;
+      }
+
+      existingRoom.players.delete(socketId);
+      existingRoom.sockets.delete(socketId);
+      existingRoom.pendingActionSocketIds.delete(socketId);
+      existingRoom.actedSocketIds.delete(socketId);
+      existingRoom.turnOrder = existingRoom.turnOrder.filter((id) => id !== socketId);
+    });
+
+    if (!existingRoom.players.has(socket.id)) {
+      existingRoom.sockets.add(socket.id);
+      if (!existingRoom.turnOrder.includes(socket.id)) {
+        existingRoom.turnOrder.push(socket.id);
+      }
+      existingRoom.players.set(socket.id, {
+        socketId: socket.id,
+        userId: pokerUserId,
+        username,
+        ready: false,
+        seated: false,
+        buyIn: 0,
+        folded: true,
+        hand: [],
+        actionText: 'waiting buy-in',
+      });
+      broadcastPokerState(existingRoom.id);
+    }
+    return existingRoom;
   }
 
   detachPokerSocket(socket, previousRoomId);
 
   const room = getPokerRoom(sanitized);
+
+  Array.from(room.players.entries()).forEach(([socketId, roomPlayer]) => {
+    if (socketId === socket.id) {
+      return;
+    }
+
+    if (String(roomPlayer.userId || '') !== String(pokerUserId)) {
+      return;
+    }
+
+    room.players.delete(socketId);
+    room.sockets.delete(socketId);
+    room.pendingActionSocketIds.delete(socketId);
+    room.actedSocketIds.delete(socketId);
+    room.turnOrder = room.turnOrder.filter((id) => id !== socketId);
+  });
+
   room.sockets.add(socket.id);
+  if (!room.turnOrder.includes(socket.id)) {
+    room.turnOrder.push(socket.id);
+  }
   room.players.set(socket.id, {
     socketId: socket.id,
+    userId: pokerUserId,
     username,
     ready: false,
-    folded: room.started,
+    seated: false,
+    buyIn: 0,
+    folded: true,
     hand: [],
-    actionText: room.started ? 'waiting next hand' : 'waiting',
+    actionText: 'waiting buy-in',
   });
   socket.data.pokerRoomId = room.id;
+  socket.data.pokerUserId = pokerUserId;
   socket.join(pokerChannel(room.id));
 
-  // Immediately push poker_state to the full room when a player joins.
-  io.to(pokerChannel(room.id)).emit('poker_state', publicPokerState(room));
   broadcastPokerState(room.id);
   startPokerRound(room.id);
   return room;
+}
+
+function normalizeBlackjackUserKey(rawUserId, username) {
+  const fromUserId = typeof rawUserId === 'string' ? rawUserId.trim() : '';
+  if (fromUserId) {
+    return fromUserId;
+  }
+
+  const fromName = typeof username === 'string' ? username.trim().toLowerCase() : '';
+  return fromName || `guest-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function removeBlackjackGhostUsers(currentSocket, blackjackUserId) {
+  blackjackRooms.forEach((room) => {
+    let changed = false;
+
+    Array.from(room.players.entries()).forEach(([socketId, player]) => {
+      if (socketId === currentSocket.id) {
+        return;
+      }
+
+      if (String(player.userId || '') !== String(blackjackUserId)) {
+        return;
+      }
+
+      room.players.delete(socketId);
+      room.sockets.delete(socketId);
+      changed = true;
+
+      const ghostSocket = io.sockets.sockets.get(socketId);
+      if (ghostSocket) {
+        ghostSocket.leave(blackjackChannel(room.id));
+        ghostSocket.data.blackjackRoomId = null;
+      }
+    });
+
+    if (changed) {
+      broadcastBlackjackState(room.id);
+    }
+  });
 }
 
 function detachBlackjackSocket(socket, roomId) {
@@ -1343,9 +2216,11 @@ function detachBlackjackSocket(socket, roomId) {
   broadcastBlackjackState(room.id);
 }
 
-function attachBlackjackSocket(socket, roomId, username) {
+function attachBlackjackSocket(socket, roomId, username, blackjackUserId) {
   const sanitized = sanitizeRoomId(roomId);
   const previousRoomId = socket.data.blackjackRoomId;
+
+  removeBlackjackGhostUsers(socket, blackjackUserId);
 
   if (previousRoomId === sanitized) {
     return getBlackjackRoom(sanitized);
@@ -1357,8 +2232,14 @@ function attachBlackjackSocket(socket, roomId, username) {
   room.sockets.add(socket.id);
   room.players.set(socket.id, {
     socketId: socket.id,
+    userId: blackjackUserId,
     username,
     hand: [],
+    hands: [],
+    activeHandIndex: 0,
+    bet: 0,
+    insuranceBet: 0,
+    insuranceLocked: false,
     stood: false,
     busted: false,
     status: 'WAITING',
@@ -1463,12 +2344,16 @@ setInterval(() => {
       return;
     }
 
-    emitToCrashRoom(room.id, 'crash_tick', {
-      roomId: room.id,
-      roundId: room.roundId,
-      multiplier: room.multiplier,
-      players: publicCrashPlayers(room),
-    });
+    const now = Date.now();
+    if (now - Number(room.lastTickBroadcastAt || 0) >= CRASH_BROADCAST_MS) {
+      room.lastTickBroadcastAt = now;
+      emitToCrashRoom(room.id, 'crash_tick', {
+        roomId: room.id,
+        roundId: room.roundId,
+        multiplier: room.multiplier,
+        players: publicCrashPlayers(room),
+      });
+    }
 
     const eligible = Array.from(room.players.values()).filter(
       (player) => player.autoCashOut >= 1 && !player.cashedOut && player.roundId === room.roundId
@@ -1479,11 +2364,23 @@ setInterval(() => {
         player.cashedOut = true;
         player.cashedAt = player.autoCashOut;
 
+        const profile = getSocketProfile(player.socketId, player.username);
+        if (Number.isFinite(Number(profile.balance))) {
+          profile.balance = Number(profile.balance) + payout;
+          socketProfiles.set(player.socketId, profile);
+        }
+
         io.to(player.socketId).emit('crash_cashout_result', {
           ok: true,
           payout,
           multiplier: player.autoCashOut,
           mode: 'auto',
+          roomId: room.id,
+        });
+
+        io.to(player.socketId).emit('crash_cashout_success', {
+          payout,
+          multiplier: player.autoCashOut,
           roomId: room.id,
         });
 
@@ -1499,7 +2396,7 @@ setInterval(() => {
       }
     });
   });
-}, 90);
+}, CRASH_TICK_MS);
 
 app.get('/health', (_req, res) => {
   const crashRoomStates = Array.from(crashRooms.values()).map((room) => ({
@@ -1540,6 +2437,10 @@ app.get('/health', (_req, res) => {
 });
 
 app.post('/internal/leaderboard/broadcast', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
   const amount = Math.floor(Number(req.body?.amount ?? 0));
   const username = typeof req.body?.username === 'string' ? req.body.username : undefined;
   const reason = typeof req.body?.reason === 'string' ? req.body.reason : 'balance-change';
@@ -1555,6 +2456,10 @@ app.post('/internal/leaderboard/broadcast', (req, res) => {
 });
 
 app.post('/internal/chat/win', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
   const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
   const amount = Number.isFinite(Number(req.body?.amount)) ? Math.floor(Number(req.body.amount)) : 0;
   const source = typeof req.body?.source === 'string' ? req.body.source.trim().toLowerCase() : '';
@@ -1567,6 +2472,10 @@ app.post('/internal/chat/win', (req, res) => {
 });
 
 app.post('/internal/global-notification', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 240) : '';
   if (!message) {
     return res.status(400).json({ ok: false, error: 'Message is required.' });
@@ -1581,6 +2490,10 @@ app.post('/internal/global-notification', (req, res) => {
 });
 
 app.post('/internal/admin-broadcast', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
   const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 240) : '';
   if (!message) {
     return res.status(400).json({ ok: false, error: 'Message is required.' });
@@ -1596,6 +2509,10 @@ app.post('/internal/admin-broadcast', (req, res) => {
 });
 
 app.post('/internal/rain/start', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
   const amount = Math.floor(Number(req.body?.amount ?? 0));
   const duration = Math.floor(Number(req.body?.duration ?? 30));
   const participantsCount = Math.floor(Number(req.body?.participantsCount ?? 5));
@@ -1612,9 +2529,34 @@ app.post('/internal/rain/start', (req, res) => {
   return res.json(result);
 });
 
+app.post('/internal/user/refresh', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  if (!username) {
+    return res.status(400).json({ ok: false, error: 'Username is required.' });
+  }
+
+  const targets = getSocketIdsByUsername(username);
+  targets.forEach((socketId) => {
+    io.to(socketId).emit('wallet_refresh_required', {
+      username,
+      at: Date.now(),
+    });
+  });
+
+  return res.json({ ok: true, delivered: targets.length });
+});
+
 io.on('connection', (socket) => {
   const rawName = socket.handshake.query.username;
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
+  const pokerUserId = normalizePokerUserKey(socket.handshake.query.userId, username);
+  const blackjackUserId = normalizeBlackjackUserKey(socket.handshake.query.userId, username);
+  socket.data.pokerUserId = pokerUserId;
+  socket.data.blackjackUserId = blackjackUserId;
   const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
   const initialRole = typeof socket.handshake.query.role === 'string' ? socket.handshake.query.role : 'USER';
   const initialIsKing = socket.handshake.query.isKing === 'true' || socket.handshake.query.isKing === true;
@@ -1628,7 +2570,8 @@ io.on('connection', (socket) => {
   onlineUsers.set(socket.id, username);
   const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
   const initialBalance = Number.isFinite(Number(socket.handshake.query.balance)) ? Number(socket.handshake.query.balance) : Number.MAX_SAFE_INTEGER;
-  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, initialRole, initialClanTag, initialIsKing);
+  const trustedInitialRole = isTrustedOwnerUsername(username) ? 'OWNER' : initialRole;
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, trustedInitialRole, initialClanTag, initialIsKing);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
   socket.join(COINFLIP_ROOM_ID);
@@ -1655,7 +2598,7 @@ io.on('connection', (socket) => {
   socket.emit('poker_room_joined', { ok: true, roomId: pokerRoom.id });
 
   const initialBlackjackRoomId = sanitizeRoomId(socket.handshake.query.blackjackRoomId);
-  const blackjackRoom = attachBlackjackSocket(socket, initialBlackjackRoomId, username);
+  const blackjackRoom = attachBlackjackSocket(socket, initialBlackjackRoomId, username, blackjackUserId);
   socket.emit('blackjack_room_joined', { ok: true, roomId: blackjackRoom.id });
 
   const initialRouletteRoomId = sanitizeRoomId(socket.handshake.query.rouletteRoomId);
@@ -1668,7 +2611,7 @@ io.on('connection', (socket) => {
     const desired = sanitizeRoomId(normalizedPayload?.roomId);
 
     if (game === 'blackjack') {
-      const nextRoom = attachBlackjackSocket(socket, desired, username);
+      const nextRoom = attachBlackjackSocket(socket, desired, username, socket.data.blackjackUserId || blackjackUserId);
       setUserActivity(socket.id, 'Blackjack');
       callback?.({ ok: true, roomId: nextRoom.id });
       socket.emit('blackjack_room_joined', { ok: true, roomId: nextRoom.id });
@@ -1734,7 +2677,7 @@ io.on('connection', (socket) => {
     setUserActivity(socket.id, "Poker");
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
-    io.to(pokerChannel(nextRoom.id)).emit('poker_state', publicPokerState(nextRoom));
+    broadcastPokerState(nextRoom.id);
   });
 
   socket.on('poker_create', (payload, callback) => {
@@ -1745,12 +2688,12 @@ io.on('connection', (socket) => {
     callback?.({ ok: true, roomId: nextRoom.id });
     socket.emit('poker_room_joined', { ok: true, roomId: nextRoom.id });
     socket.emit('poker_created', { roomId: nextRoom.id });
-    io.to(pokerChannel(nextRoom.id)).emit('poker_state', publicPokerState(nextRoom));
+    broadcastPokerState(nextRoom.id);
   });
 
   socket.on('join_blackjack_room', (payload, callback) => {
     const desired = sanitizeRoomId(payload?.roomId);
-    const nextRoom = attachBlackjackSocket(socket, desired, username);
+    const nextRoom = attachBlackjackSocket(socket, desired, username, socket.data.blackjackUserId || blackjackUserId);
 
     setUserActivity(socket.id, 'Blackjack');
     callback?.({ ok: true, roomId: nextRoom.id });
@@ -1803,6 +2746,103 @@ io.on('connection', (socket) => {
     callback?.({ ok: true, delivered: receiverSocketIds.length });
   });
 
+  socket.on('friend_request', async (payload, callback) => {
+    const receiverUsername = typeof payload?.receiverUsername === 'string' ? payload.receiverUsername.trim() : '';
+    const senderUsername = typeof payload?.senderUsername === 'string' && payload.senderUsername.trim() ? payload.senderUsername.trim() : username;
+
+    if (!receiverUsername) {
+      callback?.({ ok: false, error: 'receiverUsername is required.' });
+      return;
+    }
+
+    const result = await callFriendsSocketApi('friend_request', {
+      senderUsername,
+      receiverUsername,
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    const receiverSocketIds = getSocketIdsByUsername(receiverUsername).filter((socketId) => socketId !== socket.id);
+    receiverSocketIds.forEach((receiverSocketId) => {
+      io.to(receiverSocketId).emit('friend_request_received', {
+        senderUsername,
+        receiverUsername,
+      });
+    });
+
+    callback?.({ ok: true, request: result.request });
+  });
+
+  socket.on('accept_friend', async (payload, callback) => {
+    const senderUsername = typeof payload?.senderUsername === 'string' ? payload.senderUsername.trim() : '';
+    const accepterUsername = typeof payload?.accepterUsername === 'string' && payload.accepterUsername.trim() ? payload.accepterUsername.trim() : username;
+
+    if (!senderUsername) {
+      callback?.({ ok: false, error: 'senderUsername is required.' });
+      return;
+    }
+
+    const result = await callFriendsSocketApi('accept_friend', {
+      senderUsername,
+      accepterUsername,
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    const senderSocketIds = getSocketIdsByUsername(senderUsername).filter((socketId) => socketId !== socket.id);
+    senderSocketIds.forEach((senderSocketId) => {
+      io.to(senderSocketId).emit('friend_request_accepted', {
+        senderUsername,
+        accepterUsername,
+      });
+    });
+
+    callback?.({ ok: true, friendship: result.friendship });
+  });
+
+  socket.on('get_online_friends', async (payload, callback) => {
+    const requesterUsername = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
+    if (!requesterUsername) {
+      callback?.({ ok: false, error: 'username is required.' });
+      return;
+    }
+
+    const uniquePresence = new Map();
+    onlineUsers.forEach((onlineUsername, socketId) => {
+      const cleanName = typeof onlineUsername === 'string' ? onlineUsername.trim() : '';
+      if (!cleanName) {
+        return;
+      }
+
+      const key = cleanName.toLowerCase();
+      if (!uniquePresence.has(key)) {
+        uniquePresence.set(key, {
+          username: cleanName,
+          online: true,
+          activity: getUserActivity(socketId),
+        });
+      }
+    });
+
+    const result = await callFriendsSocketApi('get_online_friends', {
+      username: requesterUsername,
+      onlineUsers: Array.from(uniquePresence.values()),
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    callback?.({ ok: true, friends: result.friends || [] });
+  });
+
   socket.on('roulette_spin_request', (_payload, callback) => {
     const roomId = socket.data.rouletteRoomId;
     if (!roomId) {
@@ -1843,7 +2883,7 @@ io.on('connection', (socket) => {
     const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
     const balance = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Number.MAX_SAFE_INTEGER;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
-    const role = typeof payload?.role === 'string' ? payload.role : 'USER';
+    const role = normalizeRole(payload?.role, name);
     const isKing = payload?.isKing === true;
     const clanTag =
       typeof payload?.clanTag === 'string'
@@ -1865,10 +2905,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('rain_start', (payload, callback) => {
-    const profile = getSocketProfile(socket.id, username);
-    const isAdmin = String(profile.role).toUpperCase() === 'ADMIN';
-    if (!isAdmin) {
-      callback?.({ ok: false, error: 'Only admins can start rain.' });
+    const permission = checkPermission(socket, 'OWNER', callback);
+    if (!permission.ok) {
       return;
     }
 
@@ -1890,8 +2928,14 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (coinflipState.openLobby) {
-      callback?.({ ok: false, error: 'An open coinflip already exists.' });
+    const alreadyOpen = coinflipState.openLobbies.some((lobby) => lobby.creatorSocketId === socket.id);
+    if (alreadyOpen) {
+      callback?.({ ok: false, error: 'You already have an open coinflip.' });
+      return;
+    }
+
+    if (coinflipState.status === 'running') {
+      callback?.({ ok: false, error: 'Coinflip already running. Try again shortly.' });
       return;
     }
 
@@ -1909,36 +2953,49 @@ io.on('connection', (socket) => {
     profile.balance = Number(profile.balance) - amount;
     socketProfiles.set(socket.id, profile);
 
-    coinflipState.openLobby = {
+    const lobby = {
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       amount,
       creatorSocketId: socket.id,
       creatorUsername: username,
       createdAt: Date.now(),
     };
+    coinflipState.openLobbies.push(lobby);
+    coinflipState.status = 'waiting';
     coinflipState.lastResult = null;
     emitCoinflipState();
-    callback?.({ ok: true, lobby: coinflipState.openLobby });
+    callback?.({ ok: true, lobby });
   });
 
-  socket.on('coinflip_cancel', (_payload, callback) => {
-    if (!coinflipState.openLobby) {
+  socket.on('coinflip_cancel', (payload, callback) => {
+    const requestedLobbyId = typeof payload?.lobbyId === 'string' ? payload.lobbyId : '';
+    if (!coinflipState.openLobbies.length) {
       callback?.({ ok: false, error: 'No open coinflip.' });
       return;
     }
 
-    if (coinflipState.openLobby.creatorSocketId !== socket.id) {
+    const lobbyIndex = requestedLobbyId
+      ? coinflipState.openLobbies.findIndex((entry) => entry.id === requestedLobbyId)
+      : coinflipState.openLobbies.findIndex((entry) => entry.creatorSocketId === socket.id);
+    if (lobbyIndex < 0) {
+      callback?.({ ok: false, error: 'No matching open coinflip.' });
+      return;
+    }
+
+    const lobby = coinflipState.openLobbies[lobbyIndex];
+    if (lobby.creatorSocketId !== socket.id) {
       callback?.({ ok: false, error: 'Only creator can cancel.' });
       return;
     }
 
-    const refundAmount = coinflipState.openLobby.amount;
+    const refundAmount = lobby.amount;
     const profile = getSocketProfile(socket.id, username);
     profile.balance = Number(profile.balance) + refundAmount;
     socketProfiles.set(socket.id, profile);
 
-    const canceledLobbyId = coinflipState.openLobby.id;
-    coinflipState.openLobby = null;
+    const canceledLobbyId = lobby.id;
+    coinflipState.openLobbies.splice(lobbyIndex, 1);
+    coinflipState.status = 'waiting';
     emitCoinflipState();
     io.to(COINFLIP_ROOM_ID).emit('coinflip_canceled', {
       lobbyId: canceledLobbyId,
@@ -1948,8 +3005,16 @@ io.on('connection', (socket) => {
     callback?.({ ok: true, refundAmount });
   });
 
-  socket.on('coinflip_join', (_payload, callback) => {
-    const lobby = coinflipState.openLobby;
+  socket.on('coinflip_join', (payload, callback) => {
+    if (coinflipState.status === 'running') {
+      callback?.({ ok: false, error: 'Coinflip currently running. Wait for next round.' });
+      return;
+    }
+
+    const requestedLobbyId = typeof payload?.lobbyId === 'string' ? payload.lobbyId : '';
+    const lobby = requestedLobbyId
+      ? coinflipState.openLobbies.find((entry) => entry.id === requestedLobbyId)
+      : coinflipState.openLobbies[0];
     if (!lobby) {
       callback?.({ ok: false, error: 'No open coinflip available.' });
       return;
@@ -1971,6 +3036,17 @@ io.on('connection', (socket) => {
       return;
     }
 
+    coinflipState.status = 'running';
+    coinflipState.openLobbies = coinflipState.openLobbies.filter((entry) => entry.id !== lobby.id);
+    emitCoinflipState();
+    io.to(COINFLIP_ROOM_ID).emit('coinflip_running', {
+      id: lobby.id,
+      creatorUsername: lobby.creatorUsername,
+      joinerUsername: username,
+      amount: lobby.amount,
+      startedAt: Date.now(),
+    });
+
     joinerProfile.balance = Number(joinerProfile.balance) - lobby.amount;
     socketProfiles.set(socket.id, joinerProfile);
 
@@ -1987,28 +3063,30 @@ io.on('connection', (socket) => {
     winnerProfile.balance = Number(winnerProfile.balance) + payout;
     socketProfiles.set(winnerSocketId, winnerProfile);
 
-    coinflipState.lastResult = {
-      id: lobby.id,
-      creatorUsername: lobby.creatorUsername,
-      joinerUsername: username,
-      winnerUsername,
-      loserUsername,
-      amount: lobby.amount,
-      pot,
-      payout,
-      fee,
-      resolvedAt: Date.now(),
-    };
-    coinflipState.openLobby = null;
+    setTimeout(() => {
+      coinflipState.lastResult = {
+        id: lobby.id,
+        creatorUsername: lobby.creatorUsername,
+        joinerUsername: username,
+        winnerUsername,
+        loserUsername,
+        amount: lobby.amount,
+        pot,
+        payout,
+        fee,
+        resolvedAt: Date.now(),
+      };
+      coinflipState.status = 'waiting';
 
-    io.to(COINFLIP_ROOM_ID).emit('coinflip_result', coinflipState.lastResult);
-    emitCoinflipState();
+      io.to(COINFLIP_ROOM_ID).emit('coinflip_result', coinflipState.lastResult);
+      emitCoinflipState();
 
-    if (payout >= HIGH_ROLLER_THRESHOLD) {
-      emitSystemBigWin(winnerUsername, payout, 'coinflip');
-    }
+      if (payout >= HIGH_ROLLER_THRESHOLD) {
+        emitSystemBigWin(winnerUsername, payout, 'coinflip');
+      }
+    }, 1200);
 
-    callback?.({ ok: true, result: coinflipState.lastResult });
+    callback?.({ ok: true });
   });
 
   socket.on('blackjack_start_round', (_payload, callback) => {
@@ -2038,22 +3116,39 @@ io.on('connection', (socket) => {
       socketProfiles.set(socket.id, profile);
     }
 
+    const room = getBlackjackRoom(roomId);
+    if (room.stage === 'playing') {
+      callback?.({ ok: false, error: 'Round already in progress.' });
+      return;
+    }
+
+    const player = room.players.get(socket.id);
+    if (!player) {
+      if (Number.isFinite(Number(profile.balance))) {
+        profile.balance = Number(profile.balance) + amount;
+        socketProfiles.set(socket.id, profile);
+      }
+      callback?.({ ok: false, error: 'Not in blackjack room.' });
+      return;
+    }
+
+    player.bet = amount;
+    player.hands = [];
+    player.activeHandIndex = 0;
+    player.insuranceBet = 0;
+    player.insuranceLocked = false;
+    player.status = 'PLAYER_TURN';
+
     const result = startBlackjackRound(roomId);
 
     if (!result.ok) {
+      player.bet = 0;
       if (Number.isFinite(Number(profile.balance))) {
         profile.balance = Number(profile.balance) + amount;
         socketProfiles.set(socket.id, profile);
       }
       callback?.(result);
       return;
-    }
-
-    const room = getBlackjackRoom(roomId);
-    const player = room.players.get(socket.id);
-    if (player) {
-      player.bet = amount;
-      player.status = 'PLAYER_TURN';
     }
 
     io.to(socket.id).emit('blackjack_state', publicBlackjackState(room, socket.id));
@@ -2095,6 +3190,21 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (action === 'double' || action === 'double_down') {
+      callback?.(applyBlackjackDouble(room, socket.id));
+      return;
+    }
+
+    if (action === 'split') {
+      callback?.(applyBlackjackSplit(room, socket.id));
+      return;
+    }
+
+    if (action === 'insurance') {
+      callback?.(applyBlackjackInsurance(room, socket.id));
+      return;
+    }
+
     callback?.({ ok: false, error: 'Unknown blackjack action.' });
   });
 
@@ -2120,6 +3230,43 @@ io.on('connection', (socket) => {
     callback?.({ ok: true });
   });
 
+  socket.on('poker_buy_in', (payload, callback) => {
+    console.log('Event received: poker_buy_in', payload);
+    const roomId = socket.data.pokerRoomId;
+    const room = getPokerRoom(roomId);
+    const player = room.players.get(socket.id);
+
+    if (!player) {
+      callback?.({ ok: false, error: 'Not in poker room.' });
+      return;
+    }
+
+    const amount = parseInt(String(payload?.amount ?? ''), 10);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      callback?.({ ok: false, error: 'Invalid buy-in amount.' });
+      return;
+    }
+
+    const profile = getSocketProfile(socket.id, username);
+    if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < amount) {
+      callback?.({ ok: false, error: 'Insufficient balance for buy-in.' });
+      return;
+    }
+
+    profile.balance = Number(profile.balance) - amount;
+    socketProfiles.set(socket.id, profile);
+
+    player.buyIn = Number(player.buyIn || 0) + amount;
+    player.seated = true;
+    player.ready = true;
+    player.folded = false;
+    player.actionText = `seated ${player.buyIn}`;
+
+    broadcastPokerState(room.id);
+    startPokerRound(room.id);
+    callback?.({ ok: true, amount });
+  });
+
   socket.on('poker_action', (payload, callback) => {
     console.log('Event received: poker_action', payload);
     const roomId = socket.data.pokerRoomId;
@@ -2136,20 +3283,110 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (!player.seated || Number(player.buyIn || 0) <= 0) {
+      callback?.({ ok: false, error: 'Sit down with buy-in first.' });
+      return;
+    }
+
+    if (room.activePlayerSocketId !== socket.id) {
+      callback?.({ ok: false, error: 'Not your turn.' });
+      return;
+    }
+
     const action = typeof payload?.action === 'string' ? payload.action : 'check';
+    const currentBet = Number(room.currentBet || 0);
+    const playerRoundBet = Number(player.roundBet || 0);
 
     if (action === 'fold') {
       player.folded = true;
       player.actionText = 'folded';
-    } else if (action === 'call') {
-      player.actionText = 'call';
-    } else {
+      room.pendingActionSocketIds.delete(socket.id);
+      room.actedSocketIds.add(socket.id);
+    } else if (action === 'check') {
+      if (playerRoundBet !== currentBet) {
+        callback?.({ ok: false, error: 'Cannot check. Call or fold required.' });
+        return;
+      }
       player.actionText = 'check';
+      room.pendingActionSocketIds.delete(socket.id);
+      room.actedSocketIds.add(socket.id);
+    } else if (action === 'call') {
+      const diff = Math.max(0, currentBet - playerRoundBet);
+      if (diff > Number(player.buyIn || 0)) {
+        callback?.({ ok: false, error: 'Insufficient stack to call.' });
+        return;
+      }
+
+      player.buyIn = Number(player.buyIn || 0) - diff;
+      player.roundBet = playerRoundBet + diff;
+      room.pot = Number(room.pot || 0) + diff;
+      player.actionText = diff > 0 ? `call ${currentBet}` : 'check';
+      room.pendingActionSocketIds.delete(socket.id);
+      room.actedSocketIds.add(socket.id);
+    } else if (action === 'raise') {
+      const requestedRaise = Math.floor(Number(payload?.amount ?? 0));
+      const minimumTarget = currentBet > 0 ? currentBet * 2 : Math.max(POKER_ANTE * 2, 2);
+      if (!Number.isFinite(requestedRaise) || requestedRaise < minimumTarget) {
+        callback?.({ ok: false, error: `Raise must be at least ${minimumTarget}.` });
+        return;
+      }
+
+      if (requestedRaise <= playerRoundBet) {
+        callback?.({ ok: false, error: 'Raise must increase your current bet.' });
+        return;
+      }
+
+      const raiseCost = requestedRaise - playerRoundBet;
+      if (raiseCost > Number(player.buyIn || 0)) {
+        callback?.({ ok: false, error: 'Insufficient stack for raise.' });
+        return;
+      }
+
+      player.buyIn = Number(player.buyIn || 0) - raiseCost;
+      player.roundBet = requestedRaise;
+      room.pot = Number(room.pot || 0) + raiseCost;
+      room.currentBet = requestedRaise;
+      room.minRaise = Math.max(room.minRaise || 0, Math.floor(requestedRaise / 2));
+      player.actionText = `raise ${requestedRaise}`;
+
+      room.pendingActionSocketIds = new Set(
+        room.turnOrder.filter((socketId) => {
+          if (socketId === player.socketId) {
+            return false;
+          }
+
+          const target = room.players.get(socketId);
+          return Boolean(target && !target.folded && target.ready && target.hand.length > 0);
+        })
+      );
+
+      room.players.forEach((otherPlayer) => {
+        if (otherPlayer.socketId !== player.socketId && !otherPlayer.folded && otherPlayer.ready && otherPlayer.hand.length > 0) {
+          otherPlayer.actionText = 'to call';
+        }
+      });
+
+      room.actedSocketIds = new Set([socket.id]);
+    } else {
+      callback?.({ ok: false, error: 'Unknown action.' });
+      return;
     }
 
-    room.actedSocketIds.add(socket.id);
+    const alive = getActivePokerPlayers(room);
+    if (alive.length <= 1) {
+      completePokerShowdown(room);
+      callback?.({ ok: true });
+      return;
+    }
+
+    if (room.pendingActionSocketIds.size === 0) {
+      maybeAdvancePokerStage(room);
+      callback?.({ ok: true });
+      return;
+    }
+
+    assignPokerTurn(room, getNextPokerTurnIndex(room, room.activePlayerIndex));
     broadcastPokerState(room.id);
-    maybeAdvancePokerStage(room);
     callback?.({ ok: true });
   });
 
@@ -2201,10 +3438,8 @@ io.on('connection', (socket) => {
   });
 
   socket.on('admin_broadcast', (payload, callback) => {
-    const profile = getSocketProfile(socket.id, username);
-    const isDanielAdmin = profile.username === 'Daniel' && String(profile.role).toUpperCase() === 'ADMIN';
-    if (!isDanielAdmin) {
-      callback?.({ ok: false, error: 'Unauthorized broadcast sender.' });
+    const permission = checkPermission(socket, 'MODERATOR', callback);
+    if (!permission.ok) {
       return;
     }
 
@@ -2217,7 +3452,7 @@ io.on('connection', (socket) => {
     io.emit('admin_broadcast', {
       message,
       createdAt: Date.now(),
-      from: 'Daniel',
+      from: permission.profile.username,
     });
 
     callback?.({ ok: true });
@@ -2261,6 +3496,11 @@ io.on('connection', (socket) => {
     }
 
     const safeAmount = Math.floor(Number(parsedAmount));
+    const profile = getSocketProfile(socket.id, username);
+    if (!Number.isFinite(Number(profile.balance)) || Number(profile.balance) < safeAmount) {
+      callback?.({ ok: false, error: 'Insufficient balance.' });
+      return;
+    }
 
     const existingBet = roomState.players.get(socket.id);
     if (existingBet && !existingBet.cashedOut) {
@@ -2268,6 +3508,9 @@ io.on('connection', (socket) => {
       callback?.({ ok: false, error: 'Bet already placed for this round.' });
       return;
     }
+
+    profile.balance = Number(profile.balance) - safeAmount;
+    socketProfiles.set(socket.id, profile);
 
     roomState.players.set(socket.id, {
       socketId: socket.id,
@@ -2287,6 +3530,8 @@ io.on('connection', (socket) => {
 
     if (failedToPersist) {
       console.warn(`[crash_place_bet] live room persist failed user=${username} room=${roomId}`);
+      profile.balance = Number(profile.balance) + safeAmount;
+      socketProfiles.set(socket.id, profile);
       roomState.players.delete(socket.id);
       callback?.({ ok: false, error: 'Bet could not be registered in live room state.' });
       return;
@@ -2322,7 +3567,15 @@ io.on('connection', (socket) => {
       return;
     }
 
+    const canceledPlayer = roomState.players.get(socket.id);
     const hadBet = roomState.players.delete(socket.id);
+    if (hadBet && canceledPlayer && Number(canceledPlayer.amount) > 0) {
+      const profile = getSocketProfile(socket.id, username);
+      if (Number.isFinite(Number(profile.balance))) {
+        profile.balance = Number(profile.balance) + Number(canceledPlayer.amount);
+        socketProfiles.set(socket.id, profile);
+      }
+    }
     console.warn(`[crash_cancel_bet] user=${username} room=${roomId} canceled=${hadBet}`);
 
     if (roomState.phase === 'waiting' && getActiveCrashBetCount(roomState) === 0) {
@@ -2354,12 +3607,23 @@ io.on('connection', (socket) => {
     player.cashedAt = roomState.multiplier;
 
     const payout = Number((player.amount * roomState.multiplier).toFixed(2));
+    const profile = getSocketProfile(socket.id, username);
+    if (Number.isFinite(Number(profile.balance))) {
+      profile.balance = Number(profile.balance) + payout;
+      socketProfiles.set(socket.id, profile);
+    }
 
     io.to(socket.id).emit('crash_cashout_result', {
       ok: true,
       payout,
       multiplier: roomState.multiplier,
       mode: 'manual',
+      roomId,
+    });
+
+    io.to(socket.id).emit('crash_cashout_success', {
+      payout,
+      multiplier: roomState.multiplier,
       roomId,
     });
 
@@ -2379,15 +3643,31 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     setUserActivity(socket.id, 'Offline');
 
-    if (coinflipState.openLobby && coinflipState.openLobby.creatorSocketId === socket.id) {
-      const canceledLobbyId = coinflipState.openLobby.id;
-      coinflipState.openLobby = null;
-      emitCoinflipState();
-      io.to(COINFLIP_ROOM_ID).emit('coinflip_canceled', {
-        lobbyId: canceledLobbyId,
-        creatorUsername: username,
-        refundAmount: 0,
+    const disconnectLobbies = coinflipState.openLobbies.filter((lobby) => lobby.creatorSocketId === socket.id);
+    if (disconnectLobbies.length > 0) {
+      const profile = getSocketProfile(socket.id, username);
+      let refundedTotal = 0;
+
+      disconnectLobbies.forEach((lobby) => {
+        refundedTotal += Number(lobby.amount || 0);
+        io.to(COINFLIP_ROOM_ID).emit('coinflip_canceled', {
+          lobbyId: lobby.id,
+          creatorUsername: lobby.creatorUsername,
+          refundAmount: Number(lobby.amount || 0),
+          reason: 'disconnect_refund',
+        });
       });
+
+      coinflipState.openLobbies = coinflipState.openLobbies.filter((lobby) => lobby.creatorSocketId !== socket.id);
+      coinflipState.status = 'waiting';
+
+      if (refundedTotal > 0 && Number.isFinite(Number(profile.balance))) {
+        profile.balance = Number(profile.balance) + refundedTotal;
+        socketProfiles.set(socket.id, profile);
+      }
+
+      console.log(`[coinflip] auto-refund on disconnect user=${username} socketId=${socket.id} lobbies=${disconnectLobbies.length} refunded=${refundedTotal}`);
+      emitCoinflipState();
     }
 
     onlineUsers.delete(socket.id);

@@ -46,7 +46,7 @@ function multiplierToYPercent(value: number) {
 
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
   if (typeof window === 'undefined') return fromEnv ?? 'http://localhost:4001';
   if (fromEnv === 'same-origin') return window.location.origin;
   return fromEnv ?? (window.location.hostname === 'localhost' ? 'http://localhost:4001' : window.location.origin);
@@ -73,6 +73,9 @@ export default function CrashGame() {
   const socketRef = useRef<Socket | null>(null);
   const previousPhaseRef = useRef<'waiting' | 'running' | 'crashed'>('waiting');
   const audioContextRef = useRef<AudioContext | null>(null);
+  const lastCrashTickUpdateRef = useRef(0);
+  const pendingCrashTickRef = useRef<{ multiplier: number; players: CrashPlayer[] } | null>(null);
+  const crashTickFlushTimerRef = useRef<number | null>(null);
 
   // Memoized Values
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
@@ -213,9 +216,45 @@ export default function CrashGame() {
     });
 
     socket.on('crash_tick', (payload: { roomId?: string; multiplier: number; players: CrashPlayer[] }) => {
-      setMultiplier(payload.multiplier);
-      setPlayers(payload.players || []);
-      setPhase('running');
+      pendingCrashTickRef.current = {
+        multiplier: payload.multiplier,
+        players: payload.players || [],
+      };
+
+      const flush = () => {
+        const next = pendingCrashTickRef.current;
+        if (!next) {
+          return;
+        }
+
+        pendingCrashTickRef.current = null;
+        lastCrashTickUpdateRef.current = Date.now();
+        setMultiplier(next.multiplier);
+        setPlayers(next.players);
+        setPhase('running');
+      };
+
+      const now = Date.now();
+      const elapsed = now - lastCrashTickUpdateRef.current;
+      const throttleMs = 100;
+
+      if (elapsed >= throttleMs) {
+        if (crashTickFlushTimerRef.current) {
+          window.clearTimeout(crashTickFlushTimerRef.current);
+          crashTickFlushTimerRef.current = null;
+        }
+        flush();
+        return;
+      }
+
+      if (crashTickFlushTimerRef.current !== null) {
+        return;
+      }
+
+      crashTickFlushTimerRef.current = window.setTimeout(() => {
+        crashTickFlushTimerRef.current = null;
+        flush();
+      }, Math.max(0, throttleMs - elapsed));
     });
 
     socket.on('crash_crashed', (data: CrashCrashedPayload) => {
@@ -238,6 +277,10 @@ export default function CrashGame() {
     });
 
     return () => {
+      if (crashTickFlushTimerRef.current !== null) {
+        window.clearTimeout(crashTickFlushTimerRef.current);
+        crashTickFlushTimerRef.current = null;
+      }
       socket.disconnect();
       socketRef.current = null;
     };

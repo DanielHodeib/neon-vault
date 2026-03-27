@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "db:ui": "prisma studio",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "dev:all": "sh -c 'npm run dev & web=$!; (cd game-server && npm run dev) & game=$!; trap \"kill $web $game\" INT TERM EXIT; wait'",
     "restart:all": "sh -c 'web=$(lsof -ti tcp:3000 2>/dev/null || true); game=$(lsof -ti tcp:4001 2>/dev/null || true); [ -n \"$web\" ] && kill -9 $web || true; [ -n \"$game\" ] && kill -9 $game || true; npm run dev:all'",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "tunnel": "sh ./tunnel-tailscale.sh",
     "tunnel:stop": "sh ./tunnel-tailscale-stop.sh",
@@ -14,12 +15,14 @@
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
     "next": "16.2.0",
     "next-auth": "^5.0.0-beta.29",
+    "prisma": "^6.5.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-hot-toast": "^2.6.0",
@@ -35,7 +38,6 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
-    "prisma": "^6.5.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

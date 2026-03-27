@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 
 function getGameServerUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv =
+    process.env.GAME_SERVER_INTERNAL_URL ??
+    process.env.NEXT_PUBLIC_SOCKET_URL ??
+    process.env.NEXT_PUBLIC_GAME_SERVER_URL;
   if (!fromEnv) {
     return 'http://localhost:4001';
   }

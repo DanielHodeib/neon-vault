@@ -49,12 +49,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           id: user.id,
           name: user.username,
           username: user.username,
-          balance: user.balance,
+          role: user.role,
+          balance: Number(user.balance),
           xp: user.xp,
         } as {
           id: string;
           name: string;
           username: string;
+          role: string;
           balance: number;
           xp: number;
         };
@@ -70,12 +72,14 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const typedUser = user as {
           id: string;
           username: string;
+          role: string;
           balance: number;
           xp: number;
         };
 
         token.userId = typedUser.id;
         token.username = typedUser.username;
+        token.role = typedUser.role;
         token.balance = typedUser.balance;
         token.xp = typedUser.xp;
       }
@@ -98,6 +102,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             (typeof token.name === 'string' ? token.name : '') ??
             session.user.name ??
             '');
+        session.user.role = (token.role as string) ?? 'USER';
         session.user.balance = (token.balance as number) ?? 0;
         session.user.xp = (token.xp as number) ?? 0;
       }

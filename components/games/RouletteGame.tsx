@@ -76,7 +76,7 @@ const COLUMN_MAP: Record<string, Set<number>> = {
 };
 
 function getSocketUrl() {
-  const fromEnv = process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
   if (typeof window === 'undefined') {
     return fromEnv ?? 'http://localhost:4001';
@@ -306,6 +306,7 @@ export default function RouletteGame() {
   const [errorText, setErrorText] = useState('');
   const [rouletteRoomId, setRouletteRoomId] = useState('global');
   const [rouletteRoomMembers, setRouletteRoomMembers] = useState<RouletteRoomMember[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const rouletteRoomIdRef = useRef('global');
   const pendingSpinStakeRef = useRef(0);
@@ -325,6 +326,10 @@ export default function RouletteGame() {
     () => activeBets.reduce((sum, bet) => sum + bet.stake, 0),
     [activeBets]
   );
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   useEffect(() => {
     rouletteRoomIdRef.current = rouletteRoomId;
@@ -702,57 +707,61 @@ export default function RouletteGame() {
               <div className="relative w-72 h-72 mx-auto">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
                 <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
-                <motion.div
-                  animate={{ rotate: rotation }}
-                  transition={{ duration: 1.8, ease: [0.2, 0.9, 0.2, 1] }}
-                  className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
-                >
-                  <svg viewBox="0 0 300 300" className="w-full h-full">
-                    <circle cx="150" cy="150" r="146" fill="#0f172a" />
-                    <circle cx="150" cy="150" r="141" fill="none" stroke="#64748b" strokeWidth="3" />
-                    {WHEEL_NUMBERS.map((num, index) => {
-                      const step = WHEEL_SEGMENT_DEGREES;
-                      const startAngle = index * step - step / 2;
-                      const endAngle = startAngle + step;
-                      const midAngle = startAngle + step / 2;
-                      const textPos = polarToCartesian(150, 150, 122, midAngle);
-                      return (
-                        <g key={`${num}-${index}`}>
-                          <path
-                            d={describeRingSegment(150, 150, 138, 108, startAngle, endAngle)}
-                            fill={getWheelSegmentFill(num)}
-                            stroke="#1e293b"
-                            strokeWidth="1.6"
-                          />
-                          <text
-                            x={textPos.x}
-                            y={textPos.y}
-                            fill={getWheelTextFill(num)}
-                            fontSize="11"
-                            fontWeight="700"
-                            textAnchor="middle"
-                            dominantBaseline="middle"
-                            transform={`rotate(${midAngle + 90}, ${textPos.x}, ${textPos.y})`}
-                          >
-                            {num}
-                          </text>
-                        </g>
-                      );
-                    })}
-                    <circle cx="150" cy="150" r="100" fill="url(#innerTrack)" stroke="#334155" strokeWidth="2" />
-                    <circle cx="150" cy="150" r="64" fill="url(#hubGrad)" stroke="#64748b" strokeWidth="2" />
-                    <defs>
-                      <linearGradient id="innerTrack" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#334155" />
-                        <stop offset="100%" stopColor="#020617" />
-                      </linearGradient>
-                      <linearGradient id="hubGrad" x1="0" y1="0" x2="1" y2="1">
-                        <stop offset="0%" stopColor="#cbd5e1" />
-                        <stop offset="100%" stopColor="#64748b" />
-                      </linearGradient>
-                    </defs>
-                  </svg>
-                </motion.div>
+                {isHydrated ? (
+                  <motion.div
+                    animate={{ rotate: rotation }}
+                    transition={{ duration: 1.8, ease: [0.2, 0.9, 0.2, 1] }}
+                    className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
+                  >
+                    <svg viewBox="0 0 300 300" className="w-full h-full">
+                      <circle cx="150" cy="150" r="146" fill="#0f172a" />
+                      <circle cx="150" cy="150" r="141" fill="none" stroke="#64748b" strokeWidth="3" />
+                      {WHEEL_NUMBERS.map((num, index) => {
+                        const step = WHEEL_SEGMENT_DEGREES;
+                        const startAngle = index * step - step / 2;
+                        const endAngle = startAngle + step;
+                        const midAngle = startAngle + step / 2;
+                        const textPos = polarToCartesian(150, 150, 122, midAngle);
+                        return (
+                          <g key={`${num}-${index}`}>
+                            <path
+                              d={describeRingSegment(150, 150, 138, 108, startAngle, endAngle)}
+                              fill={getWheelSegmentFill(num)}
+                              stroke="#1e293b"
+                              strokeWidth="1.6"
+                            />
+                            <text
+                              x={textPos.x}
+                              y={textPos.y}
+                              fill={getWheelTextFill(num)}
+                              fontSize="11"
+                              fontWeight="700"
+                              textAnchor="middle"
+                              dominantBaseline="middle"
+                              transform={`rotate(${midAngle + 90}, ${textPos.x}, ${textPos.y})`}
+                            >
+                              {num}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      <circle cx="150" cy="150" r="100" fill="url(#innerTrack)" stroke="#334155" strokeWidth="2" />
+                      <circle cx="150" cy="150" r="64" fill="url(#hubGrad)" stroke="#64748b" strokeWidth="2" />
+                      <defs>
+                        <linearGradient id="innerTrack" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#334155" />
+                          <stop offset="100%" stopColor="#020617" />
+                        </linearGradient>
+                        <linearGradient id="hubGrad" x1="0" y1="0" x2="1" y2="1">
+                          <stop offset="0%" stopColor="#cbd5e1" />
+                          <stop offset="100%" stopColor="#64748b" />
+                        </linearGradient>
+                      </defs>
+                    </svg>
+                  </motion.div>
+                ) : (
+                  <div className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900" />
+                )}
                 <div className="absolute left-1/2 top-[9px] -translate-x-1/2 text-[16px] text-slate-100 font-bold tracking-wider">▼</div>
                 <div className="absolute left-1/2 top-[30px] -translate-x-1/2 h-4 w-4 rounded-full bg-white border border-slate-300 shadow-[0_0_14px_rgba(255,255,255,0.6)]" />
               </div>

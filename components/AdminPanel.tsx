@@ -3,7 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 
-type AdminRole = 'USER' | 'BALLER' | 'VIP' | 'ADMIN';
+type AdminRole = 'OWNER' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'USER';
+type AdminTab = 'system' | 'users' | 'moderation';
+
+interface AdminPermissions {
+  systemFinance: boolean;
+  userManagement: boolean;
+  moderationLogs: boolean;
+  canManageRoles: boolean;
+}
 type RankTag =
   | 'BALLER'
   | 'BRONZE'
@@ -62,9 +70,20 @@ interface AdminUser {
   selectedRankTag: RankTag | string;
 }
 
+const VALID_ADMIN_ROLES: AdminRole[] = ['OWNER', 'ADMIN', 'MODERATOR', 'SUPPORT', 'USER'];
+
 export default function AdminPanel() {
   const [hasAdminAccess, setHasAdminAccess] = useState(false);
   const [accessChecked, setAccessChecked] = useState(false);
+  const [currentRole, setCurrentRole] = useState<AdminRole>('USER');
+  const [currentUserId, setCurrentUserId] = useState('');
+  const [permissions, setPermissions] = useState<AdminPermissions>({
+    systemFinance: false,
+    userManagement: false,
+    moderationLogs: false,
+    canManageRoles: false,
+  });
+  const [activeTab, setActiveTab] = useState<AdminTab>('moderation');
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(false);
@@ -84,6 +103,7 @@ export default function AdminPanel() {
   const [passwordDrafts, setPasswordDrafts] = useState<Record<string, string>>({});
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
+
   useEffect(() => {
     let isActive = true;
     void (async () => {
@@ -98,8 +118,29 @@ export default function AdminPanel() {
           return;
         }
 
-        const payload = (await response.json()) as { isAdmin?: boolean };
-        setHasAdminAccess(Boolean(payload.isAdmin));
+        const payload = (await response.json()) as {
+          isAdmin?: boolean;
+          userId?: string;
+          role?: string;
+          canAccessAdminPanel?: boolean;
+          permissions?: Partial<AdminPermissions>;
+        };
+
+        const normalizedRole = VALID_ADMIN_ROLES.includes((payload.role ?? 'USER') as AdminRole)
+          ? (payload.role as AdminRole)
+          : 'USER';
+
+        const nextPermissions: AdminPermissions = {
+          systemFinance: Boolean(payload.permissions?.systemFinance),
+          userManagement: Boolean(payload.permissions?.userManagement),
+          moderationLogs: Boolean(payload.permissions?.moderationLogs),
+          canManageRoles: Boolean(payload.permissions?.canManageRoles),
+        };
+
+        setCurrentUserId(payload.userId ?? '');
+        setCurrentRole(normalizedRole);
+        setPermissions(nextPermissions);
+        setHasAdminAccess(Boolean(payload.canAccessAdminPanel ?? payload.isAdmin));
         setAccessChecked(true);
       } catch {
         if (!isActive) {
@@ -114,6 +155,30 @@ export default function AdminPanel() {
       isActive = false;
     };
   }, []);
+
+  const visibleTabs = useMemo(() => {
+    const tabs: Array<{ key: AdminTab; label: string }> = [];
+    if (permissions.systemFinance) {
+      tabs.push({ key: 'system', label: 'System/Finance' });
+    }
+    if (permissions.userManagement) {
+      tabs.push({ key: 'users', label: 'User Management' });
+    }
+    if (permissions.moderationLogs) {
+      tabs.push({ key: 'moderation', label: 'Moderation/Logs' });
+    }
+    return tabs;
+  }, [permissions]);
+
+  useEffect(() => {
+    if (visibleTabs.length === 0) {
+      return;
+    }
+
+    if (!visibleTabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(visibleTabs[0].key);
+    }
+  }, [activeTab, visibleTabs]);
 
   const loadUsers = useCallback(async () => {
     if (!hasAdminAccess) {
@@ -143,7 +208,7 @@ export default function AdminPanel() {
       setRoleDrafts((prev) => {
         const merged = { ...prev };
         for (const user of nextUsers) {
-          const role = ['USER', 'BALLER', 'VIP', 'ADMIN'].includes(user.role) ? (user.role as AdminRole) : 'USER';
+          const role = VALID_ADMIN_ROLES.includes(user.role as AdminRole) ? (user.role as AdminRole) : 'USER';
           if (!merged[user.id]) {
             merged[user.id] = role;
           }
@@ -401,8 +466,25 @@ export default function AdminPanel() {
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       <h2 className="text-2xl font-bold text-slate-100">Admin Console</h2>
-      <p className="text-sm text-slate-400 mt-1">Dev tools for Daniel ADMIN only.</p>
+      <p className="text-sm text-slate-400 mt-1">Role: {currentRole}</p>
 
+      <div className="mt-4 flex flex-wrap gap-2">
+        {visibleTabs.map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            className={`h-9 px-3 rounded-lg border text-xs font-semibold uppercase ${
+              activeTab === tab.key
+                ? 'border-cyan-500/40 bg-cyan-500/15 text-cyan-200'
+                : 'border-slate-700 bg-slate-900 text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'system' && permissions.systemFinance ? (
       <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Global Announcement</p>
         <div className="flex gap-2">
@@ -420,7 +502,9 @@ export default function AdminPanel() {
           </button>
         </div>
       </div>
+      ) : null}
 
+      {activeTab === 'system' && permissions.systemFinance ? (
       <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Rain Control</p>
         <div className="grid gap-2 sm:grid-cols-[1fr_1fr_1fr_auto]">
@@ -458,7 +542,9 @@ export default function AdminPanel() {
           </button>
         </div>
       </div>
+      ) : null}
 
+      {activeTab === 'users' && permissions.userManagement ? (
       <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
         <div className="flex items-center gap-2">
           <input
@@ -482,7 +568,13 @@ export default function AdminPanel() {
             ? visibleUsers.map((user) => {
                 const isBusy = busyUserId === user.id;
                 const isExpanded = expandedUserId === user.id;
-                const roleLabel = roleDrafts[user.id] ?? (['USER', 'BALLER', 'VIP', 'ADMIN'].includes(user.role) ? (user.role as AdminRole) : 'USER');
+                const roleLabel = roleDrafts[user.id] ?? (VALID_ADMIN_ROLES.includes(user.role as AdminRole) ? (user.role as AdminRole) : 'USER');
+                const userRole = VALID_ADMIN_ROLES.includes(user.role as AdminRole) ? (user.role as AdminRole) : 'USER';
+                const canEditRole =
+                  permissions.canManageRoles &&
+                  userRole !== 'OWNER' &&
+                  user.id !== currentUserId &&
+                  !(currentRole === 'ADMIN' && roleLabel === 'OWNER');
                 return (
                   <div key={user.id} className="px-3 py-3 grid gap-3">
                     <button
@@ -531,21 +623,28 @@ export default function AdminPanel() {
                             placeholder="Username"
                           />
 
-                          <select
-                            value={roleDrafts[user.id] ?? 'USER'}
-                            onChange={(event) =>
-                              setRoleDrafts((prev) => ({
-                                ...prev,
-                                [user.id]: event.target.value as AdminRole,
-                              }))
-                            }
-                            className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
-                          >
-                            <option value="USER">USER</option>
-                            <option value="BALLER">BALLER</option>
-                            <option value="VIP">VIP</option>
-                            <option value="ADMIN">ADMIN</option>
-                          </select>
+                          {canEditRole ? (
+                            <select
+                              value={roleDrafts[user.id] ?? 'USER'}
+                              onChange={(event) =>
+                                setRoleDrafts((prev) => ({
+                                  ...prev,
+                                  [user.id]: event.target.value as AdminRole,
+                                }))
+                              }
+                              className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-100"
+                            >
+                              <option value="USER">USER</option>
+                              <option value="SUPPORT">SUPPORT</option>
+                              <option value="MODERATOR">MODERATOR</option>
+                              <option value="ADMIN">ADMIN</option>
+                              {currentRole === 'OWNER' ? <option value="OWNER">OWNER</option> : null}
+                            </select>
+                          ) : (
+                            <div className="h-9 rounded-lg border border-slate-700 bg-slate-900 px-2 text-slate-400 text-xs uppercase flex items-center">
+                              Role: {roleLabel}
+                            </div>
+                          )}
 
                           <input
                             type="number"
@@ -721,6 +820,42 @@ export default function AdminPanel() {
             : null}
         </div>
       </div>
+      ) : null}
+
+      {activeTab === 'moderation' && permissions.moderationLogs ? (
+        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-2">Moderation / Ban Tools</p>
+          <div className="rounded-lg border border-slate-800 bg-slate-900 divide-y divide-slate-800">
+            {loading ? <p className="px-3 py-4 text-sm text-slate-500">Loading users...</p> : null}
+            {!loading && visibleUsers.length === 0 ? <p className="px-3 py-4 text-sm text-slate-500">No users found.</p> : null}
+            {!loading
+              ? visibleUsers.map((user) => {
+                  const isBusy = busyUserId === user.id;
+                  const roleLabel = VALID_ADMIN_ROLES.includes(user.role as AdminRole) ? (user.role as AdminRole) : 'USER';
+                  const isProtectedTarget = roleLabel === 'OWNER' || (currentRole === 'MODERATOR' && roleLabel === 'ADMIN');
+
+                  return (
+                    <div key={`mod-${user.id}`} className="px-3 py-3 flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-200 truncate">{user.username}</p>
+                        <p className="text-xs text-slate-500">Role: {roleLabel} · {user.isBanned ? 'BANNED' : 'ACTIVE'}</p>
+                      </div>
+                      <button
+                        onClick={() => void handleToggleBan(user.id, user.isBanned)}
+                        disabled={isBusy || isProtectedTarget || user.id === currentUserId}
+                        className={`h-9 px-3 rounded-lg text-xs font-semibold ${
+                          user.isBanned ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-red-600 hover:bg-red-500 text-white'
+                        } disabled:opacity-50 disabled:cursor-not-allowed`}
+                      >
+                        {user.isBanned ? 'Unban' : 'Ban'}
+                      </button>
+                    </div>
+                  );
+                })
+              : null}
+          </div>
+        </div>
+      ) : null}
 
       {notice ? <p className="mt-4 text-sm text-slate-400">{notice}</p> : null}
     </div>

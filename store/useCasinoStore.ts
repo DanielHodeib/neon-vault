@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type VipRank = 'Bronze' | 'Silver' | 'Gold' | 'Neon';
+
 const COMPACT_BALANCE_STORAGE_KEY = 'nvc_use_compact_balance';
 
 function normalizeCurrency(value: number | string): string {
@@ -226,7 +228,7 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
       set({ balance: normalizeCurrency(currentBalance - amountNum) });
 
       void get()
-        .persistWalletAction('bet', safeAmount)
+        .persistWalletAction('bet', amountNum)
         .then(async (result) => {
           if (!result.ok) {
             await get().syncBalanceFromServer();
@@ -242,18 +244,18 @@ export const useCasinoStore = create<CasinoStore>((set, get) => ({
   },
   addWin: (amount, winMeta) => {
     const safeAmount = normalizeCurrency(Number.isFinite(amount) ? amount : 0);
-    if (safeAmount <= 0) {
+    const amountNum = parseFloat(safeAmount);
+    if (amountNum <= 0) {
       return;
     }
 
     set((state) => {
       const currentBalance = parseFloat(state.balance);
-      const amountNum = parseFloat(safeAmount);
       return { balance: normalizeCurrency(currentBalance + amountNum) };
     });
 
     void get()
-      .persistWalletAction('win', safeAmount, winMeta)
+      .persistWalletAction('win', amountNum, winMeta)
       .then(async (result) => {
         if (!result.ok) {
           await get().syncBalanceFromServer();
