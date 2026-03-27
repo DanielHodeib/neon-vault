@@ -47,7 +47,6 @@ import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
 import GlobalEventBanner from '@/components/GlobalEventBanner';
-import LegalFooter from '@/components/LegalFooter';
 import CorporateFooter from '@/components/CorporateFooter';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
@@ -2687,12 +2686,6 @@ export default function MainHubRealtime({
                         </div>
                       </>
                     )}
-
-                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-                      <p className="font-semibold text-slate-100">Legal</p>
-                      <p className="mt-1 text-xs text-slate-500">Quick access to compliance and legal information.</p>
-                      <LegalFooter className="mt-3" />
-                    </div>
 
                     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
                       <p className="text-sm text-slate-400">Save current preferences</p>

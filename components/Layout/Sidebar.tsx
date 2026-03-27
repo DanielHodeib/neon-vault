@@ -2,7 +2,6 @@
 
 import Link from 'next/link';
 import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane, Users, LifeBuoy } from 'lucide-react';
-import LegalFooter from '@/components/LegalFooter';
 
 type SidebarItem = {
   label: string;
@@ -121,8 +120,6 @@ export default function Sidebar({
         >
           {collapsed ? 'F' : dailyFaucetClaimed ? 'Faucet Claimed' : 'Claim Daily Faucet (+5000)'}
         </button>
-
-        {!collapsed ? <LegalFooter className="mt-3" /> : null}
       </div>
     </aside>
   );
