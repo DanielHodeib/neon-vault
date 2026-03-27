@@ -90,6 +90,7 @@ export default function SupportPanel({
   const [categoryDraft, setCategoryDraft] = useState(CATEGORY_OPTIONS[0]);
   const [ticketDraft, setTicketDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
 
   const isStaff = useMemo(() => STAFF_ROLES.has(String(role ?? '').toUpperCase()), [role]);
   const shouldShowAllTickets = useMemo(
@@ -97,6 +98,13 @@ export default function SupportPanel({
     [role]
   );
   const [staffMode, setStaffMode] = useState(() => shouldShowAllTickets);
+
+  const filteredTickets = useMemo(() => {
+    if (statusFilter === 'ALL') {
+      return tickets;
+    }
+    return tickets.filter((t) => t.status === statusFilter);
+  }, [tickets, statusFilter]);
 
   const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
@@ -370,6 +378,49 @@ export default function SupportPanel({
     }
   };
 
+  const handleDeleteTicket = async () => {
+    if (!selectedTicketId || !thread) {
+      return;
+    }
+
+    // Check if user can delete (ticket owner or staff)
+    const isTicketOwner = String(thread.user?.username ?? '').toLowerCase() === username.toLowerCase();
+    if (!isStaff && !isTicketOwner) {
+      toast.error('You cannot delete this ticket.');
+      return;
+    }
+
+    // Confirm deletion
+    const confirmed = window.confirm('Are you sure you want to delete this ticket? This action cannot be undone.');
+    if (!confirmed) {
+      return;
+    }
+
+    const ticketId = selectedTicketId;
+    setSubmitting(true);
+
+    try {
+      const response = await fetch(`/api/support/tickets/${ticketId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const payload = (await response.json()) as { error?: string };
+        toast.error(payload.error ?? 'Failed to delete ticket.');
+        return;
+      }
+
+      toast.success('Ticket deleted.');
+      setSelectedTicketId('');
+      setThread(null);
+      void loadTickets();
+    } catch {
+      toast.error('Failed to delete ticket.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col bg-slate-900 text-slate-200">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 px-4 py-3">
@@ -400,13 +451,30 @@ export default function SupportPanel({
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
         <aside className="w-full shrink-0 rounded-xl border border-slate-800 bg-slate-950/60 lg:w-[340px]">
-          <div className="border-b border-slate-800 px-3 py-2 text-xs uppercase tracking-[0.16em] text-slate-400">
-            {staffMode ? 'All Tickets' : 'Your Tickets'}
+          <div className="border-b border-slate-800 px-3 py-3">
+            <div className="mb-2 text-xs uppercase tracking-[0.16em] text-slate-400">
+              {staffMode ? 'All Tickets' : 'Your Tickets'}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(['ALL', 'OPEN', 'IN_PROGRESS', 'ANSWERED', 'CLOSED'] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`rounded-md border px-2 py-1 text-[10px] font-bold uppercase transition ${statusFilter === status ? 'border-cyan-500/60 bg-cyan-500/20 text-cyan-200' : 'border-slate-700 bg-slate-800/50 text-slate-400 hover:text-slate-300'}`}
+                >
+                  {status === 'ALL' ? 'All' : status.replace('_', ' ')}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="max-h-[38vh] overflow-y-auto lg:max-h-none lg:h-[calc(100%-37px)]">
+          <div className="max-h-[38vh] overflow-y-auto lg:max-h-none lg:h-[calc(100%-60px)]">
             {loadingTickets ? <p className="px-3 py-4 text-sm text-slate-400">Loading tickets...</p> : null}
             {!loadingTickets && tickets.length === 0 ? <p className="px-3 py-4 text-sm text-slate-500">No tickets yet.</p> : null}
-            {tickets.map((ticket) => {
+            {!loadingTickets && filteredTickets.length === 0 && tickets.length > 0 ? (
+              <p className="px-3 py-4 text-sm text-slate-500">No tickets match this filter.</p>
+            ) : null}
+            {filteredTickets.map((ticket) => {
               const isActive = ticket.id === selectedTicketId;
               return (
                 <button
@@ -466,6 +534,18 @@ export default function SupportPanel({
                     ))}
                   </div>
                 ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleDeleteTicket();
+                    }}
+                    disabled={submitting}
+                    className="h-8 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-bold uppercase text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-60"
+                  >
+                    Delete Ticket
+                  </button>
+                </div>
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
