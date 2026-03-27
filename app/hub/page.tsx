@@ -3,7 +3,20 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import MainHub from '@/components/Layout/MainHub';
 
-type HubTab = 'crash' | 'crash-aviator' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
+type HubTab =
+  | 'crash'
+  | 'crash-aviator'
+  | 'slots'
+  | 'blackjack'
+  | 'roulette'
+  | 'poker'
+  | 'coinflip'
+  | 'friends'
+  | 'leaderboard'
+  | 'quests'
+  | 'support'
+  | 'settings'
+  | 'admin';
 
 const ALLOWED_HUB_TABS = new Set<HubTab>([
   'crash',
@@ -16,6 +29,7 @@ const ALLOWED_HUB_TABS = new Set<HubTab>([
   'friends',
   'leaderboard',
   'quests',
+  'support',
   'settings',
   'admin',
 ]);

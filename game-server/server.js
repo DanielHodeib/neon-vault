@@ -5,11 +5,13 @@ const { Server } = require('socket.io');
 
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 4001);
+const CORS_ORIGIN = process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
   .filter(Boolean);
+const VERCEL_FRONTEND_ORIGIN = typeof process.env.VERCEL_FRONTEND_ORIGIN === 'string' ? process.env.VERCEL_FRONTEND_ORIGIN.trim() : '';
 const ROOM_PREFIX = 'crash:';
 const POKER_ROOM_PREFIX = 'poker:';
 const BLACKJACK_ROOM_PREFIX = 'blackjack:';
@@ -46,7 +48,14 @@ const RANKS = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 
 const app = express();
 
-const allowedOrigins = new Set([CLIENT_ORIGIN, ...CLIENT_ORIGINS, 'http://localhost:3000', 'http://127.0.0.1:3000']);
+const allowedOrigins = new Set([
+  CORS_ORIGIN,
+  CLIENT_ORIGIN,
+  ...CLIENT_ORIGINS,
+  ...(VERCEL_FRONTEND_ORIGIN ? [VERCEL_FRONTEND_ORIGIN] : []),
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+]);
 
 function isLanHost(hostname) {
   // Allow localhost, private IPs, and common tunnel domains.
@@ -69,6 +78,8 @@ function isAllowedOrigin(origin) {
     return false;
   }
 }
+
+let isShuttingDown = false;
 
 app.use(cors({
   origin(origin, callback) {
@@ -235,6 +246,36 @@ async function callFriendsSocketApi(action, payload) {
     };
   } catch {
     return { ok: false, error: 'Social API unreachable.' };
+  }
+}
+
+async function callSupportSocketApi(action, payload) {
+  const token = getInternalToken();
+
+  try {
+    const response = await fetch(`${APP_INTERNAL_URL}/api/internal/support/socket`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'x-internal-token': token } : {}),
+      },
+      body: JSON.stringify({ action, ...payload }),
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: typeof data?.error === 'string' ? data.error : 'Support API request failed.',
+      };
+    }
+
+    return {
+      ok: true,
+      ...data,
+    };
+  } catch {
+    return { ok: false, error: 'Support API unreachable.' };
   }
 }
 
@@ -2107,6 +2148,8 @@ function attachPokerSocket(socket, roomId, username) {
       });
       broadcastPokerState(existingRoom.id);
     }
+
+    broadcastPokerState(existingRoom.id);
     return existingRoom;
   }
 
@@ -2223,7 +2266,9 @@ function attachBlackjackSocket(socket, roomId, username, blackjackUserId) {
   removeBlackjackGhostUsers(socket, blackjackUserId);
 
   if (previousRoomId === sanitized) {
-    return getBlackjackRoom(sanitized);
+    const existingRoom = getBlackjackRoom(sanitized);
+    broadcastBlackjackState(existingRoom.id);
+    return existingRoom;
   }
 
   detachBlackjackSocket(socket, previousRoomId);
@@ -2310,7 +2355,7 @@ function spinRouletteResult() {
   };
 }
 
-setInterval(() => {
+const crashEngineInterval = setInterval(() => {
   const rooms = Array.from(crashRooms.values());
 
   rooms.forEach((room) => {
@@ -2804,6 +2849,104 @@ io.on('connection', (socket) => {
     });
 
     callback?.({ ok: true, friendship: result.friendship });
+  });
+
+  socket.on('create_ticket', async (payload, callback) => {
+    const subject = typeof payload?.subject === 'string' ? payload.subject.trim() : '';
+    const category = typeof payload?.category === 'string' ? payload.category.trim() : '';
+    const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
+
+    if (!subject || !category || !content) {
+      callback?.({ ok: false, error: 'subject, category and content are required.' });
+      return;
+    }
+
+    const result = await callSupportSocketApi('create_ticket', {
+      senderUsername: username,
+      subject,
+      category,
+      content,
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    io.emit('support_ticket_created', {
+      ticketId: result.ticket?.id,
+      createdBy: username,
+    });
+
+    callback?.({ ok: true, ticket: result.ticket });
+  });
+
+  socket.on('send_ticket_message', async (payload, callback) => {
+    const ticketId = typeof payload?.ticketId === 'string' ? payload.ticketId.trim() : '';
+    const content = typeof payload?.content === 'string' ? payload.content.trim() : '';
+
+    if (!ticketId || !content) {
+      callback?.({ ok: false, error: 'ticketId and content are required.' });
+      return;
+    }
+
+    const result = await callSupportSocketApi('send_ticket_message', {
+      senderUsername: username,
+      ticketId,
+      content,
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    io.emit('support_ticket_message', {
+      ticketId,
+      senderUsername: username,
+      status: result.status,
+    });
+
+    if (result.message?.isStaffReply && typeof result.ticketOwnerUsername === 'string' && result.ticketOwnerUsername.trim()) {
+      const ownerSocketIds = getSocketIdsByUsername(result.ticketOwnerUsername).filter((socketId) => socketId !== socket.id);
+      ownerSocketIds.forEach((socketId) => {
+        io.to(socketId).emit('ticket_reply_received', {
+          ticketId,
+          message: `Support replied to ticket ${ticketId.slice(0, 8)}...`,
+        });
+      });
+    }
+
+    callback?.({ ok: true, message: result.message, status: result.status });
+  });
+
+  socket.on('update_ticket_status', async (payload, callback) => {
+    const ticketId = typeof payload?.ticketId === 'string' ? payload.ticketId.trim() : '';
+    const status = typeof payload?.status === 'string' ? payload.status.trim().toUpperCase() : '';
+
+    if (!ticketId || !status) {
+      callback?.({ ok: false, error: 'ticketId and status are required.' });
+      return;
+    }
+
+    const result = await callSupportSocketApi('update_ticket_status', {
+      senderUsername: username,
+      ticketId,
+      status,
+    });
+
+    if (!result.ok) {
+      callback?.(result);
+      return;
+    }
+
+    io.emit('support_ticket_status_updated', {
+      ticketId,
+      status: result.ticket?.status ?? status,
+      updatedBy: username,
+    });
+
+    callback?.({ ok: true, ticket: result.ticket });
   });
 
   socket.on('get_online_friends', async (payload, callback) => {
@@ -3701,3 +3844,87 @@ io.on('connection', (socket) => {
 server.listen(PORT, HOST, () => {
   console.log(`Neon Vault game server running on http://${HOST}:${PORT}`);
 });
+
+function settleCrashRoomsForShutdown() {
+  crashRooms.forEach((room) => {
+    if (room.crashResetTimer) {
+      clearTimeout(room.crashResetTimer);
+      room.crashResetTimer = null;
+    }
+
+    if (room.phase === 'running') {
+      room.phase = 'crashed';
+      room.resolvingCrash = false;
+      room.crashPoint = Number(room.multiplier || room.crashPoint || 1);
+      room.history = [room.crashPoint, ...room.history].slice(0, 16);
+      emitToCrashRoom(room.id, 'crash_crashed', {
+        roomId: room.id,
+        roundId: room.roundId,
+        crashPoint: room.crashPoint,
+        history: room.history,
+        players: publicCrashPlayers(room),
+      });
+    }
+
+    room.roundStartAt = 0;
+    broadcastCrashState(room.id);
+  });
+}
+
+function settleRouletteRoomsForShutdown() {
+  rouletteRooms.forEach((room) => {
+    io.to(rouletteChannel(room.id)).emit('roulette_server_shutdown', {
+      roomId: room.id,
+      message: 'Server restarting. Reconnecting shortly...',
+      at: Date.now(),
+    });
+    broadcastRouletteRoomMembers(room.id);
+  });
+}
+
+function settlePokerRoomsForShutdown() {
+  pokerRooms.forEach((room) => {
+    clearPokerTurnTimer(room);
+    broadcastPokerState(room.id);
+  });
+}
+
+function gracefulShutdown(signal) {
+  if (isShuttingDown) {
+    return;
+  }
+
+  isShuttingDown = true;
+  console.log(`[shutdown] Received ${signal}. Starting graceful shutdown...`);
+
+  clearInterval(crashEngineInterval);
+  stopRainTimers();
+
+  settleCrashRoomsForShutdown();
+  settleRouletteRoomsForShutdown();
+  settlePokerRoomsForShutdown();
+
+  io.emit('server_shutdown', {
+    reason: 'restart',
+    reconnecting: true,
+    signal,
+    at: Date.now(),
+  });
+
+  const forceExitTimer = setTimeout(() => {
+    console.error('[shutdown] Timed out waiting for graceful shutdown. Forcing exit.');
+    process.exit(1);
+  }, 12000);
+  forceExitTimer.unref();
+
+  server.close(() => {
+    io.close(() => {
+      clearTimeout(forceExitTimer);
+      console.log('[shutdown] Graceful shutdown complete.');
+      process.exit(0);
+    });
+  });
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));

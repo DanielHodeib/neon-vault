@@ -40,18 +40,22 @@ import PokerFriendsGame from '@/components/games/PokerFriendsGame';
 import CoinflipGame from '@/components/games/CoinflipGame';
 import CyberAviator from '@/components/games/CyberAviator';
 import Friends from '@/components/Friends';
+import SupportPanel from '@/components/SupportPanel';
+import SendMoneyModal from '@/components/SendMoneyModal';
 import Sidebar from '@/components/Layout/Sidebar';
 import LeaderboardPanel from '@/components/LeaderboardPanel';
 import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
+import LegalFooter from '@/components/LegalFooter';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
+import { getRoleBadge } from '@/lib/roleBadge';
 import { canUseRankTag, getRankColor, RANKS, type RankTag } from '@/lib/ranks';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
 const AdminPanel = dynamic(() => import('@/components/AdminPanel'));
 
-type Tab = 'crash' | 'crash-aviator' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'settings' | 'admin';
+type Tab = 'crash' | 'crash-aviator' | 'slots' | 'blackjack' | 'roulette' | 'poker' | 'coinflip' | 'friends' | 'leaderboard' | 'quests' | 'support' | 'settings' | 'admin';
 type PokerMode = 'solo' | 'friends';
 type SettingsSection = 'overview' | 'appearance' | 'gameplay' | 'privacy' | 'security';
 
@@ -95,12 +99,22 @@ interface FriendSummary {
   friendshipId: string;
   userId: string;
   username: string;
+  role?: string;
+}
+
+interface OnlinePlayerSummary {
+  userId?: string | null;
+  username: string;
+  role?: string | null;
+  online?: boolean;
+  activity?: string;
 }
 
 interface BlockSummary {
   blockId: string;
   userId: string;
   username: string;
+  role?: string;
 }
 
 interface SettingsPayload {
@@ -117,6 +131,7 @@ type SuggestionType = 'mention' | 'emoji';
 
 interface PublicProfileData {
   username: string;
+  role?: string;
   balance: number;
   xp: number;
   favoriteGame: string;
@@ -262,6 +277,7 @@ export default function MainHubRealtime({
   const [isMobileViewport, setIsMobileViewport] = useState(false);
   const [socketConnected, setSocketConnected] = useState(false);
   const [hadSocketConnection, setHadSocketConnection] = useState(false);
+  const [socketReconnecting, setSocketReconnecting] = useState(false);
 
   const [crashState, setCrashState] = useState<CrashState>({
     phase: 'waiting',
@@ -288,7 +304,7 @@ export default function MainHubRealtime({
   const [pokerMode, setPokerMode] = useState<PokerMode>('friends');
 
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
-  const [presenceByUsername, setPresenceByUsername] = useState<Record<string, { online: boolean; activity: string }>>({});
+  const [presenceByUsername, setPresenceByUsername] = useState<Record<string, { online: boolean; activity: string; userId?: string | null; role?: string | null }>>({});
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatInputCaret, setChatInputCaret] = useState(0);
@@ -330,6 +346,8 @@ export default function MainHubRealtime({
   const [selectedProfile, setSelectedProfile] = useState<PublicProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [showSendMoneyModal, setShowSendMoneyModal] = useState(false);
+  const [moneyTarget, setMoneyTarget] = useState<{ userId: string; username: string; role?: string; balance: number } | null>(null);
   const [chatRole, setChatRole] = useState('USER');
   const [chatClanTag, setChatClanTag] = useState<string | null>(null);
   const [isKing, setIsKing] = useState(false);
@@ -395,6 +413,20 @@ export default function MainHubRealtime({
 
     return deduped;
   }, [onlineUsers]);
+  const uniqueOnlinePlayers = useMemo<OnlinePlayerSummary[]>(
+    () =>
+      uniqueOnlineUsers.map((username) => {
+        const presence = presenceByUsername[username.toLowerCase()];
+        return {
+          username,
+          userId: presence?.userId ?? null,
+          role: presence?.role ?? null,
+          online: presence?.online ?? true,
+          activity: presence?.activity ?? 'Hub',
+        };
+      }),
+    [presenceByUsername, uniqueOnlineUsers]
+  );
   const onlineUsersSet = useMemo(() => new Set(uniqueOnlineUsers.map((name) => name.toLowerCase())), [uniqueOnlineUsers]);
   const hasDanielFriend = useMemo(
     () => friendsAccepted.some((friend) => friend.username.trim().toLowerCase() === 'daniel'),
@@ -709,10 +741,10 @@ export default function MainHubRealtime({
       }
 
       const payload = (await response.json()) as {
-        users?: Array<{ username: string; activity?: string; online?: boolean }>;
+        users?: Array<{ username: string; activity?: string; online?: boolean; userId?: string | null; role?: string | null }>;
       };
 
-      const next: Record<string, { online: boolean; activity: string }> = {};
+      const next: Record<string, { online: boolean; activity: string; userId?: string | null; role?: string | null }> = {};
       for (const user of payload.users ?? []) {
         const username = String(user?.username ?? '').trim();
         if (!username) {
@@ -722,6 +754,8 @@ export default function MainHubRealtime({
         next[username.toLowerCase()] = {
           online: Boolean(user?.online),
           activity: String(user?.activity ?? 'Hub').trim() || 'Hub',
+          userId: typeof user?.userId === 'string' ? user.userId : null,
+          role: typeof user?.role === 'string' ? user.role : null,
         };
       }
 
@@ -911,8 +945,12 @@ export default function MainHubRealtime({
     const connectHandler = () => {
       setSocketConnected(true);
       setHadSocketConnection(true);
+      setSocketReconnecting(false);
     };
-    const disconnectStatusHandler = () => setSocketConnected(false);
+    const disconnectStatusHandler = () => {
+      setSocketConnected(false);
+      setSocketReconnecting(true);
+    };
     const disconnectRecoveryHandler = async () => {
       if (crashBetAckTimeoutRef.current !== null) {
         window.clearTimeout(crashBetAckTimeoutRef.current);
@@ -936,7 +974,10 @@ export default function MainHubRealtime({
       setHasBet(false);
     };
 
-    const onlineUsersHandler = (users: string[]) => setOnlineUsers(users ?? []);
+    const onlineUsersHandler = (users: string[]) => {
+      setOnlineUsers(users ?? []);
+      void loadPresence();
+    };
     const chatHistoryHandler = (history: ChatMessage[]) => setChatMessages(history);
     const chatMessageHandler = (message: ChatMessage) => {
       setChatMessages((prev) => [...prev, message].slice(-60));
@@ -965,6 +1006,11 @@ export default function MainHubRealtime({
         return;
       }
       toast.success(message, { id: `notify-${message}` });
+    };
+
+    const ticketReplyHandler = (payload: { message?: string; ticketId?: string }) => {
+      const message = typeof payload?.message === 'string' ? payload.message.trim() : 'Support replied to your ticket.';
+      toast.success(message, { id: `support-reply-${payload?.ticketId ?? Date.now()}` });
     };
 
     const globalNotificationHandler = (payload: { message?: string }) => {
@@ -1162,14 +1208,30 @@ export default function MainHubRealtime({
       }
     };
 
+    const reconnectAttemptHandler = () => setSocketReconnecting(true);
+    const reconnectErrorHandler = () => setSocketReconnecting(true);
+    const reconnectFailedHandler = () => {
+      setSocketConnected(false);
+      setSocketReconnecting(true);
+    };
+    const reconnectHandler = () => {
+      setSocketConnected(true);
+      setSocketReconnecting(false);
+    };
+
     socket.on('connect', connectHandler);
     socket.on('disconnect', disconnectStatusHandler);
     socket.on('disconnect', disconnectRecoveryHandler);
+    socket.io.on('reconnect_attempt', reconnectAttemptHandler);
+    socket.io.on('reconnect_error', reconnectErrorHandler);
+    socket.io.on('reconnect_failed', reconnectFailedHandler);
+    socket.io.on('reconnect', reconnectHandler);
     socket.on('online_users', onlineUsersHandler);
     socket.on('chat_history', chatHistoryHandler);
     socket.on('chat_message', chatMessageHandler);
     socket.on('chat_mention', chatMentionHandler);
     socket.on('notification', notificationHandler);
+    socket.on('ticket_reply_received', ticketReplyHandler);
     socket.on('global_notification', globalNotificationHandler);
     socket.on('admin_broadcast', adminBroadcastHandler);
     socket.on('rain_started', rainStartedHandler);
@@ -1190,11 +1252,16 @@ export default function MainHubRealtime({
       socket.off('connect', connectHandler);
       socket.off('disconnect', disconnectStatusHandler);
       socket.off('disconnect', disconnectRecoveryHandler);
+      socket.io.off('reconnect_attempt', reconnectAttemptHandler);
+      socket.io.off('reconnect_error', reconnectErrorHandler);
+      socket.io.off('reconnect_failed', reconnectFailedHandler);
+      socket.io.off('reconnect', reconnectHandler);
       socket.off('online_users', onlineUsersHandler);
       socket.off('chat_history', chatHistoryHandler);
       socket.off('chat_message', chatMessageHandler);
       socket.off('chat_mention', chatMentionHandler);
       socket.off('notification', notificationHandler);
+      socket.off('ticket_reply_received', ticketReplyHandler);
       socket.off('global_notification', globalNotificationHandler);
       socket.off('admin_broadcast', adminBroadcastHandler);
       socket.off('rain_started', rainStartedHandler);
@@ -1217,7 +1284,7 @@ export default function MainHubRealtime({
         announcementTimeoutRef.current = null;
       }
     };
-  }, [addWin, chatClanTag, chatRole, commitPendingCrashBet, isCurrentCrashPlayer, refundCommittedCrashBet, setAnnouncement, syncBalanceFromServer]);
+  }, [addWin, chatClanTag, chatRole, commitPendingCrashBet, isCurrentCrashPlayer, loadPresence, refundCommittedCrashBet, setAnnouncement, syncBalanceFromServer]);
 
   useEffect(() => {
     const socket = socketRef.current;
@@ -1632,6 +1699,46 @@ export default function MainHubRealtime({
     void loadFriends();
   };
 
+  const handleQuickAddFriendFromOnline = async (targetUserId: string, targetUsername: string) => {
+    const response = await fetch('/api/friends', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetUserId }),
+    });
+
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) {
+      setFriendNotice(payload.error ?? 'Could not send friend request.');
+      return { ok: false };
+    }
+
+    setFriendNotice(`Friend request sent to ${targetUsername}.`);
+    toast.success(`Anfrage an ${targetUsername} gesendet!`);
+
+    const socket = socketRef.current;
+    if (socket?.connected) {
+      socket.emit('send_friend_request', { receiverUserId: targetUserId, receiverUsername: targetUsername });
+    }
+
+    setPendingOutgoing((current) => {
+      const exists = current.some((entry) => entry.username.trim().toLowerCase() === targetUsername.trim().toLowerCase());
+      if (exists) {
+        return current;
+      }
+
+      return [
+        {
+          friendshipId: `pending-${targetUserId}`,
+          userId: targetUserId,
+          username: targetUsername,
+        },
+        ...current,
+      ];
+    });
+
+    return { ok: true };
+  };
+
   const handleRespondFriendRequest = async (friendshipId: string, action: 'accept' | 'decline') => {
     const response = await fetch('/api/friends/respond', {
       method: 'POST',
@@ -1705,43 +1812,48 @@ export default function MainHubRealtime({
     void loadFriends();
   };
 
-  const handleSendMoneyToFriend = async (targetUserId: string, targetUsername: string) => {
-    const rawAmount = window.prompt(`Wie viel NVC möchtest du an ${targetUsername} senden?`, '100');
-    if (!rawAmount) {
-      return;
-    }
+  const handleSendMoneyToFriend = async (targetUserId: string, targetUsername: string, targetRole?: string) => {
+    const numericBalance = typeof balance === 'string' ? parseFloat(balance) : balance;
+    setMoneyTarget({ userId: targetUserId, username: targetUsername, role: targetRole, balance: numericBalance });
+    setShowSendMoneyModal(true);
+  };
 
-    const amount = Math.floor(Number(rawAmount));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setFriendNotice('Please enter a valid amount greater than 0.');
+  const handleSendMoneyConfirm = async (amount: number, message: string) => {
+    if (!moneyTarget) {
       return;
     }
 
     const response = await fetch('/api/friends/transfer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ targetUserId, amount }),
+      body: JSON.stringify({ targetUserId: moneyTarget.userId, amount, message }),
     });
+
+    setShowSendMoneyModal(false);
+    setMoneyTarget(null);
+
+    if (!response.ok) {
+      const text = await response.text();
+      const payload = text ? (JSON.parse(text) as { error?: string }) : { error: 'Network error' };
+      setFriendNotice(payload.error ?? 'Could not send money.');
+      return;
+    }
 
     const payload = (await response.json()) as {
       error?: string;
       receiverUsername?: string;
     };
 
-    if (!response.ok) {
-      setFriendNotice(payload.error ?? 'Could not send money.');
-      return;
-    }
-
     await syncBalanceFromServer();
-    setFriendNotice(`Sent ${amount} NVC to ${targetUsername}.`);
-    toast.success(`${amount} NVC an ${targetUsername} gesendet!`);
+    setFriendNotice(`Sent ${amount} NVC to ${moneyTarget.username}.`);
+    toast.success(`${amount} NVC an ${moneyTarget.username} gesendet!`);
 
     const socket = socketRef.current;
     if (socket?.connected && payload.receiverUsername) {
+      const displayMessage = message || 'Du hast NVC erhalten!';
       socket.emit('friend_transfer_notification', {
         receiverUsername: payload.receiverUsername,
-        message: 'Du hast NVC erhalten!',
+        message: displayMessage,
       });
     }
   };
@@ -1943,8 +2055,20 @@ export default function MainHubRealtime({
   };
 
   return (
-    <div className={`hub-root h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
+    <div className={`hub-root h-[100dvh] max-h-screen w-full ${themeSurfaceClass} text-slate-200 font-sans flex overflow-hidden`}>
       <AnnouncementOverlay message={announcement} />
+      {showSendMoneyModal && moneyTarget ? (
+        <SendMoneyModal
+          targetUsername={moneyTarget.username}
+          targetRole={moneyTarget.role}
+          balance={moneyTarget.balance}
+          onConfirm={handleSendMoneyConfirm}
+          onCancel={() => {
+            setShowSendMoneyModal(false);
+            setMoneyTarget(null);
+          }}
+        />
+      ) : null}
       {mobileSidebarOpen ? (
         <button
           type="button"
@@ -1965,7 +2089,7 @@ export default function MainHubRealtime({
         onClaimFaucet={handleFaucet}
       />
 
-      <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0">
+      <main className="hub-main flex-1 flex flex-col min-h-0 min-w-0 max-h-screen">
         <header className="hub-header h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 lg:px-8 z-10 gap-3">
           <div className="flex items-center gap-2 text-slate-400">
             <button
@@ -1976,8 +2100,11 @@ export default function MainHubRealtime({
             >
               <Menu size={18} />
             </button>
-            <ShieldCheck size={18} className="text-emerald-500" />
-            <span className="text-sm font-medium">{socketConnected ? 'Realtime Connected' : 'Realtime Offline'}</span>
+            <ShieldCheck size={18} className={socketConnected ? 'text-emerald-500' : socketReconnecting ? 'text-red-400' : 'text-slate-500'} />
+            <span className={`text-sm font-medium ${socketConnected ? 'text-emerald-300' : socketReconnecting ? 'text-red-300' : 'text-slate-400'}`}>
+              {socketConnected ? 'Realtime Connected' : socketReconnecting ? 'Realtime Reconnecting...' : 'Realtime Offline'}
+            </span>
+            {socketReconnecting ? <span className="h-3.5 w-3.5 rounded-full border-2 border-red-300/60 border-t-transparent animate-spin" aria-hidden /> : null}
           </div>
 
           <div className="flex items-center gap-3 lg:gap-4 min-w-0">
@@ -2003,7 +2130,7 @@ export default function MainHubRealtime({
             )}
             <div className="flex items-center gap-3 bg-slate-950 border border-slate-800 px-3 lg:px-4 py-2 rounded-lg shrink-0">
               <Wallet size={16} className="text-slate-400" />
-              <span suppressHydrationWarning className="font-mono text-lg font-bold text-white">
+              <span suppressHydrationWarning className="font-mono text-base font-bold text-white">
                 {isMounted ? formatUserBalance(balance, useCompactBalance) : '0'}
               </span>
               <span className="text-sm font-bold text-blue-500">NVC</span>
@@ -2027,11 +2154,11 @@ export default function MainHubRealtime({
 
         {hadSocketConnection && !socketConnected ? (
           <div className="mx-4 lg:mx-6 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-medium text-amber-200">
-            Verbindung zum Server verloren. Versuche neu zu verbinden...
+            Verbindung zum Server verloren. Reconnecting...
           </div>
         ) : null}
 
-        <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-3 lg:p-6 gap-3 lg:gap-4 overflow-hidden">
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-3 lg:p-4 gap-3 lg:gap-4 xl:gap-2 overflow-hidden lg:justify-center">
           <div className="hub-panel relative flex-1 min-h-0 min-w-0 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -2046,14 +2173,14 @@ export default function MainHubRealtime({
             )}
 
             {activeTab === 'blackjack' && (
-              <div className="flex-1 min-h-0 min-w-0 overflow-auto">
-                <div className="min-w-[860px] sm:min-w-[920px] md:min-w-0 origin-top scale-[0.82] sm:scale-[0.92] md:scale-100">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <div className="h-full">
                   <BlackjackGame username={effectiveUsername} />
                 </div>
               </div>
             )}
             {activeTab === 'roulette' && (
-              <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <RouletteGame />
               </div>
             )}
@@ -2063,7 +2190,7 @@ export default function MainHubRealtime({
               </div>
             )}
             {activeTab === 'poker' && (
-              <div className="flex-1 min-h-0 min-w-0 overflow-auto flex flex-col">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
                 <div className="h-14 shrink-0 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
                   <div>
                     <p className="text-xs uppercase tracking-wide text-slate-500">Poker Mode</p>
@@ -2093,8 +2220,8 @@ export default function MainHubRealtime({
                   </div>
                 </div>
 
-                <div className="flex-1 min-h-0">
-                  <div className="min-w-[860px] sm:min-w-[920px] md:min-w-0 origin-top scale-[0.82] sm:scale-[0.92] md:scale-100">
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <div className="h-full">
                     {pokerMode === 'solo' ? <PokerGame /> : <PokerFriendsGame username={effectiveUsername} />}
                   </div>
                 </div>
@@ -2118,6 +2245,7 @@ export default function MainHubRealtime({
                 blockedUsers={blockedUsers}
                 friendsLoading={friendsLoading}
                 uniqueOnlineUsers={uniqueOnlineUsers}
+                uniqueOnlinePlayers={uniqueOnlinePlayers}
                 showOnlinePresence={showOnlinePresence}
                 presenceByUsername={presenceByUsername}
                 selectedProfile={selectedProfile}
@@ -2144,11 +2272,14 @@ export default function MainHubRealtime({
                 onUnblockUser={(blockId) => {
                   void handleUnblockUser(blockId);
                 }}
-                onSendMoneyToFriend={(targetUserId, targetUsername) => {
-                  void handleSendMoneyToFriend(targetUserId, targetUsername);
+                onSendMoneyToFriend={(targetUserId, targetUsername, targetRole) => {
+                  void handleSendMoneyToFriend(targetUserId, targetUsername, targetRole);
                 }}
                 onOpenProfile={openProfileModal}
                 onJoinFriendGame={handleJoinFriendGame}
+                onQuickAddOnlinePlayer={(targetUserId, targetUsername) => {
+                  return handleQuickAddFriendFromOnline(targetUserId, targetUsername);
+                }}
               />
             )}
 
@@ -2161,6 +2292,12 @@ export default function MainHubRealtime({
             {activeTab === 'quests' && (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
                 <QuestsPanel />
+              </div>
+            )}
+
+            {activeTab === 'support' && (
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <SupportPanel socket={socketRef.current} username={effectiveUsername} role={chatRole} />
               </div>
             )}
 
@@ -2526,6 +2663,12 @@ export default function MainHubRealtime({
                       </>
                     )}
 
+                    <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
+                      <p className="font-semibold text-slate-100">Legal</p>
+                      <p className="mt-1 text-xs text-slate-500">Quick access to compliance and legal information.</p>
+                      <LegalFooter className="mt-3" />
+                    </div>
+
                     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4 flex items-center justify-between">
                       <p className="text-sm text-slate-400">Save current preferences</p>
                       <button
@@ -2623,22 +2766,6 @@ export default function MainHubRealtime({
   );
 }
 
-function chatRoleBadgeClass(normalizedRole: string) {
-  if (normalizedRole === 'BALLER') {
-    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-yellow-500/50 text-yellow-300 bg-yellow-500/10 shadow-[0_0_10px_rgba(234,179,8,0.18)]';
-  }
-  if (normalizedRole === 'ADMIN') {
-    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-red-500/50 text-red-300 bg-red-500/10';
-  }
-  if (normalizedRole === 'OVERLORD') {
-    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-cyan-500/50 text-cyan-300 bg-cyan-500/10';
-  }
-  if (normalizedRole === 'VIP') {
-    return 'inline-flex items-center h-5 text-[10px] font-bold px-2 rounded-md border border-fuchsia-500/50 text-fuchsia-300 bg-fuchsia-500/10';
-  }
-  return '';
-}
-
 const ChatMessageItem = React.memo(function ChatMessageItem({
   event,
   reducedMotion,
@@ -2668,7 +2795,7 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
   const rankColor = event.rankColor || '#64748b';
   const normalizedRole = (event.role ?? '').toUpperCase();
   const clanLabel = typeof event.clanTag === 'string' ? event.clanTag.trim() : '';
-  const roleBadgeClass = chatRoleBadgeClass(normalizedRole);
+  const roleBadge = getRoleBadge(normalizedRole);
 
   return (
     <motion.div
@@ -2688,7 +2815,7 @@ const ChatMessageItem = React.memo(function ChatMessageItem({
             {event.username}
           </span>
           {!event.system && event.isKing ? <span className="text-[14px] leading-5">👑</span> : null}
-          {roleBadgeClass && !event.system ? <span className={roleBadgeClass}>{normalizedRole}</span> : null}
+          {roleBadge && !event.system ? <span className={roleBadge.className}>{roleBadge.label}</span> : null}
           {event.rankTag ? (
             <span
               className="inline-flex items-center h-5 px-2 rounded-md border text-[10px] font-black uppercase tracking-wide"
@@ -2828,7 +2955,7 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
   }, [chatMessages.length]);
 
   return (
-    <div className={`hub-chat fixed md:relative inset-y-0 right-0 z-40 md:z-10 w-[88vw] max-w-[360px] md:w-80 flex-shrink-0 bg-slate-900 rounded-none md:rounded-xl border-l md:border border-slate-800 flex flex-col overflow-hidden shadow-lg transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
+    <div className={`hub-chat fixed md:relative inset-y-0 right-0 z-40 md:z-10 w-[88vw] max-w-[360px] md:w-80 h-full flex-shrink-0 bg-slate-900 rounded-none md:rounded-xl border-l md:border border-slate-800 flex flex-col overflow-hidden shadow-lg transition-transform duration-300 ${mobileOpen ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}>
       <div className="p-4 border-b border-slate-800 bg-gradient-to-r from-slate-900 to-slate-800 flex items-center gap-3">
         <Activity size={18} className="text-emerald-400" />
         <h3 className="font-bold text-slate-100">Live Chat</h3>
@@ -2862,7 +2989,7 @@ const LiveChatPanel = React.memo(function LiveChatPanel({
         </AnimatePresence>
       </div>
 
-      <div className="border-t border-slate-800 p-3 bg-slate-950 shrink-0">
+      <div className="border-t border-slate-800 p-3 bg-slate-950 shrink-0 sticky bottom-0">
         {rainBanner.active ? (
           <div className="mb-2 rounded-lg border border-blue-500/40 bg-blue-500/10 px-3 py-2 text-xs font-semibold text-blue-200">
             🌧️ RAIN ACTIVE: {rainBanner.amount} NVC in {rainBanner.remainingSeconds}s

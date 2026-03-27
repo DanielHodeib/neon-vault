@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane, Users } from 'lucide-react';
+import { Menu, Settings, Shield, Trophy, TrendingUp, Coins, Hand, CircleDashed, Spade, Plane, Users, LifeBuoy } from 'lucide-react';
+import LegalFooter from '@/components/LegalFooter';
 
 type SidebarItem = {
   label: string;
@@ -42,6 +43,7 @@ export default function Sidebar({
     { label: 'Poker', icon: <Spade size={20} />, tabKey: 'poker', onClick: () => onSelectTab('poker') },
     { label: 'Coinflip', icon: <Coins size={20} />, tabKey: 'coinflip', onClick: () => onSelectTab('coinflip') },
     { label: 'Friends', icon: <Users size={20} />, tabKey: 'friends', onClick: () => onSelectTab('friends') },
+    { label: 'Support', icon: <LifeBuoy size={20} />, tabKey: 'support', onClick: () => onSelectTab('support') },
     { label: 'Leaderboard', icon: <Trophy size={20} />, tabKey: 'leaderboard', onClick: () => onSelectTab('leaderboard') },
     { label: 'Settings', icon: <Settings size={20} />, tabKey: 'settings', onClick: () => onSelectTab('settings') },
     { label: 'Admin', icon: <Shield size={20} />, tabKey: 'admin', onClick: () => onSelectTab('admin'), adminOnly: true },
@@ -51,7 +53,7 @@ export default function Sidebar({
 
   return (
     <aside
-      className={`hub-sidebar fixed inset-y-0 left-0 w-64 md:relative md:inset-auto ${collapsed ? 'md:w-20' : 'md:w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-40 transition-transform md:transition-[width] duration-300 ease-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
+      className={`hub-sidebar fixed inset-y-0 left-0 w-64 h-full md:relative md:inset-auto ${collapsed ? 'md:w-20' : 'md:w-64'} bg-slate-900 border-r border-slate-800 flex flex-col shrink-0 z-40 transition-transform md:transition-[width] duration-300 ease-out ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}
     >
       <div className={`h-16 flex items-center ${collapsed ? 'px-3 justify-between' : 'px-5'} border-b border-slate-800 transition-[padding] duration-300`}>
         {!collapsed ? (
@@ -119,6 +121,8 @@ export default function Sidebar({
         >
           {collapsed ? 'F' : dailyFaucetClaimed ? 'Faucet Claimed' : 'Claim Daily Faucet (+5000)'}
         </button>
+
+        {!collapsed ? <LegalFooter className="mt-3" /> : null}
       </div>
     </aside>
   );

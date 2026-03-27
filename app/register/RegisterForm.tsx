@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { FormEvent, useState } from 'react';
+import LegalFooter from '@/components/LegalFooter';
 
 export default function RegisterForm() {
   const router = useRouter();
@@ -146,6 +147,8 @@ export default function RegisterForm() {
               {loading ? 'Creating account...' : 'Create Account'}
             </button>
           </form>
+
+          <LegalFooter className="mt-5" />
         </div>
       </section>
     </main>
