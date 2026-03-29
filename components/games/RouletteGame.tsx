@@ -676,12 +676,13 @@ export default function RouletteGame() {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-12 gap-4 items-start">
-            <div className="col-span-12 lg:col-span-8 order-2 lg:order-1 max-w-full">
-              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
-                <div className="w-full overflow-x-auto no-scrollbar pb-2">
-                  <div className="max-w-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
-                    <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
+          <div className="mt-4 grid min-w-0 grid-cols-12 gap-4 items-start overflow-hidden">
+            <div className="col-span-12 lg:col-span-8 order-2 lg:order-1 min-w-0 max-w-full overflow-hidden">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm overflow-hidden">
+                <div className="w-full min-w-0 overflow-hidden pb-2">
+                  <div className="roulette-board-fluid">
+                    <div className="roulette-board-scale rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
+                    <div className="grid grid-cols-[minmax(34px,0.95fr)_12fr_minmax(34px,0.9fr)] gap-[2px]">
                       <BetCell
                         label="0"
                         type="number"
@@ -691,7 +692,7 @@ export default function RouletteGame() {
                         onPlaceBet={placeChip}
                         isWinning={winningBetKey === getBetKey('number', '0')}
                         dimmed={isWinningFocus && winningBetKey !== getBetKey('number', '0')}
-                        baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                        baseClassName="roulette-board-cell roulette-board-cell-number relative row-span-3 rounded-sm border font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
                         idleClassName={getNumberCellIdleClass('green')}
                       />
 
@@ -712,7 +713,7 @@ export default function RouletteGame() {
                                   onPlaceBet={placeChip}
                                   isWinning={winningBetKey === getBetKey('number', String(number))}
                                   dimmed={isWinningFocus && winningBetKey !== getBetKey('number', String(number))}
-                                  baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)] md:p-3 md:text-base"
+                                  baseClassName="roulette-board-cell roulette-board-cell-number relative aspect-square rounded-sm border p-1 font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)]"
                                   idleClassName={getNumberCellIdleClass(color)}
                                   selectedClassName="bg-blue-600/40 text-white border-cyan-300/50 ring-1 ring-cyan-300/60 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
                                 />
@@ -733,7 +734,7 @@ export default function RouletteGame() {
                             stake={getStake(col.type, col.value)}
                             onPlaceBet={placeChip}
                             dimmed={isWinningFocus}
-                            baseClassName="relative rounded-sm border text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                            baseClassName="roulette-board-cell roulette-board-cell-side relative rounded-sm border font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
                             idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
                           />
                         ))}
@@ -751,7 +752,7 @@ export default function RouletteGame() {
                           stake={getStake(item.type, item.value)}
                           onPlaceBet={placeChip}
                           dimmed={isWinningFocus}
-                          baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                          baseClassName="roulette-board-cell roulette-board-cell-band relative h-10 rounded-sm border font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
                           idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
                         />
                       ))}
@@ -768,17 +769,18 @@ export default function RouletteGame() {
                           stake={getStake(item.type, item.value)}
                           onPlaceBet={placeChip}
                           dimmed={isWinningFocus}
-                          baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                          baseClassName="roulette-board-cell roulette-board-cell-band relative h-10 rounded-sm border font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
                           idleClassName="border-white/10 bg-white/5 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]"
                         />
                       ))}
                     </div>
                   </div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex justify-center">
+            <div className="col-span-12 lg:col-span-4 order-1 lg:order-2 min-w-0 overflow-hidden flex justify-center">
               <div className="min-h-[300px] w-full rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex items-center justify-center z-50">
                 <div className="relative z-50 w-full max-w-[250px] aspect-square">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
