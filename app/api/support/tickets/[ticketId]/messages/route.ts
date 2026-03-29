@@ -12,6 +12,7 @@ export async function GET(
 ) {
   const session = await auth();
   const userId = session?.user?.id;
+  const sessionRole = String(session?.user?.role ?? '').toUpperCase();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -28,39 +29,44 @@ export async function GET(
     select: { role: true },
   });
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: normalizedTicketId },
-    select: {
-      id: true,
-      userId: true,
-      guestContact: true,
-      guestUsername: true,
-      content: true,
-      subject: true,
-      category: true,
-      status: true,
-      createdAt: true,
-      updatedAt: true,
-      user: { select: { username: true } },
-      messages: {
-        orderBy: { createdAt: 'asc' },
-        select: {
-          id: true,
-          content: true,
-          isStaffReply: true,
-          createdAt: true,
-          senderId: true,
-          sender: { select: { username: true, role: true } },
+  let ticket: Awaited<ReturnType<typeof prisma.ticket.findUnique>>;
+  try {
+    ticket = await prisma.ticket.findUnique({
+      where: { id: normalizedTicketId },
+      select: {
+        id: true,
+        userId: true,
+        guestContact: true,
+        guestUsername: true,
+        content: true,
+        subject: true,
+        category: true,
+        status: true,
+        createdAt: true,
+        updatedAt: true,
+        user: { select: { username: true } },
+        messages: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            content: true,
+            isStaffReply: true,
+            createdAt: true,
+            senderId: true,
+          },
         },
       },
-    },
-  });
+    });
+  } catch (error) {
+    console.error('Failed to load support ticket thread:', error);
+    return NextResponse.json({ error: 'Could not load ticket thread.' }, { status: 500 });
+  }
 
   if (!ticket) {
     return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
   }
 
-  const isStaff = STAFF_ROLES.has(String(currentUser?.role ?? '').toUpperCase());
+  const isStaff = STAFF_ROLES.has(sessionRole) || STAFF_ROLES.has(String(currentUser?.role ?? '').toUpperCase());
   if (!isStaff && ticket.userId !== userId) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }

@@ -158,15 +158,22 @@ export default function SupportPanel({
     try {
       const response = await fetch(`/api/support/tickets/${ticketId}/messages`, { cache: 'no-store' });
       const payload = (await response.json()) as { ticket?: TicketThread; error?: string };
+      console.log('[SupportPanel] Thread load response', {
+        ticketId,
+        ok: response.ok,
+        status: response.status,
+        error: payload?.error,
+      });
 
       if (!response.ok || !payload.ticket) {
-        setLoadError(payload.error ?? 'Could not load ticket thread.');
+        setLoadError(payload.error ?? `Could not load ticket thread (HTTP ${response.status}).`);
         return;
       }
 
       setThread(payload.ticket);
-    } catch {
-      setLoadError('Failed to load ticket thread.');
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Failed to load ticket thread.';
+      setLoadError(reason);
     } finally {
       setLoadingThread(false);
     }
