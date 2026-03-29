@@ -363,8 +363,8 @@ export default function CrashGame() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-slate-950 overflow-hidden">
-      <div className="relative flex-1 min-h-0 border-b border-slate-800 overflow-hidden" onMouseMove={handleParallaxMove} onMouseLeave={resetParallax}>
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-950">
+      <div className="relative h-[35vh] max-h-[600px] shrink-0 border-b border-slate-800 overflow-hidden md:h-[50vh]" onMouseMove={handleParallaxMove} onMouseLeave={resetParallax}>
         <motion.div
           className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.22),_rgba(2,6,23,1)_64%)]"
           animate={{ opacity: phase === 'crashed' ? [1, 0.88, 1] : 1 }}

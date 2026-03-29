@@ -10,6 +10,9 @@ interface TicketListItem {
   id: string;
   subject: string;
   category: string;
+  content?: string | null;
+  guestContact?: string | null;
+  guestUsername?: string | null;
   status: TicketStatus;
   createdAt: string;
   updatedAt: string;
@@ -35,7 +38,10 @@ interface TicketMessage {
 
 interface TicketThread {
   id: string;
-  userId: string;
+  userId: string | null;
+  guestContact?: string | null;
+  guestUsername?: string | null;
+  content?: string | null;
   subject: string;
   category: string;
   status: TicketStatus;
@@ -91,6 +97,7 @@ export default function SupportPanel({
   const [ticketDraft, setTicketDraft] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'ALL'>('ALL');
+  const [loadError, setLoadError] = useState('');
 
   const isStaff = useMemo(() => STAFF_ROLES.has(String(role ?? '').toUpperCase()), [role]);
   const shouldShowAllTickets = useMemo(
@@ -108,13 +115,14 @@ export default function SupportPanel({
 
   const loadTickets = useCallback(async () => {
     setLoadingTickets(true);
+    setLoadError('');
     try {
       const endpoint = staffMode && isStaff ? '/api/support/admin/tickets' : '/api/support/tickets';
       const response = await fetch(endpoint, { cache: 'no-store' });
       const payload = (await response.json()) as { tickets?: TicketListItem[]; error?: string };
 
       if (!response.ok) {
-        toast.error(payload.error ?? 'Failed to load tickets.');
+        setLoadError(payload.error ?? 'Failed to load tickets.');
         return;
       }
 
@@ -131,7 +139,7 @@ export default function SupportPanel({
         setSelectedTicketId(next[0].id);
       }
     } catch {
-      toast.error('Support service unavailable.');
+      setLoadError('Support service unavailable.');
     } finally {
       setLoadingTickets(false);
     }
@@ -144,18 +152,19 @@ export default function SupportPanel({
     }
 
     setLoadingThread(true);
+    setLoadError('');
     try {
       const response = await fetch(`/api/support/tickets/${ticketId}/messages`, { cache: 'no-store' });
       const payload = (await response.json()) as { ticket?: TicketThread; error?: string };
 
       if (!response.ok || !payload.ticket) {
-        toast.error(payload.error ?? 'Could not load ticket thread.');
+        setLoadError(payload.error ?? 'Could not load ticket thread.');
         return;
       }
 
       setThread(payload.ticket);
     } catch {
-      toast.error('Failed to load ticket thread.');
+      setLoadError('Failed to load ticket thread.');
     } finally {
       setLoadingThread(false);
     }
@@ -449,6 +458,12 @@ export default function SupportPanel({
         </div>
       </div>
 
+      {loadError ? (
+        <div className="mx-3 mt-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          {loadError}
+        </div>
+      ) : null}
+
       <div className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
         <aside className="w-full shrink-0 rounded-xl border border-slate-800 bg-slate-950/60 lg:w-[340px]">
           <div className="border-b border-slate-800 px-3 py-3">
@@ -489,9 +504,13 @@ export default function SupportPanel({
                   </div>
                   <p className="mt-1 text-xs text-slate-400">
                     {ticket.category}
-                    {staffMode && ticket.user?.username ? ` - ${ticket.user.username}` : ''}
+                    {staffMode
+                      ? ticket.user?.username
+                        ? ` - ${ticket.user.username}`
+                        : ` - Guest ${ticket.guestUsername || 'Anonymous'}`
+                      : ''}
                   </p>
-                  <p className="mt-1 line-clamp-1 text-xs text-slate-500">{ticket.messages?.[0]?.content ?? 'No messages yet.'}</p>
+                  <p className="mt-1 line-clamp-1 text-xs text-slate-500">{ticket.messages?.[0]?.content ?? ticket.content ?? 'No messages yet.'}</p>
                 </button>
               );
             })}
@@ -511,7 +530,12 @@ export default function SupportPanel({
                     <h3 className="text-base font-semibold text-white">{thread.subject}</h3>
                     <p className="text-xs text-slate-400">
                       {thread.category}
-                      {staffMode && thread.user?.username ? ` - ${thread.user.username}` : ''}
+                      {staffMode
+                        ? thread.user?.username
+                          ? ` - ${thread.user.username}`
+                          : ` - Guest ${thread.guestUsername || 'Anonymous'}`
+                        : ''}
+                      {thread.guestContact ? ` - Contact ${thread.guestContact}` : ''}
                       {' - '}Opened {formatWhen(thread.createdAt)}
                     </p>
                   </div>
@@ -549,6 +573,12 @@ export default function SupportPanel({
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                {thread.messages.length === 0 && thread.content ? (
+                  <div className="rounded-2xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-200">
+                    <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-300">Initial Ticket Message</p>
+                    <p className="whitespace-pre-wrap break-words">{thread.content}</p>
+                  </div>
+                ) : null}
                 {thread.messages.map((message) => {
                   const mine = String(message.sender?.username ?? '').trim().toLowerCase() === username.trim().toLowerCase();
                   const senderName = message.sender?.username ?? (message.isStaffReply ? 'Support' : 'You');
@@ -593,7 +623,7 @@ export default function SupportPanel({
 
       {createOpen ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/70 px-4">
-          <div className="w-full max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+          <div className="w-[95vw] max-w-xl rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Create Support Ticket</h3>
             <p className="mt-1 text-sm text-slate-400">Tell us what happened and we will respond as quickly as possible.</p>
 

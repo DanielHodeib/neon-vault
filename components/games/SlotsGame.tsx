@@ -515,8 +515,8 @@ export default function SlotsGame() {
             </div>
 
             {/* Reel Display - MUCH LARGER */}
-            <div className="flex-1 min-h-0 rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-3 md:p-4 flex items-center justify-center mb-3">
-              <div className={`grid gap-2.5 w-full ${config.reelCount === 3 ? 'grid-cols-3 max-w-xl' : config.reelCount === 4 ? 'grid-cols-4 max-w-2xl' : 'grid-cols-5 max-w-3xl'}`}>
+            <div className="mb-3 flex flex-1 min-h-0 shrink-0 items-center justify-center rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-3 md:p-4">
+              <div className={`mx-auto grid w-full max-w-sm shrink-0 gap-2 md:max-w-2xl md:gap-6 ${config.reelCount === 3 ? 'grid-cols-3' : config.reelCount === 4 ? 'grid-cols-4' : 'grid-cols-5'} aspect-[4/3]`}>
                 {reels.map((symbol, i) => (
                   <motion.div
                     key={i}

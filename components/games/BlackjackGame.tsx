@@ -923,7 +923,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
         : 'Round finished';
 
   return (
-    <div className="h-full max-h-screen flex flex-col bg-slate-900 gap-2 lg:gap-4 xl:gap-2">
+    <div className="h-full max-h-screen w-full flex flex-col bg-slate-900 gap-2 lg:gap-4 xl:gap-2 overflow-hidden">
       <div className="h-14 shrink-0 px-4 border-b border-slate-800 bg-slate-950 flex items-center justify-between">
         <div>
           <p className="text-xs uppercase tracking-wide text-slate-500">Blackjack Mode</p>
@@ -956,8 +956,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       {mode === 'solo' ? (
         <>
           <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
-            <div className="poker-table-frame max-h-[65vh]">
-            <div className="poker-table-felt blackjack-table-glow h-full rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+            <div className="poker-table-frame mx-auto w-full max-w-3xl aspect-[2/1] rounded-[100px] md:rounded-[200px] shrink-0 max-h-[65vh]">
+            <div className="poker-table-felt blackjack-table-glow h-full rounded-[100px] md:rounded-[200px] border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden shrink-0">
               <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
               <SeatBox
@@ -1044,7 +1044,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
               </div>
             </div>
 
-            <div className="flex gap-2 justify-end flex-wrap">
+            <div className="mt-4 flex w-full flex-col items-center gap-2 md:flex-row md:flex-wrap md:justify-end">
               {(soloPhase === 'idle' || soloPhase === 'result') && (
                 <button onClick={startSoloRound} disabled={!canDealSolo} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase disabled:opacity-50 disabled:cursor-not-allowed">
                   Deal Hand
@@ -1092,8 +1092,8 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
           </div>
 
           <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
-            <div className="poker-table-frame max-h-[65vh]">
-            <div className="poker-table-felt blackjack-table-glow h-full rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+            <div className="poker-table-frame mx-auto w-full max-w-3xl aspect-[2/1] rounded-[100px] md:rounded-[200px] shrink-0 max-h-[65vh]">
+            <div className="poker-table-felt blackjack-table-glow h-full rounded-[100px] md:rounded-[200px] border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden shrink-0">
               <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
               <SeatBox
@@ -1172,7 +1172,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
                 placeholder="enter bet"
               />
             </div>
-            <div className="flex gap-2 justify-end flex-wrap">
+            <div className="mt-4 flex w-full flex-col items-center gap-2 md:flex-row md:flex-wrap md:justify-end">
               <button onClick={startFriendsRound} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-sm uppercase">
                 Deal Hand
               </button>
@@ -1218,7 +1218,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
           </div>
         </>
       )}
-    </div>
+      </div>
   );
 }
 

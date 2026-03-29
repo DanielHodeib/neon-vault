@@ -156,7 +156,7 @@ export async function POST(request: Request) {
       ticketId,
       status: nextStatus,
       ticketUserId: ticket.userId,
-      ticketOwnerUsername: ticket.user.username,
+      ticketOwnerUsername: ticket.user?.username,
     });
   }
 

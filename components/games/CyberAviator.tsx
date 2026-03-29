@@ -132,7 +132,7 @@ export default function CyberAviator() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-slate-950 overflow-hidden">
-      <div className="relative flex-1 min-h-0 border-b border-slate-800 overflow-hidden">
+      <div className="relative h-[35vh] max-h-[600px] shrink-0 border-b border-slate-800 overflow-hidden md:h-[50vh]">
         <motion.div
           className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(56,189,248,0.15),_rgba(2,6,23,1)_68%)]"
           animate={{ opacity: phase === 'crashed' ? [1, 0.85, 1] : 1 }}
@@ -271,26 +271,26 @@ export default function CyberAviator() {
       </div>
 
       <div className="shrink-0 p-4 bg-slate-900 border-t border-slate-800">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_auto] gap-3">
+        <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row">
           <input
             type="number"
             value={betInput}
             min={MIN_BET}
             onChange={(event) => setBetInput(event.target.value)}
             disabled={phase !== 'waiting' || hasActiveBet || isPlacingBet}
-            className="h-11 rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none focus:border-cyan-500 disabled:opacity-60"
+            className="h-11 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 text-slate-100 outline-none focus:border-cyan-500 disabled:opacity-60 md:flex-1"
           />
           <button
             onClick={handlePlaceBet}
             disabled={phase !== 'waiting' || hasActiveBet || isPlacingBet}
-            className="h-11 px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+            className="h-11 w-full px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed md:w-auto"
           >
             {hasActiveBet ? 'Bet Active' : isPlacingBet ? 'Syncing...' : 'Place Bet'}
           </button>
           <button
             onClick={handleCashOut}
             disabled={phase !== 'running' || !hasActiveBet || isCashingOut}
-            className="h-11 px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed"
+            className="h-11 w-full px-4 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold disabled:opacity-60 disabled:cursor-not-allowed md:w-auto"
           >
             {isCashingOut ? 'Syncing...' : hasActiveBet ? `Cash Out ${(activeStake * multiplier).toFixed(2)}` : 'Cash Out'}
           </button>

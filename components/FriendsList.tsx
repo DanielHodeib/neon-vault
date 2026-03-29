@@ -64,7 +64,7 @@ export default function FriendsList({
   showOnlinePresence: boolean;
   presenceByUsername: Record<string, FriendPresence>;
   onSendMoney: (targetUserId: string, targetUsername: string, targetRole?: string) => void;
-  onOpenProfile: (username: string) => void;
+  onOpenProfile: (targetUserId: string | null, targetUsername: string) => void;
   onRemoveFriend: (friendshipId: string) => void;
   onBlockUser: (targetUserId: string) => void;
   onJoinActivity: (activity: string) => void;
@@ -89,7 +89,7 @@ export default function FriendsList({
             return (
               <div
                 key={friend.friendshipId}
-                onClick={() => onOpenProfile(displayName)}
+                onClick={() => onOpenProfile(friend.userId, displayName)}
                 className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-slate-800/40 transition-colors"
               >
                 <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOnline ? 'bg-emerald-500' : 'bg-slate-600'}`} />
@@ -97,7 +97,7 @@ export default function FriendsList({
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
                       type="button"
-                      onClick={() => onOpenProfile(displayName)}
+                      onClick={() => onOpenProfile(friend.userId, displayName)}
                       className="font-semibold text-slate-200 truncate hover:text-cyan-300 hover:underline"
                     >
                       {displayName}
@@ -133,7 +133,7 @@ export default function FriendsList({
                   <button
                     onClick={(event) => {
                       event.stopPropagation();
-                      onOpenProfile(displayName);
+                      onOpenProfile(friend.userId, displayName);
                     }}
                     className="h-8 px-2.5 rounded-md bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 text-xs inline-flex items-center gap-1"
                   >

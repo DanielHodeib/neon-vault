@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 
 import { auth } from '@/auth';
 import { notifyLeaderboardRefresh } from '@/lib/leaderboardEvents';
+import { sendUserNotification } from '@/lib/notificationEvents';
 import { prisma } from '@/lib/prisma';
 
 interface TransferPayload {
@@ -135,6 +136,13 @@ export async function POST(request: Request) {
       reason: 'friend-transfer',
     });
   }
+
+  await sendUserNotification({
+    userId: targetUserId,
+    type: 'MONEY_RECEIVED',
+    title: 'Money Received',
+    message: `You received ${amount} NVC from a friend transfer.`,
+  });
 
   return NextResponse.json({ ok: true, balance: result.balance, receiverUsername: targetExists.username });
 }

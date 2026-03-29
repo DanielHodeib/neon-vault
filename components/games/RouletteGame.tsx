@@ -531,7 +531,7 @@ export default function RouletteGame() {
   const getStake = (type: BetType, value: string) => bets[getBetKey(type, value)]?.stake ?? 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full max-h-screen bg-slate-900 min-h-0 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-slate-900">
       <div className="flex-1 min-h-0 bg-slate-900 px-3 lg:px-4 py-3 lg:py-4 overflow-hidden">
         <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-slate-950 p-3 lg:p-4 grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-3 lg:gap-4 overflow-hidden">
           <div className="min-h-0 flex flex-col gap-4">
@@ -555,7 +555,8 @@ export default function RouletteGame() {
             </div>
 
             <div className="flex-1 min-h-0 rounded-lg border border-slate-800 bg-slate-900 p-3">
-              <div className="h-full rounded-md border border-emerald-800/60 bg-emerald-950/55 p-2">
+              <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
+                <div className="h-full min-w-[680px] rounded-md border border-emerald-800/60 bg-emerald-950/55 p-2">
                 <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
                   <button
                     onClick={() => placeChip('number', '0')}
@@ -580,7 +581,7 @@ export default function RouletteGame() {
                               key={number}
                               onClick={() => placeChip('number', String(number))}
                               className={[
-                                'relative h-10 rounded-sm border text-sm font-bold transition-colors',
+                                'relative rounded-sm border p-1 text-xs font-bold transition-colors md:p-3 md:text-base',
                                 color === 'red'
                                   ? 'bg-red-600 text-white border-red-500'
                                   : 'bg-black text-slate-100 border-slate-600',
@@ -673,6 +674,7 @@ export default function RouletteGame() {
                     </button>
                   ))}
                 </div>
+              </div>
               </div>
             </div>
           </div>
@@ -788,8 +790,9 @@ export default function RouletteGame() {
         </div>
       </div>
 
-      <div className="border-t border-slate-800 bg-slate-950 p-3 lg:p-4 flex items-center gap-3 lg:gap-4 shrink-0">
-        <div className="w-full max-w-xs">
+      <div className="border-t border-slate-800 bg-slate-950 p-3 lg:p-4 shrink-0">
+        <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row md:items-end">
+        <div className="w-full md:max-w-xs">
           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Chip Value</label>
           <input
             type="number"
@@ -819,11 +822,11 @@ export default function RouletteGame() {
           {errorText ? <p className="text-red-500 text-xs mt-2 font-medium">{errorText}</p> : null}
         </div>
 
-        <div className="flex-1 flex gap-3">
+        <div className="flex w-full flex-col gap-3 md:flex-1 md:flex-row">
           <button
             onClick={clearBets}
             disabled={isSpinning || activeBets.length === 0}
-            className={`w-40 h-11 rounded-lg font-bold text-sm uppercase transition-colors ${
+            className={`h-11 w-full rounded-lg font-bold text-sm uppercase transition-colors md:w-40 ${
               isSpinning || activeBets.length === 0
                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-100'
@@ -842,6 +845,7 @@ export default function RouletteGame() {
           >
             {isSpinning ? 'Spinning...' : 'Spin'}
           </button>
+        </div>
         </div>
       </div>
       <div className="px-3 lg:px-4 pb-3 bg-slate-950 shrink-0">

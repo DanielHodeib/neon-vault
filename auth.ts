@@ -4,6 +4,10 @@ import bcrypt from 'bcryptjs';
 
 import { prisma } from '@/lib/prisma';
 
+function isBanExpired(date: Date | null) {
+  return Boolean(date) && Number(date?.getTime()) <= Date.now();
+}
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   session: { strategy: 'jwt' },
   trustHost: true,
@@ -24,6 +28,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await prisma.user.findUnique({
           where: { username },
+          select: {
+            id: true,
+            username: true,
+            passwordHash: true,
+            role: true,
+            balance: true,
+            xp: true,
+            isBanned: true,
+            banExpiresAt: true,
+          },
         });
 
         if (!user) {
@@ -35,14 +49,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
-        const banRows = (await prisma.$queryRawUnsafe(
-          `SELECT is_banned FROM users WHERE id = ? LIMIT 1`,
-          user.id
-        )) as Array<{ is_banned: number | boolean | null }>;
-        const bannedValue = banRows[0]?.is_banned;
-        const isBanned = bannedValue === true || bannedValue === 1;
-        if (isBanned) {
-          return null;
+        if (user.isBanned) {
+          if (isBanExpired(user.banExpiresAt ?? null)) {
+            await prisma.user.update({
+              where: { id: user.id },
+              data: {
+                isBanned: false,
+                banExpiresAt: null,
+                banReason: null,
+              },
+            });
+          } else {
+            return null;
+          }
         }
 
         return {

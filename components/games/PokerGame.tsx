@@ -1064,7 +1064,7 @@ export default function PokerGame() {
   };
 
   return (
-    <div className="poker-solo-root h-full max-h-screen flex flex-col bg-slate-900 overflow-hidden gap-2 lg:gap-4 xl:gap-2">
+    <div className="poker-solo-root h-full min-h-0 w-full flex flex-col bg-slate-900 overflow-hidden gap-2 lg:gap-4 xl:gap-2">
       <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-3 shrink-0">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em</h2>
@@ -1081,8 +1081,8 @@ export default function PokerGame() {
       </div>
 
       <div className="poker-table-stage flex-1 min-h-0 p-2 lg:p-1">
-        <div className="poker-table-frame max-h-[65vh]">
-          <div className="poker-table-felt rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden">
+        <div className="poker-table-frame mx-auto w-full max-w-3xl aspect-[2/1] rounded-[100px] md:rounded-[200px] shrink-0 max-h-[65vh]">
+          <div className="poker-table-felt h-full rounded-[100px] md:rounded-[200px] border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(22,163,74,0.28),_rgba(7,18,17,1)_65%)] relative overflow-hidden shrink-0">
             <div className="absolute inset-[14%_9%_18%_9%] rounded-[999px] border border-emerald-500/25 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.3),_rgba(5,14,13,0.94)_68%)] shadow-[inset_0_0_70px_rgba(0,0,0,0.55)]" />
 
             <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
@@ -1176,7 +1176,7 @@ export default function PokerGame() {
             />
           </div>
 
-          <div className="flex flex-wrap gap-1 justify-start lg:justify-end">
+          <div className="mt-4 flex w-full flex-col items-center gap-2 md:flex-row md:flex-wrap md:justify-end">
             {(stage === 'idle' || stage === 'result') && (
               <button
                 onClick={startHand}

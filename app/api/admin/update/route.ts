@@ -21,6 +21,7 @@ type UserRole = 'OWNER' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'USER';
 
 const ROLE_SET = new Set<UserRole>(['OWNER', 'ADMIN', 'MODERATOR', 'SUPPORT', 'USER']);
 const ADMIN_PANEL_ROLES = new Set<UserRole>(['OWNER', 'ADMIN', 'MODERATOR']);
+const FOUNDER_USERNAME = 'Daniel';
 
 function normalizeRole(value: unknown): UserRole {
   const role = typeof value === 'string' ? value.trim().toUpperCase() : 'USER';
@@ -60,7 +61,7 @@ function canManageRoles(actorRole: UserRole) {
 }
 
 function canUseSystemFinance(actorRole: UserRole) {
-  return actorRole === 'OWNER';
+  return actorRole === 'OWNER' || actorRole === 'ADMIN';
 }
 
 function canUseUserManagement(actorRole: UserRole) {
@@ -120,7 +121,7 @@ async function assertAdminAccess() {
 
   const actor = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { username: true, role: true },
   });
 
   const actorRole = normalizeRole(actor?.role);
@@ -128,7 +129,39 @@ async function assertAdminAccess() {
     return { ok: false as const, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
   }
 
-  return { ok: true as const, adminUserId: userId, actorRole };
+  return {
+    ok: true as const,
+    adminUserId: userId,
+    actorRole,
+    actorUsername: String(actor?.username ?? '').trim(),
+  };
+}
+
+function enforceFounderRoleSecurity(input: {
+  actorUsername: string;
+  targetUsername: string;
+  targetRole: UserRole;
+  nextRole: UserRole;
+}) {
+  const actorIsFounder = input.actorUsername === FOUNDER_USERNAME;
+  const targetIsFounder = input.targetUsername === FOUNDER_USERNAME;
+
+  if (targetIsFounder && !actorIsFounder) {
+    return NextResponse.json(
+      { error: 'System Override: Die Rechte des Gründers können nicht geändert werden.' },
+      { status: 403 }
+    );
+  }
+
+  if (input.nextRole === 'OWNER' && !actorIsFounder) {
+    return NextResponse.json({ error: 'Only Daniel can assign OWNER role.' }, { status: 403 });
+  }
+
+  if (input.targetRole === 'OWNER' && input.nextRole !== 'OWNER' && !actorIsFounder) {
+    return NextResponse.json({ error: 'Only Daniel can demote an OWNER.' }, { status: 403 });
+  }
+
+  return null;
 }
 
 export async function GET(request: Request) {
@@ -148,6 +181,8 @@ export async function GET(request: Request) {
     `SELECT u.id, u.username, u.role, u.balance, u.xp,
             COALESCE(u.clan_tag, '') AS clan_tag,
             COALESCE(u.is_banned, 0) AS is_banned,
+            u.ban_expires_at AS ban_expires_at,
+            u.ban_reason AS ban_reason,
             COALESCE(s.selected_rank_tag, 'BRONZE') AS selected_rank_tag
      FROM users u
      LEFT JOIN settings s ON s.user_id = u.id
@@ -160,6 +195,8 @@ export async function GET(request: Request) {
     xp: number;
     clan_tag: string;
     is_banned: number | boolean;
+    ban_expires_at: string | null;
+    ban_reason: string | null;
     selected_rank_tag: string;
   }>;
 
@@ -176,6 +213,8 @@ export async function GET(request: Request) {
       xp: user.xp,
       clanTag: user.clan_tag || null,
       isBanned: user.is_banned === true || user.is_banned === 1,
+      banExpiresAt: user.ban_expires_at,
+      banReason: user.ban_reason,
       selectedRankTag: user.selected_rank_tag,
     })),
   });
@@ -235,7 +274,11 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
-  if (!canManageTarget(access.actorRole, access.adminUserId, targetUserId, targetRole)) {
+  const founderRoleOperation =
+    access.actorUsername === FOUNDER_USERNAME
+    && (action === 'set-role' || (action === 'update-user' && typeof payload.role === 'string'));
+
+  if (!founderRoleOperation && !canManageTarget(access.actorRole, access.adminUserId, targetUserId, targetRole)) {
     return NextResponse.json({ error: 'Insufficient permission for this user.' }, { status: 403 });
   }
 
@@ -253,8 +296,14 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
     }
 
-    if (role === 'OWNER' && access.actorRole !== 'OWNER') {
-      return NextResponse.json({ error: 'Only OWNER can assign OWNER role.' }, { status: 403 });
+    const founderGuard = enforceFounderRoleSecurity({
+      actorUsername: access.actorUsername,
+      targetUsername: exists.username,
+      targetRole,
+      nextRole: role,
+    });
+    if (founderGuard) {
+      return founderGuard;
     }
 
     await prisma.user.update({ where: { id: targetUserId }, data: { role } });
@@ -280,7 +329,21 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: 'isBanned must be boolean.' }, { status: 400 });
     }
 
-    await prisma.$executeRawUnsafe(`UPDATE users SET is_banned = ? WHERE id = ?`, payload.isBanned ? 1 : 0, targetUserId);
+    await prisma.user.update({
+      where: { id: targetUserId },
+      data: { isBanned: payload.isBanned },
+    });
+
+    if (payload.isBanned) {
+      const gameServerUrl = getGameServerUrl();
+      await fetch(`${gameServerUrl}/internal/user/force-disconnect`, {
+        method: 'POST',
+        headers: getInternalHeaders(),
+        body: JSON.stringify({ username: exists.username, reason: 'Account permanently banned.' }),
+        cache: 'no-store',
+      }).catch(() => null);
+    }
+
     return NextResponse.json({ ok: true });
   }
 
@@ -325,8 +388,14 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: 'You cannot change your own role.' }, { status: 400 });
       }
 
-      if (payload.role === 'OWNER' && access.actorRole !== 'OWNER') {
-        return NextResponse.json({ error: 'Only OWNER can assign OWNER role.' }, { status: 403 });
+      const founderGuard = enforceFounderRoleSecurity({
+        actorUsername: access.actorUsername,
+        targetUsername: exists.username,
+        targetRole,
+        nextRole: payload.role,
+      });
+      if (founderGuard) {
+        return founderGuard;
       }
 
       updates.role = payload.role;
@@ -490,10 +559,9 @@ export async function PATCH(request: Request) {
     }
 
     if (quickAction === 'reset-quests') {
-      await prisma.$executeRawUnsafe(
-        `DELETE FROM quest_progress WHERE user_id = ?`,
-        targetUserId
-      );
+      await prisma.userQuest.deleteMany({
+        where: { userId: targetUserId },
+      });
       return NextResponse.json({ ok: true });
     }
 

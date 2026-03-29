@@ -45,7 +45,7 @@ export default function Sidebar({
     { label: 'Support', icon: <LifeBuoy size={20} />, tabKey: 'support', onClick: () => onSelectTab('support') },
     { label: 'Leaderboard', icon: <Trophy size={20} />, tabKey: 'leaderboard', onClick: () => onSelectTab('leaderboard') },
     { label: 'Settings', icon: <Settings size={20} />, tabKey: 'settings', onClick: () => onSelectTab('settings') },
-    { label: 'Admin', icon: <Shield size={20} />, tabKey: 'admin', onClick: () => onSelectTab('admin'), adminOnly: true },
+    { label: 'Staff Panel', icon: <Shield size={20} />, tabKey: 'admin', onClick: () => onSelectTab('admin'), adminOnly: true },
   ];
 
   const visibleItems = sidebarItems.filter((item) => !item.adminOnly || canAccessAdmin);

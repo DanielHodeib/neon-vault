@@ -13,15 +13,16 @@ function normalizeRole(value: unknown): UserRole {
 }
 
 function canAccessAdminPanel(role: UserRole) {
-  return role === 'OWNER' || role === 'ADMIN' || role === 'MODERATOR';
+  return role === 'OWNER' || role === 'ADMIN' || role === 'MODERATOR' || role === 'SUPPORT';
 }
 
 function buildPermissions(role: UserRole) {
   return {
-    systemFinance: role === 'OWNER',
+    systemFinance: role === 'OWNER' || role === 'ADMIN',
     userManagement: role === 'OWNER' || role === 'ADMIN',
     moderationLogs: role === 'OWNER' || role === 'ADMIN' || role === 'MODERATOR',
     canManageRoles: role === 'OWNER' || role === 'ADMIN',
+    helpDesk: role === 'OWNER' || role === 'ADMIN' || role === 'MODERATOR' || role === 'SUPPORT',
   };
 }
 
@@ -35,7 +36,7 @@ export async function GET() {
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { username: true, role: true },
   });
 
   const role = normalizeRole(user?.role);
@@ -45,6 +46,7 @@ export async function GET() {
   return NextResponse.json({
     isAdmin: hasPanel,
     userId,
+    username: user?.username ?? '',
     role,
     canAccessAdminPanel: hasPanel,
     permissions,

@@ -43,6 +43,9 @@ export async function GET(
       id: true,
       username: true,
       role: true,
+      avatarUrl: true,
+      bannerUrl: true,
+      bio: true,
       balance: true,
       xp: true,
       createdAt: true,
@@ -51,6 +54,10 @@ export async function GET(
           publicProfile: true,
           bio: true,
           theme: true,
+          selectedRankTag: true,
+          favoriteGame: true,
+          privacyShowBalance: true,
+          publicGameHistory: true,
         },
       },
     },
@@ -89,37 +96,51 @@ export async function GET(
     },
   });
 
-  let favoriteGame = 'Unknown';
-  try {
-    const gameServerUrl = getGameServerUrl();
-    const favoriteResponse = await fetch(
-      `${gameServerUrl}/favorite-game/${encodeURIComponent(target.username)}`,
-      { cache: 'no-store' }
-    );
+  let favoriteGame = (target.settings?.favoriteGame ?? '').trim();
+  if (!favoriteGame) {
+    try {
+      const gameServerUrl = getGameServerUrl();
+      const favoriteResponse = await fetch(
+        `${gameServerUrl}/favorite-game/${encodeURIComponent(target.username)}`,
+        { cache: 'no-store' }
+      );
 
-    if (favoriteResponse.ok) {
-      const favoritePayload = (await favoriteResponse.json()) as { game?: string };
-      const nextFavorite = typeof favoritePayload.game === 'string' ? favoritePayload.game.trim() : '';
-      if (nextFavorite) {
-        favoriteGame = nextFavorite;
+      if (favoriteResponse.ok) {
+        const favoritePayload = (await favoriteResponse.json()) as { game?: string };
+        const nextFavorite = typeof favoritePayload.game === 'string' ? favoritePayload.game.trim() : '';
+        if (nextFavorite) {
+          favoriteGame = nextFavorite;
+        }
       }
+    } catch {
+      // Keep a stable fallback if game-server is unavailable.
     }
-  } catch {
-    // Keep a stable fallback if game-server is unavailable.
   }
+
+  const level = Math.floor(Number(target.xp || 0) / 1000) + 1;
+  const canShowBalance = isSelf || Boolean(target.settings?.privacyShowBalance);
 
   return NextResponse.json({
     profile: {
+      userId: target.id,
       username: target.username,
       role: target.role,
-      balance: Number.isFinite(Number(target.balance)) ? Number(target.balance) : 0,
+      level,
+      rank: target.settings?.selectedRankTag ?? 'BRONZE',
+      avatarUrl: target.avatarUrl,
+      bannerUrl: target.bannerUrl,
+      balance: canShowBalance && Number.isFinite(Number(target.balance)) ? Number(target.balance) : null,
       xp: target.xp,
-      favoriteGame,
-      bio: target.settings?.bio ?? '',
+      favoriteGame: favoriteGame || 'Unknown',
+      bio: (target.bio ?? target.settings?.bio ?? '').trim(),
       theme: target.settings?.theme ?? 'slate',
       publicProfile,
+      privacyShowBalance: Boolean(target.settings?.privacyShowBalance),
+      publicGameHistory: Boolean(target.settings?.publicGameHistory),
       isFriend,
+      canShowBalance,
       createdAt: target.createdAt,
+      joinDate: target.createdAt,
       friendsCount,
     },
   });

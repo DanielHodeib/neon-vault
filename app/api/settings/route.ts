@@ -26,6 +26,9 @@ export async function GET() {
       selectedRankTag: 'BRONZE',
       publicProfile: true,
       bio: '',
+      favoriteGame: 'Unknown',
+      privacyShowBalance: false,
+      publicGameHistory: false,
     },
     select: {
       soundEnabled: true,
@@ -33,6 +36,9 @@ export async function GET() {
       selectedRankTag: true,
       publicProfile: true,
       bio: true,
+      favoriteGame: true,
+      privacyShowBalance: true,
+      publicGameHistory: true,
       updatedAt: true,
     },
   });
@@ -60,6 +66,9 @@ export async function PATCH(request: Request) {
       selectedRankTag?: RankTag;
       publicProfile?: boolean;
       bio?: string;
+      favoriteGame?: string;
+      privacyShowBalance?: boolean;
+      publicGameHistory?: boolean;
       clanTag?: string | null;
     };
     try {
@@ -69,6 +78,9 @@ export async function PATCH(request: Request) {
         selectedRankTag?: RankTag;
         publicProfile?: boolean;
         bio?: string;
+        favoriteGame?: string;
+        privacyShowBalance?: boolean;
+        publicGameHistory?: boolean;
         clanTag?: string | null;
       };
     } catch {
@@ -81,6 +93,7 @@ export async function PATCH(request: Request) {
     }
 
     const bio = typeof payload.bio === 'string' ? payload.bio.trim().slice(0, 240) : undefined;
+    const favoriteGame = typeof payload.favoriteGame === 'string' ? payload.favoriteGame.trim().slice(0, 48) : undefined;
     const selectedRankTag = typeof payload.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
     const clanTag =
       payload.clanTag === null
@@ -135,6 +148,9 @@ export async function PATCH(request: Request) {
         ...(selectedRankTag ? { selectedRankTag } : {}),
         ...(typeof payload.publicProfile === 'boolean' ? { publicProfile: payload.publicProfile } : {}),
         ...(typeof bio === 'string' ? { bio } : {}),
+        ...(typeof favoriteGame === 'string' ? { favoriteGame: favoriteGame || 'Unknown' } : {}),
+        ...(typeof payload.privacyShowBalance === 'boolean' ? { privacyShowBalance: payload.privacyShowBalance } : {}),
+        ...(typeof payload.publicGameHistory === 'boolean' ? { publicGameHistory: payload.publicGameHistory } : {}),
       },
       create: {
         userId,
@@ -143,6 +159,9 @@ export async function PATCH(request: Request) {
         selectedRankTag: selectedRankTag ?? 'BRONZE',
         publicProfile: payload.publicProfile ?? true,
         bio: bio ?? '',
+        favoriteGame: favoriteGame || 'Unknown',
+        privacyShowBalance: payload.privacyShowBalance ?? false,
+        publicGameHistory: payload.publicGameHistory ?? false,
       },
       select: {
         soundEnabled: true,
@@ -150,6 +169,9 @@ export async function PATCH(request: Request) {
         selectedRankTag: true,
         publicProfile: true,
         bio: true,
+        favoriteGame: true,
+        privacyShowBalance: true,
+        publicGameHistory: true,
         updatedAt: true,
       },
     });

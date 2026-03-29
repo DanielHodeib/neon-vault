@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { prisma } from '@/lib/prisma';
 
-type InternalAction = 'friend_request' | 'accept_friend' | 'get_online_friends';
+type InternalAction = 'friend_request' | 'accept_friend' | 'get_online_friends' | 'get_public_profile';
 
 function isAuthorizedInternalRequest(request: Request) {
   const token = (process.env.INTERNAL_API_TOKEN ?? '').trim();
@@ -25,6 +25,9 @@ export async function POST(request: Request) {
     receiverUsername?: string;
     accepterUsername?: string;
     username?: string;
+    requesterUsername?: string;
+    targetUserId?: string;
+    targetUsername?: string;
     onlineUsers?: Array<{ username?: string; online?: boolean; activity?: string }>;
   };
 
@@ -35,6 +38,9 @@ export async function POST(request: Request) {
       receiverUsername?: string;
       accepterUsername?: string;
       username?: string;
+      requesterUsername?: string;
+      targetUserId?: string;
+      targetUsername?: string;
       onlineUsers?: Array<{ username?: string; online?: boolean; activity?: string }>;
     };
   } catch {
@@ -198,6 +204,128 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ ok: true, friends });
+  }
+
+  if (action === 'get_public_profile') {
+    const requesterUsername = (payload.requesterUsername ?? '').trim();
+    const targetUserId = (payload.targetUserId ?? '').trim();
+    const targetUsername = (payload.targetUsername ?? '').trim();
+
+    if (!targetUserId && !targetUsername) {
+      return NextResponse.json({ error: 'targetUserId or targetUsername is required.' }, { status: 400 });
+    }
+
+    const requester = requesterUsername
+      ? await prisma.user.findUnique({ where: { username: requesterUsername }, select: { id: true } })
+      : null;
+
+    const target = targetUserId
+      ? await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            avatarUrl: true,
+            bannerUrl: true,
+            bio: true,
+            balance: true,
+            xp: true,
+            createdAt: true,
+            settings: {
+              select: {
+                publicProfile: true,
+                bio: true,
+                selectedRankTag: true,
+                favoriteGame: true,
+                privacyShowBalance: true,
+                publicGameHistory: true,
+              },
+            },
+          },
+        })
+      : await prisma.user.findUnique({
+          where: { username: targetUsername },
+          select: {
+            id: true,
+            username: true,
+            role: true,
+            avatarUrl: true,
+            bannerUrl: true,
+            bio: true,
+            balance: true,
+            xp: true,
+            createdAt: true,
+            settings: {
+              select: {
+                publicProfile: true,
+                bio: true,
+                selectedRankTag: true,
+                favoriteGame: true,
+                privacyShowBalance: true,
+                publicGameHistory: true,
+              },
+            },
+          },
+        });
+
+    if (!target) {
+      return NextResponse.json({ error: 'User not found.' }, { status: 404 });
+    }
+
+    const requesterUserId = requester?.id ?? null;
+    const isSelf = Boolean(requesterUserId) && requesterUserId === target.id;
+
+    let isFriend = false;
+    if (requesterUserId && !isSelf) {
+      const friendship = await prisma.friendship.findFirst({
+        where: {
+          status: 'accepted',
+          OR: [
+            { userId: requesterUserId, friendId: target.id },
+            { userId: target.id, friendId: requesterUserId },
+          ],
+        },
+        select: { id: true },
+      });
+      isFriend = Boolean(friendship);
+    }
+
+    const publicProfile = target.settings?.publicProfile ?? true;
+    if (!isSelf && !isFriend && !publicProfile) {
+      return NextResponse.json({ error: 'Profile is private.' }, { status: 403 });
+    }
+
+    const friendsCount = await prisma.friendship.count({
+      where: {
+        status: 'accepted',
+        OR: [{ userId: target.id }, { friendId: target.id }],
+      },
+    });
+
+    const canShowBalance = isSelf || Boolean(target.settings?.privacyShowBalance);
+
+    return NextResponse.json({
+      ok: true,
+      profile: {
+        userId: target.id,
+        username: target.username,
+        role: target.role,
+        level: Math.floor(Number(target.xp || 0) / 1000) + 1,
+        rank: target.settings?.selectedRankTag ?? 'BRONZE',
+        avatarUrl: target.avatarUrl,
+        bannerUrl: target.bannerUrl,
+        bio: (target.bio ?? target.settings?.bio ?? '').trim(),
+        favoriteGame: (target.settings?.favoriteGame ?? '').trim() || 'Unknown',
+        joinDate: target.createdAt,
+        balance: canShowBalance ? Number(target.balance || 0) : null,
+        canShowBalance,
+        isFriend,
+        publicProfile,
+        publicGameHistory: Boolean(target.settings?.publicGameHistory),
+        friendsCount,
+      },
+    });
   }
 
   return NextResponse.json({ error: 'Unsupported action.' }, { status: 400 });

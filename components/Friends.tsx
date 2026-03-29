@@ -22,16 +22,26 @@ type BlockSummary = {
 };
 
 type PublicProfileData = {
+  userId: string;
   username: string;
   role?: string;
-  balance: number;
+  level: number;
+  rank: string;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
+  balance: number | null;
   xp: number;
   favoriteGame: string;
   bio: string;
   theme: string;
   publicProfile: boolean;
+  privacyShowBalance?: boolean;
+  publicGameHistory?: boolean;
   isFriend: boolean;
+  isSelf?: boolean;
+  canShowBalance: boolean;
   createdAt: string;
+  joinDate?: string;
   friendsCount: number;
 };
 
@@ -120,7 +130,7 @@ export default function Friends({
   onBlockUser: (targetUserId: string) => void;
   onUnblockUser: (blockId: string) => void;
   onSendMoneyToFriend: (targetUserId: string, targetUsername: string, targetRole?: string) => void;
-  onOpenProfile: (targetUsername: string) => void;
+  onOpenProfile: (targetUserId: string | null, targetUsername: string) => void;
   onJoinFriendGame: (activity: string) => void;
   onQuickAddOnlinePlayer: (targetUserId: string, targetUsername: string) => Promise<{ ok: boolean }>;
 }) {
@@ -393,7 +403,7 @@ export default function Friends({
                 >
                   <button
                     type="button"
-                    onClick={() => onOpenProfile(user.username)}
+                    onClick={() => onOpenProfile(user.userId ?? null, user.username)}
                     className="min-w-0 pr-3 text-left"
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -443,42 +453,6 @@ export default function Friends({
             })}
           </div>
         )}
-      </div>
-
-      <div className="mt-5 rounded-xl border border-cyan-700/30 bg-gradient-to-br from-slate-950/80 to-slate-900/80 p-4 shadow-[0_0_30px_rgba(6,182,212,0.12)]">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <Activity size={16} className="text-cyan-300" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Friend Profile Preview</p>
-          </div>
-          {profileLoading ? <span className="text-xs text-slate-400">Loading...</span> : null}
-        </div>
-
-        {!selectedProfile && !profileLoading ? (
-          <p className="text-slate-500 italic text-sm p-4 text-center border border-dashed border-slate-800 rounded-lg mt-3">
-            Select a friend and click View Profile.
-          </p>
-        ) : null}
-
-        {selectedProfile ? (
-          <div className="mt-3 rounded-lg border border-slate-800 bg-slate-900/90 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <p className="font-semibold text-slate-100 truncate">{selectedProfile.username}</p>
-                {getRoleBadge(selectedProfile.role) ? (
-                  <span className={getRoleBadge(selectedProfile.role)!.className}>{getRoleBadge(selectedProfile.role)!.label}</span>
-                ) : null}
-              </div>
-              <span className="text-xs uppercase tracking-wide text-cyan-300">{selectedProfile.theme}</span>
-            </div>
-            <p className="mt-1 text-xs text-slate-400">
-              Balance {formatUserBalance(selectedProfile.balance, false)} NVC · XP {selectedProfile.xp} · Friends {selectedProfile.friendsCount}
-            </p>
-            <p className="mt-1 text-xs text-cyan-300">Favorite: {selectedProfile.favoriteGame}</p>
-            <p className="mt-2 text-sm text-slate-300">{selectedProfile.bio || 'No bio yet.'}</p>
-            <p className="mt-2 text-[11px] text-slate-500">Joined {new Date(selectedProfile.createdAt).toLocaleDateString()}</p>
-          </div>
-        ) : null}
       </div>
 
       {selectedTransaction ? (

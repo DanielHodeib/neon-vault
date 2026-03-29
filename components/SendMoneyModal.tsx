@@ -70,7 +70,7 @@ export default function SendMoneyModal({
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.2 }}
-          className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-cyan-700/40 bg-gradient-to-br from-slate-950/90 to-slate-900/90 p-6 shadow-2xl shadow-cyan-500/20"
+          className="relative w-[95vw] max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-cyan-700/40 bg-gradient-to-br from-slate-950/90 to-slate-900/90 p-6 shadow-2xl shadow-cyan-500/20"
         >
           {/* Close button */}
           <button

@@ -3,8 +3,15 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import LegalFooter from '@/components/LegalFooter';
+import GuestSupportModal from './GuestSupportModal';
+
+type PublicStats = {
+  totalUsers: number;
+  onlineUsers: number;
+  activeTables: number;
+};
 
 export default function LoginForm() {
   const router = useRouter();
@@ -12,6 +19,50 @@ export default function LoginForm() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [supportOpen, setSupportOpen] = useState(false);
+  const [supportReason, setSupportReason] = useState<'password' | 'support'>('support');
+  const [stats, setStats] = useState<PublicStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    try {
+      const forcedError = window.sessionStorage.getItem('login_error');
+      if (forcedError) {
+        setError(forcedError);
+        window.sessionStorage.removeItem('login_error');
+      }
+    } catch {
+      // Ignore storage access issues.
+    }
+
+    const loadStats = async () => {
+      setStatsLoading(true);
+      try {
+        const response = await fetch('/api/public/stats', { cache: 'no-store' });
+        const payload = (await response.json()) as Partial<PublicStats>;
+        if (!active || !response.ok) {
+          return;
+        }
+
+        setStats({
+          totalUsers: Number(payload.totalUsers ?? 0),
+          onlineUsers: Number(payload.onlineUsers ?? 0),
+          activeTables: Number(payload.activeTables ?? 0),
+        });
+      } finally {
+        if (active) {
+          setStatsLoading(false);
+        }
+      }
+    };
+
+    void loadStats();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -23,6 +74,19 @@ export default function LoginForm() {
 
     setLoading(true);
     setError('');
+
+    const precheckResponse = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim(), password }),
+    });
+
+    const precheckPayload = (await precheckResponse.json()) as { ok?: boolean; error?: string };
+    if (!precheckResponse.ok || !precheckPayload.ok) {
+      setLoading(false);
+      setError(precheckPayload.error ?? 'Invalid credentials.');
+      return;
+    }
 
     const result = await signIn('credentials', {
       username: username.trim(),
@@ -60,9 +124,9 @@ export default function LoginForm() {
             </p>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <Stat label="Latency" value="24ms" />
-              <Stat label="Connected" value="1.2k" />
-              <Stat label="Tables" value="42" />
+              <Stat label="Players" value={stats?.totalUsers ?? 0} loading={statsLoading} />
+              <Stat label="Online" value={stats?.onlineUsers ?? 0} loading={statsLoading} />
+              <Stat label="Tables" value={stats?.activeTables ?? 0} loading={statsLoading} />
             </div>
           </div>
 
@@ -71,6 +135,8 @@ export default function LoginForm() {
             <p className="mt-1 text-sm text-slate-400">Use your username and password.</p>
 
             <form onSubmit={onSubmit} className="mt-6 space-y-4">
+              {error ? <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-bold text-red-300">{error}</p> : null}
+
               <div>
                 <label htmlFor="username" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
                   Username
@@ -101,8 +167,6 @@ export default function LoginForm() {
                 />
               </div>
 
-              {error ? <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p> : null}
-
               <button
                 type="submit"
                 disabled={loading}
@@ -119,19 +183,51 @@ export default function LoginForm() {
               </Link>
             </p>
 
+            <div className="mt-2 flex items-center gap-3 text-xs text-slate-400">
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportReason('password');
+                  setSupportOpen(true);
+                }}
+                className="transition hover:text-cyan-300"
+              >
+                Passwort vergessen?
+              </button>
+              <span className="text-slate-600">|</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupportReason('support');
+                  setSupportOpen(true);
+                }}
+                className="transition hover:text-cyan-300"
+              >
+                Support kontaktieren
+              </button>
+            </div>
+
             <LegalFooter className="mt-4" />
           </div>
         </div>
       </section>
+
+      <GuestSupportModal
+        open={supportOpen}
+        onClose={() => setSupportOpen(false)}
+        initialReason={supportReason}
+      />
     </main>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, loading }: { label: string; value: number; loading: boolean }) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/55 p-3">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">{label}</p>
-      <p className="mt-1 font-mono text-xl font-bold text-slate-100">{value}</p>
+      <p className="mt-1 font-mono text-xl font-bold text-slate-100">
+        {loading ? <span className="inline-block h-6 w-16 animate-pulse rounded bg-slate-800" /> : value.toLocaleString('en-US')}
+      </p>
     </div>
   );
 }

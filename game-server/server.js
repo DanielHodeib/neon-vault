@@ -24,6 +24,8 @@ const CRASH_BROADCAST_MS = 120;
 const POKER_TURN_MS = 20000;
 const GLOBAL_CRASH_ROOM_ID = 'global';
 const POKER_ANTE = Math.max(1, Math.floor(Number(process.env.POKER_ANTE || 10)));
+const POKER_SMALL_BLIND = 50;
+const POKER_BIG_BLIND = 100;
 const CHAT_ACTIVITY_WINDOW_MS = 10 * 60 * 1000;
 const COINFLIP_HOUSE_FEE_RATE = 0.05;
 const OWNER_USERNAMES = new Set(
@@ -114,6 +116,11 @@ const genericRooms = new Map();
 const socketProfiles = new Map();
 const chatActiveUsers = new Map();
 const pokerBroadcastTimers = new Map();
+let maintenanceTimer = null;
+let systemMaintenanceState = {
+  isMaintenanceMode: false,
+  maintenanceEndTime: null,
+};
 
 const coinflipState = {
   openLobbies: [],
@@ -219,6 +226,103 @@ function isAuthorizedInternalRequest(req) {
   return provided.length > 0 && provided === expected;
 }
 
+function getInternalFetchHeaders() {
+  const token = getInternalToken();
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { 'x-internal-token': token } : {}),
+  };
+}
+
+function normalizeMaintenancePayload(payload) {
+  const enabled = Boolean(payload?.isMaintenanceMode);
+  let endTime = null;
+
+  if (enabled && payload?.maintenanceEndTime) {
+    const parsed = new Date(payload.maintenanceEndTime);
+    if (!Number.isNaN(parsed.getTime())) {
+      endTime = parsed.toISOString();
+    }
+  }
+
+  return {
+    isMaintenanceMode: enabled,
+    maintenanceEndTime: enabled ? endTime : null,
+  };
+}
+
+function emitMaintenanceUpdate() {
+  io.emit('system_maintenance_update', {
+    isMaintenanceMode: Boolean(systemMaintenanceState.isMaintenanceMode),
+    maintenanceEndTime: systemMaintenanceState.maintenanceEndTime,
+  });
+}
+
+async function syncMaintenanceToApp() {
+  await fetch(`${APP_INTERNAL_URL}/api/internal/system/maintenance`, {
+    method: 'POST',
+    headers: getInternalFetchHeaders(),
+    cache: 'no-store',
+    body: JSON.stringify({
+      isMaintenanceMode: Boolean(systemMaintenanceState.isMaintenanceMode),
+      maintenanceEndTime: systemMaintenanceState.maintenanceEndTime,
+    }),
+  }).catch(() => null);
+}
+
+function applyMaintenanceState(nextState, options = { emit: true }) {
+  systemMaintenanceState = {
+    isMaintenanceMode: Boolean(nextState.isMaintenanceMode),
+    maintenanceEndTime: nextState.maintenanceEndTime ?? null,
+  };
+
+  if (options.emit) {
+    emitMaintenanceUpdate();
+  }
+}
+
+async function loadMaintenanceStateFromApp() {
+  const response = await fetch(`${APP_INTERNAL_URL}/api/internal/system/maintenance`, {
+    method: 'GET',
+    headers: getInternalFetchHeaders(),
+    cache: 'no-store',
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return;
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  const normalized = normalizeMaintenancePayload(payload?.settings ?? payload);
+  applyMaintenanceState(normalized, { emit: false });
+}
+
+function startMaintenanceTimer() {
+  if (maintenanceTimer) {
+    clearInterval(maintenanceTimer);
+  }
+
+  maintenanceTimer = setInterval(async () => {
+    if (!systemMaintenanceState.isMaintenanceMode || !systemMaintenanceState.maintenanceEndTime) {
+      return;
+    }
+
+    const end = new Date(systemMaintenanceState.maintenanceEndTime);
+    if (Number.isNaN(end.getTime()) || end.getTime() > Date.now()) {
+      return;
+    }
+
+    applyMaintenanceState(
+      {
+        isMaintenanceMode: false,
+        maintenanceEndTime: null,
+      },
+      { emit: true }
+    );
+    await syncMaintenanceToApp();
+  }, 60000);
+}
+
 async function callFriendsSocketApi(action, payload) {
   const token = getInternalToken();
 
@@ -279,6 +383,64 @@ async function callSupportSocketApi(action, payload) {
   }
 }
 
+async function callNotificationApi(action, payload) {
+  try {
+    const response = await fetch(`${APP_INTERNAL_URL}/api/internal/notifications`, {
+      method: 'POST',
+      headers: getInternalFetchHeaders(),
+      body: JSON.stringify({ action, ...payload }),
+      cache: 'no-store',
+    });
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: typeof data?.error === 'string' ? data.error : 'Notification API request failed.',
+      };
+    }
+
+    return {
+      ok: true,
+      ...data,
+    };
+  } catch {
+    return { ok: false, error: 'Notification API unreachable.' };
+  }
+}
+
+async function sendNotification(userId, type, title, message) {
+  const safeUserId = typeof userId === 'string' ? userId.trim() : '';
+  const safeTitle = typeof title === 'string' ? title.trim().slice(0, 120) : '';
+  const safeMessage = typeof message === 'string' ? message.trim().slice(0, 400) : '';
+
+  if (!safeUserId || !safeTitle || !safeMessage) {
+    return { ok: false, error: 'userId, title and message are required.' };
+  }
+
+  const created = await callNotificationApi('create', {
+    userId: safeUserId,
+    type,
+    title: safeTitle,
+    message: safeMessage,
+  });
+
+  if (!created.ok || !created.notification) {
+    return { ok: false, error: created.error || 'Failed to store notification.' };
+  }
+
+  const receiverSocketIds = getSocketIdsByUserId(safeUserId);
+  receiverSocketIds.forEach((receiverSocketId) => {
+    io.to(receiverSocketId).emit('new_notification', created.notification);
+  });
+
+  return {
+    ok: true,
+    notification: created.notification,
+    delivered: receiverSocketIds.length,
+  };
+}
+
 function normalizeClanTag(rawClanTag) {
   if (typeof rawClanTag !== 'string') {
     return null;
@@ -296,17 +458,21 @@ function upsertSocketProfile(
   rawBalance = Number.MAX_SAFE_INTEGER,
   rawRole = 'USER',
   rawClanTag = null,
-  rawIsKing = false
+  rawIsKing = false,
+  rawUserId = null,
+  rawIsBanned = false
 ) {
   const rank = rankFromXp(rawXp, rawBalance);
   const balance = Number.isFinite(Number(rawBalance)) ? Math.max(0, Math.floor(Number(rawBalance))) : 0;
   const displayed = rankFromSelection(rank.level, balance, selectedRankTag);
   const profile = {
+    userId: typeof rawUserId === 'string' && rawUserId.trim() ? rawUserId.trim() : null,
     username,
     role: normalizeRole(rawRole, username),
     clanTag: normalizeClanTag(rawClanTag),
     balance,
     isKing: Boolean(rawIsKing),
+    isBanned: Boolean(rawIsBanned),
     xp: rank.xp,
     level: rank.level,
     rankTag: displayed.rankTag,
@@ -323,7 +489,7 @@ function getSocketProfile(socketId, usernameFallback) {
     return existing;
   }
 
-  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER, 'USER', null, false);
+  return upsertSocketProfile(socketId, usernameFallback, 0, undefined, Number.MAX_SAFE_INTEGER, 'USER', null, false, null, false);
 }
 
 function shuffleArray(values) {
@@ -370,6 +536,9 @@ function emitSystemMessage(text) {
     timestamp: new Date().toISOString(),
     createdAt: Date.now(),
     role: 'ADMIN',
+    userId: null,
+    isBanned: false,
+    user: { id: null, isBanned: false },
     system: true,
   };
 
@@ -741,10 +910,16 @@ function getPokerRoom(roomId) {
     pendingActionSocketIds: new Set(),
     pot: 0,
     currentBet: 0,
+    currentTableBet: 0,
     minRaise: 0,
+    lastRaiseAmount: POKER_BIG_BLIND,
     turnOrder: [],
+    dealerIndex: -1,
+    smallBlind: POKER_SMALL_BLIND,
+    bigBlind: POKER_BIG_BLIND,
     activePlayerIndex: -1,
     activePlayerSocketId: null,
+    currentTurnUserId: null,
     turnDeadlineAt: 0,
     turnTimer: null,
     winnerSocketId: null,
@@ -1488,6 +1663,21 @@ function getSocketIdsByUsername(username) {
   return socketIds;
 }
 
+function getSocketIdsByUserId(userId) {
+  const normalized = typeof userId === 'string' ? userId.trim() : '';
+  if (!normalized) {
+    return [];
+  }
+
+  const socketIds = [];
+  socketProfiles.forEach((profile, socketId) => {
+    if (String(profile?.userId || '').trim() === normalized) {
+      socketIds.push(socketId);
+    }
+  });
+  return socketIds;
+}
+
 function setUserActivity(socketId, activity) {
   const nextActivity = typeof activity === 'string' && activity.trim() ? activity.trim() : 'Hub';
   const now = Date.now();
@@ -1622,6 +1812,86 @@ function emitToCrashRoom(roomId, event, payload) {
   io.to(roomChannel(room.id)).emit(event, payload);
 }
 
+function isGlobalEventActive(type) {
+  return Boolean(currentActiveEvent && currentActiveEvent.type === type);
+}
+
+function applyWinMultiplierBoost(basePayout) {
+  const safePayout = Number.isFinite(Number(basePayout)) ? Number(basePayout) : 0;
+  if (!isGlobalEventActive('MULTIPLIER-BOOST')) {
+    return safePayout;
+  }
+
+  return Number((safePayout * 1.2).toFixed(2));
+}
+
+function applyCashbackForLoss(socketId, username, lostAmount, source) {
+  const safeLoss = Number.isFinite(Number(lostAmount)) ? Number(lostAmount) : 0;
+  if (!isGlobalEventActive('CASHBACK-MANIA') || safeLoss <= 0) {
+    return 0;
+  }
+
+  const cashback = Number((safeLoss * 0.1).toFixed(2));
+  if (cashback <= 0) {
+    return 0;
+  }
+
+  const profile = getSocketProfile(socketId, username);
+  if (Number.isFinite(Number(profile.balance))) {
+    profile.balance = Number(profile.balance) + cashback;
+    socketProfiles.set(socketId, profile);
+  }
+
+  io.to(socketId).emit('event_cashback_reward', {
+    source,
+    cashback,
+    eventType: 'CASHBACK-MANIA',
+  });
+
+  return cashback;
+}
+
+function getNextActiveSeatIndex(room, fromIndex = -1) {
+  if (!Array.isArray(room.turnOrder) || room.turnOrder.length === 0) {
+    return -1;
+  }
+
+  for (let step = 1; step <= room.turnOrder.length; step += 1) {
+    const index = (fromIndex + step + room.turnOrder.length) % room.turnOrder.length;
+    const socketId = room.turnOrder[index];
+    const player = room.players.get(socketId);
+    if (!player || player.folded || !player.ready || player.hand.length === 0) {
+      continue;
+    }
+    return index;
+  }
+
+  return -1;
+}
+
+function isPokerBettingRoundComplete(room) {
+  const activePlayers = room.turnOrder
+    .map((socketId) => room.players.get(socketId))
+    .filter((player) => player && !player.folded && player.ready && player.hand.length > 0);
+
+  if (activePlayers.length <= 1) {
+    return true;
+  }
+
+  const targetBet = Number(room.currentTableBet || room.currentBet || 0);
+  for (const player of activePlayers) {
+    if (Number(player.buyIn || 0) <= 0) {
+      continue;
+    }
+
+    if (Number(player.roundBet || 0) !== targetBet) {
+      return false;
+    }
+  }
+
+  return room.pendingActionSocketIds.size === 0;
+}
+
 function clearPokerTurnTimer(room) {
   if (room.turnTimer) {
     clearTimeout(room.turnTimer);
@@ -1666,11 +1936,15 @@ function assignPokerTurn(room, targetIndex = -1) {
   if (nextIndex < 0) {
     room.activePlayerIndex = -1;
     room.activePlayerSocketId = null;
+    room.currentTurnUserId = null;
     return;
   }
 
   room.activePlayerIndex = nextIndex;
   room.activePlayerSocketId = room.turnOrder[nextIndex] || null;
+  room.currentTurnUserId = room.activePlayerSocketId
+    ? room.players.get(room.activePlayerSocketId)?.userId ?? null
+    : null;
   room.turnDeadlineAt = Date.now() + POKER_TURN_MS;
 
   room.turnTimer = setTimeout(() => {
@@ -1708,7 +1982,9 @@ function assignPokerTurn(room, targetIndex = -1) {
 function resetPokerBettingRound(room, stageName) {
   room.stage = stageName;
   room.currentBet = 0;
-  room.minRaise = Math.max(POKER_ANTE, 1);
+  room.currentTableBet = 0;
+  room.minRaise = Math.max(room.bigBlind || POKER_BIG_BLIND, 1);
+  room.lastRaiseAmount = room.minRaise;
   room.pendingActionSocketIds = new Set();
   room.actedSocketIds = new Set();
 
@@ -1726,11 +2002,12 @@ function resetPokerBettingRound(room, stageName) {
   if (room.pendingActionSocketIds.size === 0) {
     room.activePlayerIndex = -1;
     room.activePlayerSocketId = null;
+    room.currentTurnUserId = null;
     clearPokerTurnTimer(room);
     return;
   }
 
-  const firstIndex = getNextPokerTurnIndex(room, -1);
+  const firstIndex = getNextActiveSeatIndex(room, room.dealerIndex);
   assignPokerTurn(room, firstIndex);
 }
 
@@ -1760,6 +2037,11 @@ function publicPokerState(room, targetSocketId = null) {
     board: room.board,
     pot: Number(room.pot || 0),
     currentBet: Number(room.currentBet || 0),
+    currentTableBet: Number(room.currentTableBet || room.currentBet || 0),
+    dealerIndex: Number(room.dealerIndex || 0),
+    smallBlind: Number(room.smallBlind || POKER_SMALL_BLIND),
+    bigBlind: Number(room.bigBlind || POKER_BIG_BLIND),
+    currentTurnUserId: room.currentTurnUserId,
     minRaise: Number(room.minRaise || 0),
     activePlayerSocketId: room.activePlayerSocketId,
     turnDeadlineAt: Number(room.turnDeadlineAt || 0),
@@ -1795,9 +2077,12 @@ function resetPokerRound(room) {
   room.pendingActionSocketIds = new Set();
   room.pot = 0;
   room.currentBet = 0;
+  room.currentTableBet = 0;
   room.minRaise = 0;
+  room.lastRaiseAmount = room.bigBlind || POKER_BIG_BLIND;
   room.activePlayerIndex = -1;
   room.activePlayerSocketId = null;
+  room.currentTurnUserId = null;
   room.winnerSocketId = null;
   room.winnerLabel = '';
   room.players.forEach((player) => {
@@ -1874,7 +2159,7 @@ function maybeAdvancePokerStage(room) {
     return;
   }
 
-  if (room.pendingActionSocketIds.size > 0) {
+  if (!isPokerBettingRoundComplete(room)) {
     return;
   }
 
@@ -1897,7 +2182,8 @@ function maybeAdvancePokerStage(room) {
 
 function startPokerRound(roomId) {
   const room = getPokerRoom(roomId);
-  const seatedPlayers = Array.from(room.players.values()).filter((player) => Boolean(player.seated) && Number(player.buyIn || 0) >= POKER_ANTE);
+  const minStackToPlay = Math.max(room.bigBlind || POKER_BIG_BLIND, 1);
+  const seatedPlayers = Array.from(room.players.values()).filter((player) => Boolean(player.seated) && Number(player.buyIn || 0) >= minStackToPlay);
   if (seatedPlayers.length < 2) {
     return;
   }
@@ -1916,20 +2202,22 @@ function startPokerRound(roomId) {
   room.pendingActionSocketIds = new Set();
   room.pot = 0;
   room.currentBet = 0;
-  room.minRaise = Math.max(POKER_ANTE, 1);
+  room.currentTableBet = 0;
+  room.minRaise = Math.max(room.bigBlind || POKER_BIG_BLIND, 1);
+  room.lastRaiseAmount = room.minRaise;
   room.activePlayerIndex = -1;
   room.activePlayerSocketId = null;
+  room.currentTurnUserId = null;
   room.winnerSocketId = null;
   room.winnerLabel = '';
   room.turnOrder = Array.from(room.players.keys());
+  room.dealerIndex = getNextActiveSeatIndex(room, room.dealerIndex);
 
   room.players.forEach((player) => {
-    const inHand = Boolean(player.seated) && Number(player.buyIn || 0) >= POKER_ANTE;
+    const inHand = Boolean(player.seated) && Number(player.buyIn || 0) >= minStackToPlay;
     player.ready = inHand;
     player.folded = !inHand;
     if (inHand) {
-      player.buyIn = Number(player.buyIn || 0) - POKER_ANTE;
-      room.pot += POKER_ANTE;
       player.hand = [room.deck.pop(), room.deck.pop()];
       player.roundBet = 0;
       player.actionText = 'in hand';
@@ -1940,7 +2228,58 @@ function startPokerRound(roomId) {
     }
   });
 
-  resetPokerBettingRound(room, 'preflop');
+  room.stage = 'preflop';
+  room.pendingActionSocketIds = new Set();
+  room.actedSocketIds = new Set();
+
+  const smallBlindIndex = getNextActiveSeatIndex(room, room.dealerIndex);
+  const bigBlindIndex = getNextActiveSeatIndex(room, smallBlindIndex);
+
+  const postBlind = (seatIndex, blindAmount, blindLabel) => {
+    if (seatIndex < 0) {
+      return 0;
+    }
+
+    const socketId = room.turnOrder[seatIndex];
+    const player = room.players.get(socketId);
+    if (!player || player.folded || !player.ready || player.hand.length === 0) {
+      return 0;
+    }
+
+    const contribution = Math.min(Number(player.buyIn || 0), blindAmount);
+    player.buyIn = Number(player.buyIn || 0) - contribution;
+    player.roundBet = contribution;
+    player.actionText = `${blindLabel} ${contribution}`;
+    room.pot += contribution;
+    return contribution;
+  };
+
+  const sbPosted = postBlind(smallBlindIndex, room.smallBlind || POKER_SMALL_BLIND, 'SB');
+  const bbPosted = postBlind(bigBlindIndex, room.bigBlind || POKER_BIG_BLIND, 'BB');
+  const tableBet = Math.max(sbPosted, bbPosted);
+  room.currentBet = tableBet;
+  room.currentTableBet = tableBet;
+
+  room.players.forEach((player, socketId) => {
+    if (player.folded || !player.ready || player.hand.length === 0) {
+      return;
+    }
+
+    const stack = Number(player.buyIn || 0);
+    if (stack <= 0) {
+      player.actionText = 'all-in';
+      return;
+    }
+
+    if (player.roundBet < tableBet) {
+      player.actionText = 'to call';
+    }
+
+    room.pendingActionSocketIds.add(socketId);
+  });
+
+  const openerIndex = getNextActiveSeatIndex(room, bigBlindIndex);
+  assignPokerTurn(room, openerIndex);
 
   broadcastPokerState(room.id);
 }
@@ -1982,6 +2321,12 @@ function crashRoundNow(roomId) {
   room.history = [room.crashPoint, ...room.history].slice(0, 16);
 
   const playersAtCrash = publicCrashPlayers(room);
+    Array.from(room.players.values()).forEach((player) => {
+      if (player.cashedOut || player.roundId !== room.roundId) {
+        return;
+      }
+      applyCashbackForLoss(player.socketId, player.username, Number(player.amount || 0), 'crash');
+    });
 
   emitToCrashRoom(room.id, 'crash_crashed', {
     roomId: room.id,
@@ -2358,17 +2703,111 @@ function spinRouletteResult() {
 // ─── Global Random Event Engine ────────────────────────────────────────────
 let currentActiveEvent = null;
 let globalEventEndTimer = null;
+let globalEventLoopTimer = null;
+let globalRainDropTimer = null;
+let nextGlobalEventAt = Date.now() + ((60 + Math.floor(Math.random() * 61)) * 60 * 1000);
 
 const EVENT_TYPES = [
-  { type: 'GOLDEN_HOUR', label: '🌟 Golden Hour', description: '1.5x Multiplier on all Crash & Coinflip cashouts!', multiplier: 1.5, color: '#fbbf24' },
-  { type: 'HOUSE_EDGE_DROP', label: '🃏 House Edge Drop', description: 'Blackjack pays 3:2 bonus! Higher Roulette win chances!', multiplier: 1.0, color: '#22d3ee' },
+  {
+    type: 'CASHBACK-MANIA',
+    label: 'CASHBACK-MANIA',
+    description: '10% Cashback on losing Crash/Coinflip bets.',
+    multiplier: 1,
+    color: '#22d3ee',
+  },
+  {
+    type: 'MULTIPLIER-BOOST',
+    label: 'MULTIPLIER-BOOST',
+    description: '1.2x payout boost on Crash and Coinflip wins.',
+    multiplier: 1.2,
+    color: '#34d399',
+  },
+  {
+    type: 'RAIN-EVENT',
+    label: 'RAIN-EVENT',
+    description: "IT'S RAINING NVC! Active users receive random drops.",
+    multiplier: 1,
+    color: '#38bdf8',
+  },
 ];
 
-function startRandomGlobalEvent() {
-  if (currentActiveEvent) return;
+function stopGlobalRainDrops() {
+  if (globalRainDropTimer) {
+    clearInterval(globalRainDropTimer);
+    globalRainDropTimer = null;
+  }
+}
 
-  const eventDef = EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)];
-  const durationMs = (5 + Math.floor(Math.random() * 6)) * 60 * 1000; // 5–10 min
+function startGlobalRainDrops() {
+  stopGlobalRainDrops();
+
+  globalRainDropTimer = setInterval(() => {
+    if (!currentActiveEvent || currentActiveEvent.type !== 'RAIN-EVENT') {
+      stopGlobalRainDrops();
+      return;
+    }
+
+    const activeProfiles = Array.from(socketProfiles.values()).filter((profile) => profile && typeof profile.userId === 'string' && profile.userId.trim());
+    const uniqueByUserId = new Map();
+    activeProfiles.forEach((profile) => {
+      const key = String(profile.userId).trim();
+      if (key && !uniqueByUserId.has(key)) {
+        uniqueByUserId.set(key, profile);
+      }
+    });
+
+    if (uniqueByUserId.size === 0) {
+      return;
+    }
+
+    const dropAmount = 20 + Math.floor(Math.random() * 81);
+    uniqueByUserId.forEach((profile, userId) => {
+      void sendNotification(
+        userId,
+        'SYSTEM',
+        'Rain Event Drop',
+        `You received ${dropAmount} NVC from RAIN-EVENT.`
+      );
+
+      const receiverSocketIds = getSocketIdsByUserId(userId);
+      receiverSocketIds.forEach((receiverSocketId) => {
+        io.to(receiverSocketId).emit('notification', {
+          message: `RAIN-EVENT: +${dropAmount} NVC drop`,
+        });
+      });
+    });
+  }, 45000);
+}
+
+function stopGlobalEvent() {
+  if (!currentActiveEvent) {
+    return false;
+  }
+
+  const ended = currentActiveEvent;
+  currentActiveEvent = null;
+
+  if (globalEventEndTimer) {
+    clearTimeout(globalEventEndTimer);
+    globalEventEndTimer = null;
+  }
+
+  stopGlobalRainDrops();
+  io.emit('global_event_ended', { type: ended?.type, endedAt: Date.now() });
+  emitSystemMessage(`⏰ Event beendet: ${ended?.label}`);
+  nextGlobalEventAt = Date.now() + ((60 + Math.floor(Math.random() * 61)) * 60 * 1000);
+  return true;
+}
+
+function startGlobalEvent(eventDef, durationMinutes = null) {
+  if (currentActiveEvent) {
+    return { ok: false, error: 'Event already active.' };
+  }
+
+  const safeDurationMinutes = Number.isFinite(Number(durationMinutes))
+    ? Math.max(1, Math.min(180, Math.floor(Number(durationMinutes))))
+    : 5 + Math.floor(Math.random() * 6);
+  const durationMs = safeDurationMinutes * 60 * 1000;
   const endTime = Date.now() + durationMs;
 
   currentActiveEvent = {
@@ -2382,24 +2821,43 @@ function startRandomGlobalEvent() {
   };
 
   io.emit('global_event_started', currentActiveEvent);
+  if (eventDef.type === 'RAIN-EVENT') {
+    emitSystemMessage("IT'S RAINING NVC!");
+    startGlobalRainDrops();
+  }
   emitSystemMessage(`${eventDef.label}: ${eventDef.description} Endet in ${Math.round(durationMs / 60000)} Minuten!`);
 
   globalEventEndTimer = setTimeout(() => {
-    const ended = currentActiveEvent;
-    currentActiveEvent = null;
-    globalEventEndTimer = null;
-    io.emit('global_event_ended', { type: ended?.type, endedAt: Date.now() });
-    emitSystemMessage(`⏰ Event beendet: ${ended?.label}`);
-    scheduleNextGlobalEvent();
+    stopGlobalEvent();
   }, durationMs);
+
+  return { ok: true, event: currentActiveEvent };
 }
 
-function scheduleNextGlobalEvent() {
-  const delayMs = (60 + Math.floor(Math.random() * 61)) * 60 * 1000; // 60–120 min
-  setTimeout(startRandomGlobalEvent, delayMs);
+function startRandomGlobalEvent() {
+  if (currentActiveEvent) return;
+
+  const eventDef = EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)];
+  startGlobalEvent(eventDef, null);
 }
 
-scheduleNextGlobalEvent();
+function startGlobalEventManager() {
+  if (globalEventLoopTimer) {
+    clearInterval(globalEventLoopTimer);
+  }
+
+  globalEventLoopTimer = setInterval(() => {
+    if (isShuttingDown || currentActiveEvent) {
+      return;
+    }
+
+    if (Date.now() >= nextGlobalEventAt) {
+      startRandomGlobalEvent();
+    }
+  }, 15000);
+}
+
+startGlobalEventManager();
 // ─────────────────────────────────────────────────────────────────────────────
 
 const crashEngineInterval = setInterval(() => {
@@ -2452,7 +2910,8 @@ const crashEngineInterval = setInterval(() => {
     );
     eligible.forEach((player) => {
       if (room.multiplier >= player.autoCashOut) {
-        const payout = Number((player.amount * player.autoCashOut).toFixed(2));
+        const basePayout = Number((player.amount * player.autoCashOut).toFixed(2));
+        const payout = applyWinMultiplierBoost(basePayout);
         player.cashedOut = true;
         player.cashedAt = player.autoCashOut;
 
@@ -2484,7 +2943,7 @@ const crashEngineInterval = setInterval(() => {
           roomId: room.id,
         });
 
-          emitSystemBigWin(player.username, payout, 'crash');
+        emitSystemBigWin(player.username, payout, 'crash');
       }
     });
   });
@@ -2570,8 +3029,34 @@ app.post('/internal/global-event/start', (req, res) => {
   if (currentActiveEvent) {
     return res.status(400).json({ ok: false, error: 'Event already active.' });
   }
-  startRandomGlobalEvent();
-  return res.json({ ok: true, event: currentActiveEvent });
+  const result = startGlobalEvent(EVENT_TYPES[Math.floor(Math.random() * EVENT_TYPES.length)], null);
+  return res.json(result);
+});
+
+app.post('/internal/global-event/manual-start', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const eventType = typeof req.body?.eventType === 'string' ? req.body.eventType.trim().toUpperCase() : '';
+  const durationMinutes = Math.floor(Number(req.body?.durationMinutes ?? 10));
+  const eventDef = EVENT_TYPES.find((entry) => entry.type === eventType);
+  if (!eventDef) {
+    return res.status(400).json({ ok: false, error: 'Invalid eventType.' });
+  }
+
+  stopGlobalEvent();
+  const result = startGlobalEvent(eventDef, durationMinutes);
+  return res.json(result);
+});
+
+app.post('/internal/global-event/force-stop', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const stopped = stopGlobalEvent();
+  return res.json({ ok: true, stopped });
 });
 
 app.get('/internal/global-event', (req, res) => {
@@ -2599,6 +3084,24 @@ app.post('/internal/global-notification', (req, res) => {
   return res.json({ ok: true });
 });
 
+app.post('/internal/notifications/send', async (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+  const type = typeof req.body?.type === 'string' ? req.body.type.trim().toUpperCase() : 'SYSTEM';
+  const title = typeof req.body?.title === 'string' ? req.body.title.trim().slice(0, 120) : '';
+  const message = typeof req.body?.message === 'string' ? req.body.message.trim().slice(0, 400) : '';
+
+  const result = await sendNotification(userId, type, title, message);
+  if (!result.ok) {
+    return res.status(400).json(result);
+  }
+
+  return res.json(result);
+});
+
 app.post('/internal/admin-broadcast', (req, res) => {
   if (!isAuthorizedInternalRequest(req)) {
     return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
@@ -2613,6 +3116,18 @@ app.post('/internal/admin-broadcast', (req, res) => {
     message,
     createdAt: Date.now(),
     from: 'Daniel',
+  });
+
+  const activeUserIds = new Set();
+  socketProfiles.forEach((profile) => {
+    const userId = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+    if (userId) {
+      activeUserIds.add(userId);
+    }
+  });
+
+  activeUserIds.forEach((userId) => {
+    void sendNotification(userId, 'SYSTEM', 'System Announcement', message);
   });
 
   return res.json({ ok: true });
@@ -2660,6 +3175,186 @@ app.post('/internal/user/refresh', (req, res) => {
   return res.json({ ok: true, delivered: targets.length });
 });
 
+app.get('/internal/stats/online', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  return res.json({ ok: true, onlineUsers: onlineUsers.size });
+});
+
+app.get('/internal/stats/live', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const countActiveRooms = (rooms) => {
+    let count = 0;
+    rooms.forEach((room) => {
+      if (!room) {
+        return;
+      }
+
+      if (room instanceof Set) {
+        if (room.size > 0) {
+          count += 1;
+        }
+        return;
+      }
+
+      if (Array.isArray(room.players) && room.players.length > 0) {
+        count += 1;
+      }
+    });
+    return count;
+  };
+
+  const activeTables =
+    countActiveRooms(crashRooms) +
+    countActiveRooms(pokerRooms) +
+    countActiveRooms(blackjackRooms) +
+    countActiveRooms(rouletteRooms) +
+    countActiveRooms(genericRooms);
+
+  return res.json({
+    ok: true,
+    onlineUsers: onlineUsers.size,
+    activeTables,
+  });
+});
+
+app.get('/internal/system/maintenance', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  return res.json({ ok: true, ...systemMaintenanceState });
+});
+
+app.post('/internal/system/maintenance', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const next = normalizeMaintenancePayload(req.body || {});
+  applyMaintenanceState(next, { emit: true });
+  return res.json({ ok: true, ...systemMaintenanceState });
+});
+
+app.post('/internal/user/banned-status', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  const isBanned = Boolean(req.body?.isBanned);
+  const banReason = typeof req.body?.banReason === 'string' ? req.body.banReason.trim() : '';
+  const banExpiresAt = typeof req.body?.banExpiresAt === 'string' ? req.body.banExpiresAt : null;
+  const forceLogoutMessage =
+    typeof req.body?.forceLogoutMessage === 'string' && req.body.forceLogoutMessage.trim()
+      ? req.body.forceLogoutMessage.trim()
+      : 'You have been banned.';
+
+  if (!userId && !username) {
+    return res.status(400).json({ ok: false, error: 'userId or username is required.' });
+  }
+
+  socketProfiles.forEach((profile, socketId) => {
+    const profileUserId = typeof profile.userId === 'string' ? profile.userId : '';
+    const profileUsername = typeof profile.username === 'string' ? profile.username : '';
+    if ((userId && profileUserId === userId) || (username && profileUsername === username)) {
+      socketProfiles.set(socketId, {
+        ...profile,
+        userId: profileUserId || userId || null,
+        isBanned,
+      });
+    }
+  });
+
+  chatHistory = chatHistory.map((message) => {
+    const matchById = userId && message.userId === userId;
+    const matchByUsername = username && message.username === username;
+    if (!matchById && !matchByUsername) {
+      return message;
+    }
+
+    const resolvedUserId = message.userId || userId || null;
+    return {
+      ...message,
+      userId: resolvedUserId,
+      isBanned,
+      user: {
+        ...(message.user || {}),
+        id: resolvedUserId,
+        isBanned,
+      },
+    };
+  });
+
+  io.emit('user_banned_status_changed', {
+    userId: userId || null,
+    username: username || null,
+    isBanned,
+    banReason: banReason || null,
+    banExpiresAt,
+  });
+
+  if (isBanned) {
+    const targetSocketIds = new Set([
+      ...getSocketIdsByUserId(userId),
+      ...getSocketIdsByUsername(username),
+    ]);
+
+    targetSocketIds.forEach((socketId) => {
+      io.to(socketId).emit('force_logout', {
+        message: forceLogoutMessage,
+        at: Date.now(),
+      });
+
+      const liveSocket = io.sockets.sockets.get(socketId);
+      if (liveSocket) {
+        liveSocket.disconnect(true);
+      }
+    });
+  }
+
+  return res.json({ ok: true });
+});
+
+app.post('/internal/user/force-disconnect', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+  const userId = typeof req.body?.userId === 'string' ? req.body.userId.trim() : '';
+  const message =
+    typeof req.body?.message === 'string' && req.body.message.trim()
+      ? req.body.message.trim()
+      : typeof req.body?.reason === 'string' && req.body.reason.trim()
+        ? req.body.reason.trim()
+        : 'Disconnected by staff.';
+  if (!username && !userId) {
+    return res.status(400).json({ ok: false, error: 'username or userId is required.' });
+  }
+
+  const targets = Array.from(new Set([...getSocketIdsByUserId(userId), ...getSocketIdsByUsername(username)]));
+  targets.forEach((socketId) => {
+    io.to(socketId).emit('force_logout', {
+      message,
+      at: Date.now(),
+    });
+
+    const liveSocket = io.sockets.sockets.get(socketId);
+    if (liveSocket) {
+      liveSocket.disconnect(true);
+    }
+  });
+
+  return res.json({ ok: true, disconnected: targets.length });
+});
+
 io.on('connection', (socket) => {
   const rawName = socket.handshake.query.username;
   const username = (typeof rawName === 'string' && rawName.trim()) || `Guest-${socket.id.slice(0, 6)}`;
@@ -2670,6 +3365,8 @@ io.on('connection', (socket) => {
   const initialXp = Number.isFinite(Number(socket.handshake.query.xp)) ? Number(socket.handshake.query.xp) : 0;
   const initialRole = typeof socket.handshake.query.role === 'string' ? socket.handshake.query.role : 'USER';
   const initialIsKing = socket.handshake.query.isKing === 'true' || socket.handshake.query.isKing === true;
+  const initialUserId = typeof socket.handshake.query.userId === 'string' ? socket.handshake.query.userId : null;
+  const initialIsBanned = socket.handshake.query.isBanned === 'true' || socket.handshake.query.isBanned === true;
   const initialClanTag =
     typeof socket.handshake.query.clanTag === 'string'
       ? socket.handshake.query.clanTag
@@ -2681,12 +3378,16 @@ io.on('connection', (socket) => {
   const initialSelectedRankTag = typeof socket.handshake.query.selectedRankTag === 'string' ? socket.handshake.query.selectedRankTag : undefined;
   const initialBalance = Number.isFinite(Number(socket.handshake.query.balance)) ? Number(socket.handshake.query.balance) : Number.MAX_SAFE_INTEGER;
   const trustedInitialRole = isTrustedOwnerUsername(username) ? 'OWNER' : initialRole;
-  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, trustedInitialRole, initialClanTag, initialIsKing);
+  upsertSocketProfile(socket.id, username, initialXp, initialSelectedRankTag, initialBalance, trustedInitialRole, initialClanTag, initialIsKing, initialUserId, initialIsBanned);
   setUserActivity(socket.id, 'Hub');
   broadcastOnlineUsers();
   socket.join(COINFLIP_ROOM_ID);
 
   socket.emit('chat_history', chatHistory);
+  socket.emit('system_maintenance_update', {
+    isMaintenanceMode: Boolean(systemMaintenanceState.isMaintenanceMode),
+    maintenanceEndTime: systemMaintenanceState.maintenanceEndTime,
+  });
   socket.emit('coinflip_state', coinflipPublicState());
   if (currentActiveEvent) {
     socket.emit('global_event_started', currentActiveEvent);
@@ -2844,14 +3545,18 @@ io.on('connection', (socket) => {
 
   socket.on('friend_transfer_notification', (payload, callback) => {
     const receiverUsername = typeof payload?.receiverUsername === 'string' ? payload.receiverUsername.trim() : '';
+    const receiverUserId = typeof payload?.receiverUserId === 'string' ? payload.receiverUserId.trim() : '';
     const message = typeof payload?.message === 'string' && payload.message.trim() ? payload.message.trim() : 'Du hast NVC erhalten!';
 
-    if (!receiverUsername) {
-      callback?.({ ok: false, error: 'receiverUsername is required.' });
+    if (!receiverUsername && !receiverUserId) {
+      callback?.({ ok: false, error: 'receiverUsername or receiverUserId is required.' });
       return;
     }
 
-    const receiverSocketIds = getSocketIdsByUsername(receiverUsername).filter((socketId) => socketId !== socket.id);
+    const receiverSocketIds = Array.from(new Set([
+      ...getSocketIdsByUsername(receiverUsername),
+      ...getSocketIdsByUserId(receiverUserId),
+    ])).filter((socketId) => socketId !== socket.id);
     receiverSocketIds.forEach((receiverSocketId) => {
       io.to(receiverSocketId).emit('notification', { message });
     });
@@ -2983,9 +3688,63 @@ io.on('connection', (socket) => {
           message: `Support replied to ticket ${ticketId.slice(0, 8)}...`,
         });
       });
+
+      if (typeof result.ticketUserId === 'string' && result.ticketUserId.trim()) {
+        void sendNotification(
+          result.ticketUserId,
+          'SUPPORT_REPLY',
+          'Support Update',
+          `Support replied to your ticket: ${ticketId.slice(0, 8)}...`
+        );
+      }
     }
 
     callback?.({ ok: true, message: result.message, status: result.status });
+  });
+
+  socket.on('fetch_notifications', async (payload, callback) => {
+    const profile = getSocketProfile(socket.id, username);
+    const userId = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+    if (!userId) {
+      callback?.({ ok: false, error: 'User id is required.' });
+      return;
+    }
+
+    const limit = Math.min(100, Math.max(1, Math.floor(Number(payload?.limit ?? 20))));
+    const result = await callNotificationApi('fetch', { userId, limit });
+    if (!result.ok) {
+      callback?.({ ok: false, error: result.error || 'Failed to fetch notifications.' });
+      return;
+    }
+
+    callback?.({ ok: true, notifications: result.notifications || [] });
+  });
+
+  socket.on('mark_notifications_read', async (payload, callback) => {
+    const profile = getSocketProfile(socket.id, username);
+    const userId = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+    if (!userId) {
+      callback?.({ ok: false, error: 'User id is required.' });
+      return;
+    }
+
+    const ids = Array.isArray(payload?.ids)
+      ? payload.ids.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const markAll = Boolean(payload?.markAll);
+
+    const result = await callNotificationApi('mark-read', {
+      userId,
+      ids,
+      markAll,
+    });
+
+    if (!result.ok) {
+      callback?.({ ok: false, error: result.error || 'Failed to mark notifications.' });
+      return;
+    }
+
+    callback?.({ ok: true });
   });
 
   socket.on('update_ticket_status', async (payload, callback) => {
@@ -3091,6 +3850,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('profile_sync', (payload, callback) => {
+    const existingProfile = getSocketProfile(socket.id, username);
     const xp = Number.isFinite(Number(payload?.xp)) ? Number(payload.xp) : 0;
     const balance = Number.isFinite(Number(payload?.balance)) ? Number(payload.balance) : Number.MAX_SAFE_INTEGER;
     const name = typeof payload?.username === 'string' && payload.username.trim() ? payload.username.trim() : username;
@@ -3103,7 +3863,18 @@ io.on('connection', (socket) => {
           ? payload.clan
           : null;
     const selectedRankTag = typeof payload?.selectedRankTag === 'string' ? payload.selectedRankTag : undefined;
-    const profile = upsertSocketProfile(socket.id, name, xp, selectedRankTag, balance, role, clanTag, isKing);
+    const profile = upsertSocketProfile(
+      socket.id,
+      name,
+      xp,
+      selectedRankTag,
+      balance,
+      role,
+      clanTag,
+      isKing,
+      existingProfile.userId,
+      existingProfile.isBanned
+    );
     callback?.({
       ok: true,
       level: profile.level,
@@ -3267,7 +4038,8 @@ io.on('connection', (socket) => {
     const winnerSocketId = winnerIsCreator ? lobby.creatorSocketId : socket.id;
     const loserUsername = winnerIsCreator ? username : lobby.creatorUsername;
     const pot = lobby.amount * 2;
-    const payout = Math.floor(pot * (1 - COINFLIP_HOUSE_FEE_RATE));
+    const basePayout = Math.floor(pot * (1 - COINFLIP_HOUSE_FEE_RATE));
+    const payout = Math.floor(applyWinMultiplierBoost(basePayout));
     const fee = pot - payout;
 
     const winnerProfile = winnerIsCreator ? creatorProfile : joinerProfile;
@@ -3295,6 +4067,9 @@ io.on('connection', (socket) => {
       if (payout >= HIGH_ROLLER_THRESHOLD) {
         emitSystemBigWin(winnerUsername, payout, 'coinflip');
       }
+
+      const loserSocketId = winnerIsCreator ? socket.id : lobby.creatorSocketId;
+      applyCashbackForLoss(loserSocketId, loserUsername, Number(lobby.amount || 0), 'coinflip');
     }, 1200);
 
     callback?.({ ok: true });
@@ -3505,7 +4280,7 @@ io.on('connection', (socket) => {
     }
 
     const action = typeof payload?.action === 'string' ? payload.action : 'check';
-    const currentBet = Number(room.currentBet || 0);
+    const currentBet = Number(room.currentTableBet || room.currentBet || 0);
     const playerRoundBet = Number(player.roundBet || 0);
 
     if (action === 'fold') {
@@ -3528,15 +4303,24 @@ io.on('connection', (socket) => {
         return;
       }
 
+      if (diff <= 0) {
+        callback?.({ ok: false, error: 'Nothing to call. Use check.' });
+        return;
+      }
+
       player.buyIn = Number(player.buyIn || 0) - diff;
       player.roundBet = playerRoundBet + diff;
       room.pot = Number(room.pot || 0) + diff;
-      player.actionText = diff > 0 ? `call ${currentBet}` : 'check';
+      player.actionText = `call ${currentBet}`;
+      if (Number(player.buyIn || 0) <= 0) {
+        player.actionText = `call ${currentBet} (all-in)`;
+      }
       room.pendingActionSocketIds.delete(socket.id);
       room.actedSocketIds.add(socket.id);
     } else if (action === 'raise') {
       const requestedRaise = Math.floor(Number(payload?.amount ?? 0));
-      const minimumTarget = currentBet > 0 ? currentBet * 2 : Math.max(POKER_ANTE * 2, 2);
+      const minRaiseUnit = Math.max(Number(room.lastRaiseAmount || 0), Number(room.bigBlind || POKER_BIG_BLIND), POKER_BIG_BLIND);
+      const minimumTarget = currentBet + minRaiseUnit;
       if (!Number.isFinite(requestedRaise) || requestedRaise < minimumTarget) {
         callback?.({ ok: false, error: `Raise must be at least ${minimumTarget}.` });
         return;
@@ -3557,8 +4341,13 @@ io.on('connection', (socket) => {
       player.roundBet = requestedRaise;
       room.pot = Number(room.pot || 0) + raiseCost;
       room.currentBet = requestedRaise;
-      room.minRaise = Math.max(room.minRaise || 0, Math.floor(requestedRaise / 2));
+      room.currentTableBet = requestedRaise;
+      room.lastRaiseAmount = Math.max(1, requestedRaise - currentBet);
+      room.minRaise = Math.max(room.minRaise || 0, room.lastRaiseAmount, Number(room.bigBlind || POKER_BIG_BLIND));
       player.actionText = `raise ${requestedRaise}`;
+      if (Number(player.buyIn || 0) <= 0) {
+        player.actionText = `raise ${requestedRaise} (all-in)`;
+      }
 
       room.pendingActionSocketIds = new Set(
         room.turnOrder.filter((socketId) => {
@@ -3567,12 +4356,18 @@ io.on('connection', (socket) => {
           }
 
           const target = room.players.get(socketId);
-          return Boolean(target && !target.folded && target.ready && target.hand.length > 0);
+          return Boolean(target && !target.folded && target.ready && target.hand.length > 0 && Number(target.buyIn || 0) > 0);
         })
       );
 
       room.players.forEach((otherPlayer) => {
-        if (otherPlayer.socketId !== player.socketId && !otherPlayer.folded && otherPlayer.ready && otherPlayer.hand.length > 0) {
+        if (
+          otherPlayer.socketId !== player.socketId
+          && !otherPlayer.folded
+          && otherPlayer.ready
+          && otherPlayer.hand.length > 0
+          && Number(otherPlayer.buyIn || 0) > 0
+        ) {
           otherPlayer.actionText = 'to call';
         }
       });
@@ -3590,7 +4385,7 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (room.pendingActionSocketIds.size === 0) {
+    if (isPokerBettingRoundComplete(room)) {
       maybeAdvancePokerStage(room);
       callback?.({ ok: true });
       return;
@@ -3616,6 +4411,12 @@ io.on('connection', (socket) => {
       text: text.slice(0, 280),
       createdAt: Date.now(),
       role: profile.role,
+      userId: profile.userId,
+      isBanned: Boolean(profile.isBanned),
+      user: {
+        id: profile.userId,
+        isBanned: Boolean(profile.isBanned),
+      },
       isKing: Boolean(profile.isKing),
       clanTag: profile.clanTag,
       rankTag: profile.rankTag,
@@ -3648,6 +4449,30 @@ io.on('connection', (socket) => {
     });
   });
 
+  socket.on('fetch_user_profile', async (payload, callback) => {
+    const targetUserId = typeof payload?.targetUserId === 'string' ? payload.targetUserId.trim() : '';
+    const targetUsername = typeof payload?.targetUsername === 'string' ? payload.targetUsername.trim() : '';
+
+    if (!targetUserId && !targetUsername) {
+      callback?.({ ok: false, error: 'targetUserId or targetUsername is required.' });
+      return;
+    }
+
+    const result = await callFriendsSocketApi('get_public_profile', {
+      requesterUsername: username,
+      targetUserId,
+      targetUsername,
+    });
+
+    if (!result.ok || !result.profile) {
+      callback?.({ ok: false, error: result.error || 'Profile unavailable.' });
+      return;
+    }
+
+    socket.emit('user_profile_data', result.profile);
+    callback?.({ ok: true, profile: result.profile });
+  });
+
   socket.on('admin_broadcast', (payload, callback) => {
     const permission = checkPermission(socket, 'MODERATOR', callback);
     if (!permission.ok) {
@@ -3666,7 +4491,47 @@ io.on('connection', (socket) => {
       from: permission.profile.username,
     });
 
+    const activeUserIds = new Set();
+    socketProfiles.forEach((profile) => {
+      const userId = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+      if (userId) {
+        activeUserIds.add(userId);
+      }
+    });
+    activeUserIds.forEach((userId) => {
+      void sendNotification(userId, 'SYSTEM', 'System Announcement', message);
+    });
+
     callback?.({ ok: true });
+  });
+
+  socket.on('admin_trigger_global_event', (payload, callback) => {
+    const permission = checkPermission(socket, 'ADMIN', callback);
+    if (!permission.ok) {
+      return;
+    }
+
+    const eventType = typeof payload?.eventType === 'string' ? payload.eventType.trim().toUpperCase() : '';
+    const durationMinutes = Math.max(1, Math.min(180, Math.floor(Number(payload?.durationMinutes ?? 10))));
+    const eventDef = EVENT_TYPES.find((entry) => entry.type === eventType);
+    if (!eventDef) {
+      callback?.({ ok: false, error: 'Invalid event type.' });
+      return;
+    }
+
+    stopGlobalEvent();
+    const result = startGlobalEvent(eventDef, durationMinutes);
+    callback?.(result);
+  });
+
+  socket.on('admin_force_stop_global_events', (_payload, callback) => {
+    const permission = checkPermission(socket, 'ADMIN', callback);
+    if (!permission.ok) {
+      return;
+    }
+
+    const stopped = stopGlobalEvent();
+    callback?.({ ok: true, stopped });
   });
 
   socket.on('crash_place_bet', (payload, callback) => {
@@ -3817,7 +4682,8 @@ io.on('connection', (socket) => {
     player.cashedOut = true;
     player.cashedAt = roomState.multiplier;
 
-    const payout = Number((player.amount * roomState.multiplier).toFixed(2));
+    const basePayout = Number((player.amount * roomState.multiplier).toFixed(2));
+    const payout = applyWinMultiplierBoost(basePayout);
     const profile = getSocketProfile(socket.id, username);
     if (Number.isFinite(Number(profile.balance))) {
       profile.balance = Number(profile.balance) + payout;
@@ -3913,6 +4779,9 @@ server.listen(PORT, HOST, () => {
   console.log(`Neon Vault game server running on http://${HOST}:${PORT}`);
 });
 
+void loadMaintenanceStateFromApp().catch(() => null);
+startMaintenanceTimer();
+
 function settleCrashRoomsForShutdown() {
   crashRooms.forEach((room) => {
     if (room.crashResetTimer) {
@@ -3966,8 +4835,11 @@ function gracefulShutdown(signal) {
   console.log(`[shutdown] Received ${signal}. Starting graceful shutdown...`);
 
   clearInterval(crashEngineInterval);
+  if (maintenanceTimer) { clearInterval(maintenanceTimer); maintenanceTimer = null; }
   stopRainTimers();
   if (globalEventEndTimer) { clearTimeout(globalEventEndTimer); globalEventEndTimer = null; }
+  if (globalEventLoopTimer) { clearInterval(globalEventLoopTimer); globalEventLoopTimer = null; }
+  if (globalRainDropTimer) { clearInterval(globalRainDropTimer); globalRainDropTimer = null; }
 
   settleCrashRoomsForShutdown();
   settleRouletteRoomsForShutdown();

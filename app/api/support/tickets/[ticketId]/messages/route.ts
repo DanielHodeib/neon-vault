@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 
 import { auth } from '@/auth';
+import { sendUserNotification } from '@/lib/notificationEvents';
 import { prisma } from '@/lib/prisma';
 
 const STAFF_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
@@ -32,6 +33,9 @@ export async function GET(
     select: {
       id: true,
       userId: true,
+      guestContact: true,
+      guestUsername: true,
+      content: true,
       subject: true,
       category: true,
       status: true,
@@ -94,7 +98,7 @@ export async function POST(
   }
 
   const [ticket, currentUser] = await Promise.all([
-    prisma.ticket.findUnique({ where: { id: normalizedTicketId }, select: { id: true, userId: true, status: true } }),
+    prisma.ticket.findUnique({ where: { id: normalizedTicketId }, select: { id: true, userId: true, status: true, subject: true } }),
     prisma.user.findUnique({ where: { id: userId }, select: { role: true } }),
   ]);
 
@@ -134,6 +138,15 @@ export async function POST(
 
     return created;
   });
+
+  if (isStaff && ticket.userId) {
+    await sendUserNotification({
+      userId: ticket.userId,
+      type: 'SUPPORT_REPLY',
+      title: 'Support Update',
+      message: `New staff reply on ticket: ${ticket.subject}`,
+    });
+  }
 
   return NextResponse.json({ ok: true, message, status });
 }

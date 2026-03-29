@@ -29,6 +29,8 @@ interface PokerState {
   board: string[];
   pot?: number;
   currentBet?: number;
+  currentTableBet?: number;
+  currentTurnUserId?: string | null;
   minRaise?: number;
   activePlayerSocketId?: string | null;
   turnDeadlineAt?: number;
@@ -43,6 +45,8 @@ const DEFAULT_POKER_STATE: PokerState = {
   board: [],
   pot: 0,
   currentBet: 0,
+  currentTableBet: 0,
+  currentTurnUserId: null,
   minRaise: 0,
   activePlayerSocketId: null,
   turnDeadlineAt: 0,
@@ -188,6 +192,8 @@ function normalizePokerState(payload: unknown, fallbackRoomId: string): PokerSta
     board: Array.isArray(source.board) ? source.board.filter((card): card is string => typeof card === 'string') : [],
     pot: Number.isFinite(Number(source.pot)) ? Number(source.pot) : 0,
     currentBet: Number.isFinite(Number(source.currentBet)) ? Number(source.currentBet) : 0,
+    currentTableBet: Number.isFinite(Number(source.currentTableBet)) ? Number(source.currentTableBet) : Number(source.currentBet || 0),
+    currentTurnUserId: typeof source.currentTurnUserId === 'string' ? source.currentTurnUserId : null,
     minRaise: Number.isFinite(Number(source.minRaise)) ? Number(source.minRaise) : 0,
     activePlayerSocketId: typeof source.activePlayerSocketId === 'string' ? source.activePlayerSocketId : null,
     turnDeadlineAt: Number.isFinite(Number(source.turnDeadlineAt)) ? Number(source.turnDeadlineAt) : 0,
@@ -446,10 +452,14 @@ export default function PokerFriendsGame({ username }: { username: string }) {
   const hasSeat = Boolean(me?.seated) && Number(me?.buyIn || 0) > 0;
   const isMyTurn = Boolean(me?.socketId) && me?.socketId === state.activePlayerSocketId;
   const canAct = hasSeat && isMyTurn && state.started && state.stage !== 'waiting' && state.stage !== 'showdown' && !Boolean(me?.folded);
-  const minimumRaise = Math.max(Number(state.currentBet || 0) > 0 ? Number(state.currentBet || 0) * 2 : 2, Number(state.minRaise || 0) || 2);
+  const tableBet = Number(state.currentTableBet ?? state.currentBet ?? 0);
+  const myRoundBet = Number(me?.roundBet || 0);
+  const callAmount = Math.max(0, tableBet - myRoundBet);
+  const canCheck = callAmount === 0;
+  const minimumRaise = Math.max(tableBet + Math.max(Number(state.minRaise || 0), 100), Number(state.minRaise || 0) || 100);
 
   return (
-    <div className="poker-solo-root h-full min-h-[560px] flex flex-col bg-slate-900">
+    <div className="poker-solo-root h-full min-h-0 w-full flex flex-col bg-slate-900">
       <div className="px-5 py-3 border-b border-slate-800 bg-slate-950 flex items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-black tracking-wide text-slate-100 uppercase">Texas Hold&apos;em Friends</h2>
@@ -484,8 +494,8 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       </div>
 
       <div className="poker-table-stage flex-1 min-h-0 p-4 md:p-5">
-        <div className="poker-table-frame">
-          <div className="poker-table-felt h-full min-h-[420px] rounded-xl border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.2),_rgba(5,15,13,1)_68%)] relative overflow-hidden">
+        <div className="poker-table-frame mx-auto w-full max-w-3xl aspect-[2/1] rounded-[100px] md:rounded-[200px] shrink-0">
+          <div className="poker-table-felt h-full min-h-0 rounded-[100px] md:rounded-[200px] border border-slate-800 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.2),_rgba(5,15,13,1)_68%)] relative overflow-hidden shrink-0">
           <div className="absolute inset-[12%_7%_16%_7%] rounded-[999px] border border-emerald-500/30 bg-[radial-gradient(ellipse_at_center,_rgba(34,197,94,0.26),_rgba(5,14,13,0.96)_68%)] shadow-[inset_0_0_85px_rgba(0,0,0,0.58)]" />
 
           <div className="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 w-full max-w-[560px] px-4">
@@ -503,7 +513,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
               })}
             </div>
             <p className="mt-3 text-center text-xs text-slate-400">{state.stage === 'waiting' ? 'Waiting for players' : `Stage: ${state.stage}`}</p>
-            <p className="mt-1 text-center text-xs text-slate-500">{state.roomId || pokerRoomId} | Bet {Number(state.currentBet || 0)}</p>
+            <p className="mt-1 text-center text-xs text-slate-500">{state.roomId || pokerRoomId} | Bet {tableBet}</p>
             {state.winnerLabel ? <p className="mt-1 text-center text-sm font-semibold text-emerald-400">{state.winnerLabel}</p> : null}
           </div>
 
@@ -550,38 +560,50 @@ export default function PokerFriendsGame({ username }: { username: string }) {
               placeholder="Raise"
             />
           </div>
-          <div className="flex flex-wrap gap-2 justify-start lg:justify-end items-center">
+          <div className="mt-4 flex w-full flex-col items-center gap-2 md:flex-row md:flex-wrap md:justify-end">
             <button onClick={submitBuyIn} className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold uppercase">
               Sit Down
             </button>
-            {canAct ? (
-              <>
-                <button
-                  onClick={() => action('check')}
-                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
-                >
-                  Check
-                </button>
-                <button
-                  onClick={() => action('call')}
-                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200 text-sm font-semibold uppercase"
-                >
-                  Call
-                </button>
-                <button
-                  onClick={() => action('fold')}
-                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm font-semibold uppercase"
-                >
-                  Fold
-                </button>
-                <button
-                  onClick={() => action('raise')}
-                  className="h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-sm font-semibold uppercase"
-                >
-                  Raise
-                </button>
-              </>
-            ) : null}
+            <button
+              onClick={() => action('check')}
+              disabled={!canAct || !canCheck}
+              className={`h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border text-sm font-semibold uppercase ${
+                canAct && canCheck
+                  ? 'border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200'
+                  : 'border-slate-800 bg-slate-900/50 text-slate-600 cursor-not-allowed'
+              }`}
+            >
+              Check
+            </button>
+            <button
+              onClick={() => action('call')}
+              disabled={!canAct || canCheck}
+              className={`h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg border text-sm font-semibold uppercase ${
+                canAct && !canCheck
+                  ? 'border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-200'
+                  : 'border-slate-800 bg-slate-900/50 text-slate-600 cursor-not-allowed'
+              }`}
+            >
+              {canCheck ? 'Check' : `Call ${callAmount}`}
+            </button>
+            <button
+              onClick={() => action('fold')}
+              disabled={!canAct}
+              className={`h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg text-sm font-semibold uppercase ${
+                canAct ? 'bg-red-600 hover:bg-red-500 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              Fold
+            </button>
+            <button
+              onClick={() => action('raise')}
+              disabled={!canAct}
+              className={`h-11 min-h-[44px] min-w-[44px] px-4 rounded-lg text-sm font-semibold uppercase ${
+                canAct ? 'bg-amber-600 hover:bg-amber-500 text-white' : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              Raise
+            </button>
           </div>
         </div>
       </div>
@@ -618,7 +640,7 @@ const SeatView = React.memo(function SeatView({ player, isSelf, stage, isActive,
           : 'text-amber-300';
 
   return (
-    <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-cyan-400/75 shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''}`}>
+    <div className={`rounded-xl border px-3 py-2 min-w-[164px] backdrop-blur-sm ${isSelf ? 'border-cyan-500/50 bg-cyan-950/35' : 'border-slate-700 bg-slate-900/90'} ${isActive ? 'ring-2 ring-vault-neon-cyan ring-cyan-400 animate-pulse shadow-[0_0_16px_rgba(34,211,238,0.45)]' : ''}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <span className="text-xs font-bold uppercase tracking-wide text-slate-200">{player.username}</span>

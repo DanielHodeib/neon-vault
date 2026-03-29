@@ -19,6 +19,9 @@ export async function GET() {
       id: true,
       subject: true,
       category: true,
+      content: true,
+      guestContact: true,
+      guestUsername: true,
       status: true,
       createdAt: true,
       updatedAt: true,
@@ -65,6 +68,7 @@ export async function POST(request: Request) {
       userId,
       subject,
       category,
+      content,
       status: TicketStatus.OPEN,
       messages: {
         create: {

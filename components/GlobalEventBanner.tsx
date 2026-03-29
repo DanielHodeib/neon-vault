@@ -38,7 +38,7 @@ function useCountdown(endTime: number) {
 
 export default function GlobalEventBanner({ event }: Props) {
   const { label: countdown, done } = useCountdown(event?.endTime ?? 0);
-  const isGolden = event?.type === 'GOLDEN_HOUR';
+  const isCashback = event?.type === 'CASHBACK-MANIA';
 
   return (
     <AnimatePresence>
@@ -49,11 +49,11 @@ export default function GlobalEventBanner({ event }: Props) {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -12 }}
           transition={{ duration: 0.35 }}
-          className="relative z-20 overflow-hidden"
+          className="relative z-20 overflow-hidden bg-vault-black border-b border-vault-neon-cyan border-cyan-500/45 animate-pulse"
           style={{
-            background: isGolden
-              ? 'linear-gradient(90deg, #1a1000 0%, #2d1f00 40%, #1a1000 100%)'
-              : 'linear-gradient(90deg, #001a1a 0%, #002d2d 40%, #001a1a 100%)',
+            background: isCashback
+              ? 'linear-gradient(90deg, #031826 0%, #072938 40%, #031826 100%)'
+              : 'linear-gradient(90deg, #0a1b11 0%, #0d2d1e 40%, #0a1b11 100%)',
           }}
         >
           {/* Animated glow line */}
