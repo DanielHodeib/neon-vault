@@ -328,6 +328,8 @@ interface BetCellProps {
   baseClassName: string;
   idleClassName: string;
   selectedClassName?: string;
+  isWinning?: boolean;
+  dimmed?: boolean;
   onPlaceBet: (type: BetType, value: string) => void;
 }
 
@@ -340,6 +342,8 @@ const BetCell = memo(function BetCell({
   baseClassName,
   idleClassName,
   selectedClassName,
+  isWinning,
+  dimmed,
   onPlaceBet,
 }: BetCellProps) {
   const handleClick = useCallback(() => {
@@ -349,7 +353,7 @@ const BetCell = memo(function BetCell({
   return (
     <button
       onClick={handleClick}
-      className={`${baseClassName} touch-manipulation ${selected ? selectedClassName ?? 'border-blue-600 bg-blue-600 text-white' : idleClassName}`}
+      className={`${baseClassName} touch-manipulation ${selected ? selectedClassName ?? 'border-blue-600 bg-blue-600 text-white shadow-[0_0_15px_rgba(34,211,238,0.35)]' : idleClassName} ${isWinning ? 'animate-pulse shadow-[0_0_24px_rgba(255,255,255,0.35)]' : ''} ${dimmed ? 'opacity-30' : 'opacity-100'}`}
     >
       {label}
       {selected ? <ChipTag amount={stake} /> : null}
@@ -378,6 +382,9 @@ export default function RouletteGame() {
   const pendingSpinStakeRef = useRef(0);
   const pendingSpinBetsRef = useRef<ActiveBet[]>([]);
   const settleSpinTimerRef = useRef<number | null>(null);
+  const winningFocusTimerRef = useRef<number | null>(null);
+  const [winningBetKey, setWinningBetKey] = useState<string | null>(null);
+  const [isWinningFocus, setIsWinningFocus] = useState(false);
 
   const effectiveUsername = (username ?? '').trim() || 'Guest';
 
@@ -451,6 +458,9 @@ export default function RouletteGame() {
       if (settleSpinTimerRef.current) {
         window.clearTimeout(settleSpinTimerRef.current);
       }
+      if (winningFocusTimerRef.current) {
+        window.clearTimeout(winningFocusTimerRef.current);
+      }
 
       const emittedAt = Number(payload.emittedAt ?? Date.now());
       const elapsed = Number.isFinite(emittedAt) ? Math.max(0, Date.now() - emittedAt) : 0;
@@ -464,6 +474,15 @@ export default function RouletteGame() {
 
       settleSpinTimerRef.current = window.setTimeout(() => {
         const resultColor = getNumberColor(result);
+        const winningKey = getBetKey('number', String(result));
+        setWinningBetKey(winningKey);
+        setIsWinningFocus(true);
+
+        winningFocusTimerRef.current = window.setTimeout(() => {
+          setIsWinningFocus(false);
+          setWinningBetKey(null);
+        }, 1700);
+
         setSpinHistory((current) => [{ number: result, color: resultColor }, ...current].slice(0, 14));
 
         const pendingStake = pendingSpinStakeRef.current;
@@ -510,6 +529,9 @@ export default function RouletteGame() {
     return () => {
       if (settleSpinTimerRef.current) {
         window.clearTimeout(settleSpinTimerRef.current);
+      }
+      if (winningFocusTimerRef.current) {
+        window.clearTimeout(winningFocusTimerRef.current);
       }
       socket.off('roulette_room_joined', rouletteRoomJoinedHandler);
       socket.off('roulette_room_members', rouletteRoomMembersHandler);
@@ -580,6 +602,8 @@ export default function RouletteGame() {
     const queuedBets = activeBets.map((bet) => ({ ...bet }));
     setErrorText('');
     setIsSpinning(true);
+    setWinningBetKey(null);
+    setIsWinningFocus(false);
     setWinningNumber(null);
     setStatus('Waiting for server roulette result...');
     pendingSpinStakeRef.current = queuedStake;
@@ -619,17 +643,17 @@ export default function RouletteGame() {
   const getStake = useCallback((type: BetType, value: string) => bets[getBetKey(type, value)]?.stake ?? 0, [bets]);
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-slate-900">
-      <div className="flex-1 min-h-0 bg-slate-900 px-3 lg:px-4 py-3 lg:py-4 overflow-hidden">
-        <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-slate-950 p-3 lg:p-4 grid grid-cols-1 xl:grid-cols-[1.2fr_0.8fr] gap-3 lg:gap-4 overflow-hidden">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_540px_at_35%_20%,rgba(20,83,45,0.35),rgba(2,6,23,0.95))]">
+      <div className="flex-1 min-h-0 px-3 py-3 overflow-hidden lg:px-4 lg:py-4">
+        <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70 p-3 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm lg:gap-4 lg:p-4 xl:grid-cols-[1.2fr_0.8fr]">
           <div className="min-h-0 flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
               <p className="text-sm text-slate-400">Single Zero Table · Global</p>
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-              <div className="mt-2 rounded-md border border-slate-800 bg-slate-950/70 p-2">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+              <div className="mt-2 rounded-md border border-white/10 bg-slate-950/60 p-2">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({uniquePlayers.length})</p>
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   {uniquePlayers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
@@ -642,9 +666,9 @@ export default function RouletteGame() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-lg border border-slate-800 bg-slate-900 p-3">
+            <div className="flex-1 min-h-0 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
               <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
-                <div className="h-full min-w-[680px] rounded-md border border-emerald-800/60 bg-emerald-950/55 p-2">
+                <div className="h-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(5,150,105,0.3),rgba(2,44,34,0.8)_46%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
                 <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
                   <BetCell
                     label="0"
@@ -653,8 +677,10 @@ export default function RouletteGame() {
                     selected={hasBet('number', '0')}
                     stake={getStake('number', '0')}
                     onPlaceBet={placeChip}
-                    baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-colors"
-                    idleClassName="border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-500"
+                    isWinning={winningBetKey === getBetKey('number', '0')}
+                    dimmed={isWinningFocus && winningBetKey !== getBetKey('number', '0')}
+                    baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                    idleClassName="border-white/10 bg-white/5 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.32)]"
                   />
 
                   <div className="grid grid-rows-3 gap-[2px]">
@@ -672,13 +698,15 @@ export default function RouletteGame() {
                               selected={selected}
                               stake={getStake('number', String(number))}
                               onPlaceBet={placeChip}
-                              baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-colors md:p-3 md:text-base"
+                              isWinning={winningBetKey === getBetKey('number', String(number))}
+                              dimmed={isWinningFocus && winningBetKey !== getBetKey('number', String(number))}
+                              baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)] md:p-3 md:text-base"
                               idleClassName={
                                 color === 'red'
-                                  ? 'bg-red-600 text-white border-red-500'
-                                  : 'bg-black text-slate-100 border-slate-600'
+                                  ? 'bg-white/5 text-white border-white/10 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(248,113,113,0.4)]'
+                                  : 'bg-white/5 text-slate-100 border-white/10 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]'
                               }
-                              selectedClassName="bg-blue-600 text-white border-blue-600 ring-2 ring-blue-600 ring-offset-1 ring-offset-emerald-950/70"
+                              selectedClassName="bg-blue-600/40 text-white border-cyan-300/50 ring-1 ring-cyan-300/60 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
                             />
                           );
                         })}
@@ -696,8 +724,9 @@ export default function RouletteGame() {
                         selected={hasBet(col.type, col.value)}
                         stake={getStake(col.type, col.value)}
                         onPlaceBet={placeChip}
-                        baseClassName="relative rounded-sm border text-xs font-bold transition-colors"
-                        idleClassName={col.idleClassName}
+                        dimmed={isWinningFocus}
+                        baseClassName="relative rounded-sm border text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                        idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
                       />
                     ))}
                   </div>
@@ -713,8 +742,9 @@ export default function RouletteGame() {
                       selected={hasBet(item.type, item.value)}
                       stake={getStake(item.type, item.value)}
                       onPlaceBet={placeChip}
-                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-colors"
-                      idleClassName={item.idleClassName}
+                      dimmed={isWinningFocus}
+                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                      idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
                     />
                   ))}
                 </div>
@@ -729,8 +759,9 @@ export default function RouletteGame() {
                       selected={hasBet(item.type, item.value)}
                       stake={getStake(item.type, item.value)}
                       onPlaceBet={placeChip}
-                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-colors"
-                      idleClassName={item.idleClassName}
+                      dimmed={isWinningFocus}
+                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                      idleClassName="border-white/10 bg-white/5 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]"
                     />
                   ))}
                 </div>
@@ -740,7 +771,7 @@ export default function RouletteGame() {
           </div>
 
           <div className="min-h-0 flex flex-col gap-4">
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
               <p className="text-xs font-bold text-slate-500 uppercase mb-3">History</p>
               <div className="flex flex-wrap gap-2 min-h-9">
                 {spinHistory.length === 0 ? (
@@ -765,7 +796,7 @@ export default function RouletteGame() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 flex-1 min-h-0 flex flex-col items-center justify-center">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 flex-1 min-h-0 flex flex-col items-center justify-center backdrop-blur-sm">
               <div className="relative w-72 h-72 mx-auto">
                 <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
                 <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
@@ -830,7 +861,7 @@ export default function RouletteGame() {
               <p className="mt-3 text-sm text-slate-400 text-center">Last: {winningNumber ?? '-'} | Active bets: {activeBets.length}</p>
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-4">
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
               <p className="text-xs font-bold text-slate-500 uppercase mb-3">Open Bets</p>
               <div className="space-y-2">
                 {activeBets.length === 0 ? (
@@ -850,7 +881,7 @@ export default function RouletteGame() {
         </div>
       </div>
 
-      <div className="border-t border-slate-800 bg-slate-950 p-3 lg:p-4 shrink-0">
+      <div className="border-t border-white/10 bg-slate-950/70 p-3 shrink-0 lg:p-4">
         <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row md:items-end">
         <div className="w-full md:max-w-xs">
           <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Chip Value</label>
@@ -860,20 +891,20 @@ export default function RouletteGame() {
             value={chipValue}
             onChange={(event) => setChipValue(Math.max(0, parseInt(event.target.value, 10) || 0))}
             disabled={isSpinning}
-            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 outline-none font-mono text-white focus:border-blue-600"
+            className="w-full rounded-lg border border-white/10 bg-slate-900/70 p-3 font-mono text-white outline-none focus:border-cyan-300/60"
           />
           <div className="grid grid-cols-2 gap-2 mt-2">
             <button
               onClick={() => setChipValue((value) => Math.max(1, Math.floor(value / 2) || 1))}
               disabled={isSpinning}
-              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              className="h-9 rounded-md border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-300 transition-all hover:bg-white/[0.08] disabled:opacity-40"
             >
               1/2
             </button>
             <button
               onClick={() => setChipValue(Math.max(0, Math.floor(parseFloat(balance))))}
               disabled={isSpinning}
-              className="h-9 rounded-md border border-slate-800 bg-slate-900 text-xs font-bold text-slate-300 hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              className="h-9 rounded-md border border-white/10 bg-white/[0.04] text-xs font-bold text-slate-300 transition-all hover:bg-white/[0.08] disabled:opacity-40"
             >
               MAX
             </button>
@@ -886,10 +917,10 @@ export default function RouletteGame() {
           <button
             onClick={clearBets}
             disabled={(isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0}
-            className={`h-11 w-full rounded-lg font-bold text-sm uppercase transition-colors md:w-40 ${
+            className={`h-11 w-full rounded-lg border font-bold text-sm uppercase transition-all md:w-40 ${
               (isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-100'
+                ? 'border-white/10 bg-white/[0.04] text-slate-500 cursor-not-allowed'
+                : 'border-white/10 bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'
             }`}
           >
             Clear
@@ -897,10 +928,10 @@ export default function RouletteGame() {
           <button
             onClick={spin}
             disabled={isSpinning || activeBets.length === 0}
-            className={`flex-1 h-11 rounded-lg font-bold text-sm uppercase transition-colors ${
+            className={`flex-1 h-11 rounded-lg border font-bold text-sm uppercase transition-all ${
               isSpinning || activeBets.length === 0
-                ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
-                : 'bg-blue-600 hover:bg-blue-500 text-white'
+                ? 'border-cyan-400/15 bg-slate-800 text-slate-500 cursor-not-allowed'
+                : 'border-cyan-300/50 bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-[0_0_20px_rgba(34,211,238,0.35)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)]'
             }`}
           >
             {isSpinning ? 'Spinning...' : 'Spin'}
@@ -916,12 +947,25 @@ export default function RouletteGame() {
 }
 
 const ChipTag = memo(function ChipTag({ amount }: { amount: number }) {
+  const layerCount = Math.min(4, Math.max(1, Math.floor(amount / 100)));
   return (
     <span
       className="absolute top-0 right-0 h-5 min-w-5 px-1 rounded-full bg-blue-600 text-[10px] leading-5 font-bold text-white transform-gpu will-change-transform"
       style={{ transform: 'translate3d(50%, -50%, 0)' }}
     >
-      {Math.round(amount)}
+      {Array.from({ length: layerCount }).map((_, index) => (
+        <span
+          key={index}
+          className="absolute inset-0 rounded-full border border-white/40"
+          style={{
+            transform: `translate3d(${index * 1}px, ${index * -1}px, 0)`,
+            background:
+              'radial-gradient(circle at 35% 35%, rgba(255,255,255,0.95), rgba(56,189,248,0.85) 20%, rgba(37,99,235,0.85) 55%, rgba(15,23,42,0.95) 100%)',
+            boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25), 0 2px 6px rgba(2,6,23,0.45)',
+          }}
+        />
+      ))}
+      <span className="relative z-10">{Math.round(amount)}</span>
     </span>
   );
 });
