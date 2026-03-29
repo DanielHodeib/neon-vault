@@ -10,28 +10,27 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  const sessionRole = String(session?.user?.role ?? '').toUpperCase();
-
-  if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
-
-  const { ticketId } = await params;
-  const normalizedTicketId = String(ticketId ?? '').trim();
-  if (!normalizedTicketId) {
-    return NextResponse.json({ error: 'ticketId is required.' }, { status: 400 });
-  }
-
-  const currentUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { role: true },
-  });
-
-  let ticket: Awaited<ReturnType<typeof prisma.ticket.findUnique>>;
   try {
-    ticket = await prisma.ticket.findUnique({
+    const session = await auth();
+    const userId = session?.user?.id;
+    const sessionRole = String(session?.user?.role ?? '').toUpperCase();
+
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { ticketId } = await params;
+    const normalizedTicketId = String(ticketId ?? '').trim();
+    if (!normalizedTicketId) {
+      return NextResponse.json({ error: 'ticketId is required.' }, { status: 400 });
+    }
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { role: true },
+    });
+
+    const ticket = await prisma.ticket.findUnique({
       where: { id: normalizedTicketId },
       select: {
         id: true,
@@ -57,21 +56,22 @@ export async function GET(
         },
       },
     });
+
+    if (!ticket) {
+      return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
+    }
+
+    const isStaff = STAFF_ROLES.has(sessionRole) || STAFF_ROLES.has(String(currentUser?.role ?? '').toUpperCase());
+    if (!isStaff && ticket.userId !== userId) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    return NextResponse.json({ ok: true, ticket });
   } catch (error) {
     console.error('Failed to load support ticket thread:', error);
-    return NextResponse.json({ error: 'Could not load ticket thread.' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'Could not load ticket thread.';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  if (!ticket) {
-    return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
-  }
-
-  const isStaff = STAFF_ROLES.has(sessionRole) || STAFF_ROLES.has(String(currentUser?.role ?? '').toUpperCase());
-  if (!isStaff && ticket.userId !== userId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
-  }
-
-  return NextResponse.json({ ok: true, ticket });
 }
 
 export async function POST(

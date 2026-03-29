@@ -77,6 +77,19 @@ function formatWhen(value: string) {
   return parsed.toLocaleString();
 }
 
+async function readApiPayload<T extends Record<string, unknown>>(response: Response): Promise<T> {
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
+  if (contentType.includes('application/json')) {
+    return (await response.json()) as T;
+  }
+
+  const body = await response.text();
+  const preview = body.replace(/\s+/g, ' ').trim().slice(0, 140);
+  return {
+    error: preview ? `Non-JSON response: ${preview}` : `Non-JSON response (HTTP ${response.status}).`,
+  } as unknown as T;
+}
+
 export default function SupportPanel({
   socket,
   username,
@@ -121,7 +134,7 @@ export default function SupportPanel({
     try {
       const endpoint = staffMode && isStaff ? '/api/support/admin/tickets' : '/api/support/tickets';
       const response = await fetch(endpoint, { cache: 'no-store' });
-      const payload = (await response.json()) as { tickets?: TicketListItem[]; error?: string };
+      const payload = await readApiPayload<{ tickets?: TicketListItem[]; error?: string }>(response);
 
       if (!response.ok) {
         setLoadError(payload.error ?? 'Failed to load tickets.');
@@ -157,7 +170,7 @@ export default function SupportPanel({
     setLoadError('');
     try {
       const response = await fetch(`/api/support/tickets/${ticketId}/messages`, { cache: 'no-store' });
-      const payload = (await response.json()) as { ticket?: TicketThread; error?: string };
+      const payload = await readApiPayload<{ ticket?: TicketThread; error?: string }>(response);
       console.log('[SupportPanel] Thread load response', {
         ticketId,
         ok: response.ok,
