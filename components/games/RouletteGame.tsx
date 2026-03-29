@@ -547,6 +547,10 @@ export default function RouletteGame() {
           setLockedStake(0);
         }
 
+        // Reset animation state for next spin
+        setIsSpinning(false);
+        setBets({});
+
       }, syncedDuration);
     };
 
