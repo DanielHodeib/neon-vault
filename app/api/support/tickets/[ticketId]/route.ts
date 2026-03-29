@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { Prisma } from '@prisma/client';
 
 import { auth } from '@/auth';
+import { getGameServerUrl, getInternalHeaders } from '@/lib/gameServerInternal';
 import { prisma } from '@/lib/prisma';
 
 export async function DELETE(
@@ -27,7 +28,26 @@ export async function DELETE(
   }
 
   try {
+    console.log('[support.delete] requested', { ticketId, userId, userRole });
+    console.log('[support.delete] deleting linked ticket messages', { ticketId });
+    await prisma.ticketMessage.deleteMany({ where: { ticketId } });
+    console.log('[support.delete] ticket messages deleted', { ticketId });
+
+    console.log('[support.delete] deleting ticket record', { ticketId });
     await prisma.ticket.delete({ where: { id: ticketId } });
+    console.log('[support.delete] ticket deleted', { ticketId });
+
+    const broadcastUrl = `${getGameServerUrl()}/internal/support/ticket-deleted`;
+    console.log('[support.delete] broadcasting ticket_deleted', { ticketId, broadcastUrl });
+    await fetch(broadcastUrl, {
+      method: 'POST',
+      headers: getInternalHeaders(),
+      body: JSON.stringify({ ticketId, deletedBy: userId, deletedRole: userRole }),
+      cache: 'no-store',
+    }).catch((error) => {
+      console.error('[support.delete] broadcast failed', error);
+    });
+
     return NextResponse.json({ success: true });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {

@@ -3102,6 +3102,38 @@ app.post('/internal/notifications/send', async (req, res) => {
   return res.json(result);
 });
 
+app.post('/internal/support/ticket-deleted', (req, res) => {
+  if (!isAuthorizedInternalRequest(req)) {
+    return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });
+  }
+
+  const ticketId = typeof req.body?.ticketId === 'string' ? req.body.ticketId.trim() : '';
+  const deletedBy = typeof req.body?.deletedBy === 'string' ? req.body.deletedBy.trim() : '';
+  const deletedRole = typeof req.body?.deletedRole === 'string' ? req.body.deletedRole.trim().toUpperCase() : '';
+
+  if (!ticketId) {
+    return res.status(400).json({ ok: false, error: 'ticketId is required.' });
+  }
+
+  let delivered = 0;
+  socketProfiles.forEach((profile, socketId) => {
+    const role = normalizeRole(profile?.role, profile?.username || '');
+    if (!hasRoleAtLeast(role, 'ADMIN')) {
+      return;
+    }
+
+    io.to(socketId).emit('ticket_deleted', {
+      ticketId,
+      deletedBy,
+      deletedRole,
+      at: Date.now(),
+    });
+    delivered += 1;
+  });
+
+  return res.json({ ok: true, delivered });
+});
+
 app.post('/internal/admin-broadcast', (req, res) => {
   if (!isAuthorizedInternalRequest(req)) {
     return res.status(401).json({ ok: false, error: 'Unauthorized internal request.' });

@@ -234,12 +234,25 @@ export default function SupportPanel({
     liveSocket.on('support_ticket_message', reloadHandler);
     liveSocket.on('support_ticket_status_updated', reloadHandler);
     liveSocket.on('ticket_reply_received', replyHandler);
+    liveSocket.on('ticket_deleted', (payload: { ticketId?: string }) => {
+      const removedId = String(payload?.ticketId ?? '').trim();
+      if (!removedId) {
+        return;
+      }
+
+      setTickets((current) => current.filter((ticket) => ticket.id !== removedId));
+      if (selectedTicketId === removedId) {
+        setSelectedTicketId('');
+        setThread(null);
+      }
+    });
 
     return () => {
       liveSocket.off('support_ticket_created', reloadHandler);
       liveSocket.off('support_ticket_message', reloadHandler);
       liveSocket.off('support_ticket_status_updated', reloadHandler);
       liveSocket.off('ticket_reply_received', replyHandler);
+      liveSocket.off('ticket_deleted');
     };
   }, [loadThread, loadTickets, selectedTicketId, socket]);
 
@@ -606,8 +619,9 @@ export default function SupportPanel({
                         void handleDeleteTicket();
                       }}
                       disabled={submitting}
-                      className="h-8 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-bold uppercase text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-60"
+                      className="inline-flex h-8 items-center justify-center gap-1 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-bold uppercase text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-60"
                     >
+                      {submitting ? <span className="h-3 w-3 animate-spin rounded-full border border-rose-200/60 border-t-transparent" aria-hidden /> : null}
                       Delete Ticket
                     </button>
                   </div>
@@ -623,11 +637,10 @@ export default function SupportPanel({
                 ) : null}
                 {thread.messages.map((message) => {
                   const mine = String(message.sender?.username ?? '').trim().toLowerCase() === username.trim().toLowerCase();
-                  const senderName = message.sender?.username ?? (message.isStaffReply ? 'Support' : 'You');
+                  const isStaffMessage = Boolean(message.isStaffReply);
                   return (
-                    <div key={message.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${message.isStaffReply ? 'border border-cyan-500/40 bg-cyan-500/10 text-cyan-100' : mine ? 'border border-emerald-500/40 bg-emerald-500/10 text-emerald-100' : 'border border-slate-700 bg-slate-800 text-slate-200'}`}>
-                        <p className="mb-1 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-300">{senderName}</p>
+                    <div key={message.id} className={`flex flex-row ${isStaffMessage || mine ? 'justify-end' : 'justify-start'}`}>
+                      <div className={`max-w-[90%] rounded-2xl px-3 py-2 text-sm ${isStaffMessage || mine ? 'border border-cyan-400/30 bg-blue-600/40 text-cyan-50' : 'border border-slate-700 bg-vault-gray-dark/40 text-slate-200'}`}>
                         <p className="whitespace-pre-wrap break-words">{message.content}</p>
                         <p className="mt-1 text-[10px] text-slate-400">{formatWhen(message.createdAt)}</p>
                       </div>
