@@ -600,8 +600,8 @@ export default function SlotsGame() {
             </div>
 
             {/* Reel Display - MUCH LARGER */}
-            <div className="mb-3 flex flex-1 min-h-0 shrink-0 items-center justify-center rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-3 md:p-4">
-              <div className={`mx-auto grid w-full max-w-sm shrink-0 gap-2 md:max-w-2xl md:gap-6 ${config.reelCount === 3 ? 'grid-cols-3' : config.reelCount === 4 ? 'grid-cols-4' : 'grid-cols-5'} aspect-[4/3]`}>
+            <div className="mb-3 flex flex-1 min-h-0 items-stretch justify-center rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-3 md:p-4">
+              <div className={`mx-auto grid h-full min-h-[220px] w-full max-w-sm items-stretch gap-2 md:min-h-[300px] md:max-w-2xl md:gap-6 ${config.reelCount === 3 ? 'grid-cols-3' : config.reelCount === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
                 {reels.map((symbol, i) => (
                   <motion.div
                     key={i}
@@ -613,7 +613,7 @@ export default function SlotsGame() {
                       duration: 0.45,
                       repeat: isSpinning || isCascading ? Infinity : 0,
                     }}
-                    className="relative flex h-[clamp(112px,20vh,196px)] min-h-[112px] items-center justify-center overflow-hidden rounded-xl border-2 bg-gradient-to-br from-slate-950 to-slate-900 shadow-2xl"
+                    className="relative flex h-full min-h-0 items-center justify-center overflow-hidden rounded-xl border-2 bg-gradient-to-br from-slate-950 to-slate-900 shadow-2xl"
                   >
                     <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,0.1),transparent)]" />
 
@@ -627,7 +627,7 @@ export default function SlotsGame() {
                             <div
                               suppressHydrationWarning
                               key={`${item.name}-${index}`}
-                              className="slot-reel-symbol flex h-[clamp(112px,20vh,196px)] items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]"
+                              className="slot-reel-symbol flex h-full min-h-0 items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]"
                             >
                               {item.icon}
                             </div>
