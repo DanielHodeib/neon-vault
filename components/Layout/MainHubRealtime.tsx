@@ -2650,7 +2650,6 @@ export default function MainHubRealtime({
                 <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden xl:block">
                   {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
                 </p>
-                <p className="font-mono text-[10px] uppercase text-cyan-400 whitespace-nowrap hidden lg:block">Crash Room {crashRoomId}</p>
               </div>
             ) : (
               <div className="h-10 w-32 bg-slate-800 animate-pulse rounded shrink-0" />
