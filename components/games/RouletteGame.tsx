@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
@@ -53,6 +53,13 @@ interface RouletteRoomMember {
   username: string;
 }
 
+interface BetCellConfig {
+  label: string;
+  type: BetType;
+  value: string;
+  idleClassName: string;
+}
+
 const RED_NUMBERS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 const BOARD_ROWS = [
   [3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36],
@@ -74,6 +81,24 @@ const COLUMN_MAP: Record<string, Set<number>> = {
   '2': new Set([2, 5, 8, 11, 14, 17, 20, 23, 26, 29, 32, 35]),
   '3': new Set([3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36]),
 };
+const COLUMN_BET_CELLS: BetCellConfig[] = [
+  { label: '2 to 1', type: 'column', value: '3', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: '2 to 1', type: 'column', value: '2', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: '2 to 1', type: 'column', value: '1', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+];
+const DOZEN_BET_CELLS: BetCellConfig[] = [
+  { label: '1st 12', type: 'dozen', value: '1st', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: '2nd 12', type: 'dozen', value: '2nd', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: '3rd 12', type: 'dozen', value: '3rd', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+];
+const OUTSIDE_BET_CELLS: BetCellConfig[] = [
+  { label: '1 to 18', type: 'range', value: 'low', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: 'Even', type: 'parity', value: 'even', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: 'Red', type: 'color', value: 'red', idleClassName: 'border-red-500 bg-red-600 text-white hover:bg-red-500' },
+  { label: 'Black', type: 'color', value: 'black', idleClassName: 'border-slate-600 bg-black text-slate-100 hover:bg-slate-900' },
+  { label: 'Odd', type: 'parity', value: 'odd', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+  { label: '19 to 36', type: 'range', value: 'high', idleClassName: 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800' },
+];
 
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
@@ -294,12 +319,53 @@ function getTargetRotationForWinningNumber(winningNumber: number, currentRotatio
   return currentRotation + EXTRA_SPIN_ROTATIONS * 360 + deltaToTarget;
 }
 
+interface BetCellProps {
+  label: string;
+  type: BetType;
+  value: string;
+  selected: boolean;
+  stake: number;
+  baseClassName: string;
+  idleClassName: string;
+  selectedClassName?: string;
+  onPlaceBet: (type: BetType, value: string) => void;
+}
+
+const BetCell = memo(function BetCell({
+  label,
+  type,
+  value,
+  selected,
+  stake,
+  baseClassName,
+  idleClassName,
+  selectedClassName,
+  onPlaceBet,
+}: BetCellProps) {
+  const handleClick = useCallback(() => {
+    onPlaceBet(type, value);
+  }, [onPlaceBet, type, value]);
+
+  return (
+    <button
+      onClick={handleClick}
+      className={`${baseClassName} touch-manipulation ${selected ? selectedClassName ?? 'border-blue-600 bg-blue-600 text-white' : idleClassName}`}
+    >
+      {label}
+      {selected ? <ChipTag amount={stake} /> : null}
+    </button>
+  );
+});
+
 export default function RouletteGame() {
-  const { balance, username, placeBet, addWin, persistWalletAction, syncBalanceFromServer } = useCasinoStore();
+  const { balance, username, placeBet: reserveStake, addWin, persistWalletAction, syncBalanceFromServer } = useCasinoStore();
   const [chipValue, setChipValue] = useState(100);
   const [bets, setBets] = useState<BetMap>({});
+  const [pendingStake, setPendingStake] = useState(0);
+  const [lockedStake, setLockedStake] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
   const [rotation, setRotation] = useState(0);
+  const [spinDurationMs, setSpinDurationMs] = useState(SPIN_ANIMATION_MS);
   const [winningNumber, setWinningNumber] = useState<number | null>(null);
   const [spinHistory, setSpinHistory] = useState<SpinHistoryItem[]>([]);
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
@@ -326,6 +392,7 @@ export default function RouletteGame() {
     () => activeBets.reduce((sum, bet) => sum + bet.stake, 0),
     [activeBets]
   );
+  const totalOnTable = totalBet + pendingStake + lockedStake;
 
   useEffect(() => {
     setIsHydrated(true);
@@ -385,6 +452,11 @@ export default function RouletteGame() {
         window.clearTimeout(settleSpinTimerRef.current);
       }
 
+      const emittedAt = Number(payload.emittedAt ?? Date.now());
+      const elapsed = Number.isFinite(emittedAt) ? Math.max(0, Date.now() - emittedAt) : 0;
+      const syncedDuration = Math.max(500, SPIN_ANIMATION_MS - elapsed);
+      setSpinDurationMs(syncedDuration);
+
       setWinningNumber(result);
       setIsSpinning(true);
       setStatus(`Server result locked: ${result}. Wheel spinning...`);
@@ -419,18 +491,21 @@ export default function RouletteGame() {
 
           pendingSpinStakeRef.current = 0;
           pendingSpinBetsRef.current = [];
+          setLockedStake(0);
         } else {
           setStatus(`Table result ${result} (${resultColor}).`);
+          setLockedStake(0);
         }
 
         setIsSpinning(false);
-      }, SPIN_ANIMATION_MS);
+      }, syncedDuration);
     };
 
     socket.on('roulette_room_joined', rouletteRoomJoinedHandler);
     socket.on('roulette_room_members', rouletteRoomMembersHandler);
     socket.on('roulette_win_announcement', rouletteWinAnnouncementHandler);
     socket.on('roulette_spin_result', rouletteSpinResultHandler);
+    socket.on('roulette_result', rouletteSpinResultHandler);
 
     return () => {
       if (settleSpinTimerRef.current) {
@@ -440,12 +515,13 @@ export default function RouletteGame() {
       socket.off('roulette_room_members', rouletteRoomMembersHandler);
       socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
       socket.off('roulette_spin_result', rouletteSpinResultHandler);
+      socket.off('roulette_result', rouletteSpinResultHandler);
       socket.disconnect();
       socketRef.current = null;
     };
   }, [addWin, effectiveUsername]);
 
-  const placeChip = (type: BetType, value: string) => {
+  const placeChip = useCallback((type: BetType, value: string) => {
     if (isSpinning) {
       return;
     }
@@ -469,15 +545,17 @@ export default function RouletteGame() {
         },
       };
     });
-  };
+  }, [chipValue, isSpinning]);
 
-  const clearBets = () => {
+  const clearBets = useCallback(() => {
+    setBets({});
+    pendingSpinBetsRef.current = [];
     if (!isSpinning) {
-      setBets({});
+      setPendingStake(0);
     }
-  };
+  }, [isSpinning]);
 
-  const spin = async () => {
+  const spin = useCallback(async () => {
     const socket = socketRef.current;
 
     if (!socket || !socket.connected) {
@@ -492,21 +570,29 @@ export default function RouletteGame() {
       return;
     }
 
-    if (!placeBet(totalBet)) {
+    if (!reserveStake(totalBet)) {
       setErrorText('Not enough funds');
       setTimeout(() => setErrorText(''), 2200);
       return;
     }
 
+    const queuedStake = totalBet;
+    const queuedBets = activeBets.map((bet) => ({ ...bet }));
     setErrorText('');
     setIsSpinning(true);
     setWinningNumber(null);
     setStatus('Waiting for server roulette result...');
-    pendingSpinStakeRef.current = totalBet;
-    pendingSpinBetsRef.current = activeBets.map((bet) => ({ ...bet }));
+    pendingSpinStakeRef.current = queuedStake;
+    pendingSpinBetsRef.current = queuedBets;
+    setPendingStake(queuedStake);
+    setLockedStake(0);
+    setBets({});
 
     socket.emit('roulette_spin_request', { roomId: rouletteRoomId }, (response: RouletteSpinRequestResponse) => {
       if (response?.ok) {
+        setLockedStake(queuedStake);
+        setPendingStake(0);
+        setStatus('Bet accepted. Waiting for server roulette result...');
         return;
       }
 
@@ -514,6 +600,8 @@ export default function RouletteGame() {
       pendingSpinStakeRef.current = 0;
       pendingSpinBetsRef.current = [];
       setIsSpinning(false);
+      setPendingStake(0);
+      setLockedStake(0);
       setStatus('Roulette spin canceled. Refunding stake...');
 
       void (async () => {
@@ -524,11 +612,11 @@ export default function RouletteGame() {
         setStatus(response?.error ?? 'Spin request failed. Stake refunded.');
       })();
     });
-  };
+  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, syncBalanceFromServer, totalBet]);
 
-  const hasBet = (type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]);
+  const hasBet = useCallback((type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]), [bets]);
 
-  const getStake = (type: BetType, value: string) => bets[getBetKey(type, value)]?.stake ?? 0;
+  const getStake = useCallback((type: BetType, value: string) => bets[getBetKey(type, value)]?.stake ?? 0, [bets]);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-slate-900">
@@ -558,17 +646,16 @@ export default function RouletteGame() {
               <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
                 <div className="h-full min-w-[680px] rounded-md border border-emerald-800/60 bg-emerald-950/55 p-2">
                 <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
-                  <button
-                    onClick={() => placeChip('number', '0')}
-                    className={`relative row-span-3 rounded-sm border text-sm font-bold transition-colors ${
-                      hasBet('number', '0')
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-500'
-                    }`}
-                  >
-                    0
-                    {hasBet('number', '0') ? <ChipTag amount={getStake('number', '0')} /> : null}
-                  </button>
+                  <BetCell
+                    label="0"
+                    type="number"
+                    value="0"
+                    selected={hasBet('number', '0')}
+                    stake={getStake('number', '0')}
+                    onPlaceBet={placeChip}
+                    baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-colors"
+                    idleClassName="border-emerald-700 bg-emerald-600 text-white hover:bg-emerald-500"
+                  />
 
                   <div className="grid grid-rows-3 gap-[2px]">
                     {BOARD_ROWS.map((row, rowIndex) => (
@@ -577,20 +664,22 @@ export default function RouletteGame() {
                           const color = getNumberColor(number);
                           const selected = hasBet('number', String(number));
                           return (
-                            <button
+                            <BetCell
                               key={number}
-                              onClick={() => placeChip('number', String(number))}
-                              className={[
-                                'relative rounded-sm border p-1 text-xs font-bold transition-colors md:p-3 md:text-base',
+                              label={String(number)}
+                              type="number"
+                              value={String(number)}
+                              selected={selected}
+                              stake={getStake('number', String(number))}
+                              onPlaceBet={placeChip}
+                              baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-colors md:p-3 md:text-base"
+                              idleClassName={
                                 color === 'red'
                                   ? 'bg-red-600 text-white border-red-500'
-                                  : 'bg-black text-slate-100 border-slate-600',
-                                selected ? 'ring-2 ring-blue-600 ring-offset-1 ring-offset-emerald-950/70' : '',
-                              ].join(' ')}
-                            >
-                              {number}
-                              {selected ? <ChipTag amount={getStake('number', String(number))} /> : null}
-                            </button>
+                                  : 'bg-black text-slate-100 border-slate-600'
+                              }
+                              selectedClassName="bg-blue-600 text-white border-blue-600 ring-2 ring-blue-600 ring-offset-1 ring-offset-emerald-950/70"
+                            />
                           );
                         })}
                       </div>
@@ -598,80 +687,51 @@ export default function RouletteGame() {
                   </div>
 
                   <div className="grid grid-rows-3 gap-[2px]">
-                    {[
-                      { label: '2 to 1', value: '3' },
-                      { label: '2 to 1', value: '2' },
-                      { label: '2 to 1', value: '1' },
-                    ].map((col) => (
-                      <button
+                    {COLUMN_BET_CELLS.map((col) => (
+                      <BetCell
                         key={col.value}
-                        onClick={() => placeChip('column', col.value)}
-                        className={`relative rounded-sm border text-xs font-bold transition-colors ${
-                          hasBet('column', col.value)
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800'
-                        }`}
-                      >
-                        {col.label}
-                        {hasBet('column', col.value) ? (
-                          <ChipTag amount={getStake('column', col.value)} />
-                        ) : null}
-                      </button>
+                        label={col.label}
+                        type={col.type}
+                        value={col.value}
+                        selected={hasBet(col.type, col.value)}
+                        stake={getStake(col.type, col.value)}
+                        onPlaceBet={placeChip}
+                        baseClassName="relative rounded-sm border text-xs font-bold transition-colors"
+                        idleClassName={col.idleClassName}
+                      />
                     ))}
                   </div>
                 </div>
 
                 <div className="mt-[2px] grid grid-cols-3 gap-[2px]">
-                  {[
-                    { label: '1st 12', type: 'dozen' as const, value: '1st' },
-                    { label: '2nd 12', type: 'dozen' as const, value: '2nd' },
-                    { label: '3rd 12', type: 'dozen' as const, value: '3rd' },
-                  ].map((item) => (
-                    <button
+                  {DOZEN_BET_CELLS.map((item) => (
+                    <BetCell
                       key={item.label}
-                      onClick={() => placeChip(item.type, item.value)}
-                      className={`relative h-10 rounded-sm border text-sm font-bold transition-colors ${
-                        hasBet(item.type, item.value)
-                          ? 'border-blue-600 bg-blue-600 text-white'
-                          : 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800'
-                      }`}
-                    >
-                      {item.label}
-                      {hasBet(item.type, item.value) ? (
-                        <ChipTag amount={getStake(item.type, item.value)} />
-                      ) : null}
-                    </button>
+                      label={item.label}
+                      type={item.type}
+                      value={item.value}
+                      selected={hasBet(item.type, item.value)}
+                      stake={getStake(item.type, item.value)}
+                      onPlaceBet={placeChip}
+                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-colors"
+                      idleClassName={item.idleClassName}
+                    />
                   ))}
                 </div>
 
                 <div className="mt-[2px] grid grid-cols-6 gap-[2px]">
-                  {[
-                    { label: '1 to 18', type: 'range' as const, value: 'low', tone: 'emerald' },
-                    { label: 'Even', type: 'parity' as const, value: 'even', tone: 'emerald' },
-                    { label: 'Red', type: 'color' as const, value: 'red', tone: 'red' },
-                    { label: 'Black', type: 'color' as const, value: 'black', tone: 'slate' },
-                    { label: 'Odd', type: 'parity' as const, value: 'odd', tone: 'emerald' },
-                    { label: '19 to 36', type: 'range' as const, value: 'high', tone: 'emerald' },
-                  ].map((item) => (
-                    <button
+                  {OUTSIDE_BET_CELLS.map((item) => (
+                    <BetCell
                       key={item.label}
-                      onClick={() => placeChip(item.type, item.value)}
-                      className={[
-                        'relative h-10 rounded-sm border text-sm font-bold transition-colors',
-                        hasBet(item.type, item.value)
-                          ? 'border-blue-600 bg-blue-600 text-white'
-                          : item.tone === 'red'
-                            ? 'border-red-500 bg-red-600 text-white hover:bg-red-500'
-                            : item.tone === 'slate'
-                              ? 'border-slate-600 bg-black text-slate-100 hover:bg-slate-900'
-                              : 'border-emerald-700 bg-emerald-900 text-emerald-100 hover:bg-emerald-800',
-                      ].join(' ')}
-                    >
-                      {item.label}
-                      {hasBet(item.type, item.value) ? (
-                        <ChipTag amount={getStake(item.type, item.value)} />
-                      ) : null}
-                    </button>
+                      label={item.label}
+                      type={item.type}
+                      value={item.value}
+                      selected={hasBet(item.type, item.value)}
+                      stake={getStake(item.type, item.value)}
+                      onPlaceBet={placeChip}
+                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-colors"
+                      idleClassName={item.idleClassName}
+                    />
                   ))}
                 </div>
               </div>
@@ -712,7 +772,7 @@ export default function RouletteGame() {
                 {isHydrated ? (
                   <motion.div
                     animate={{ rotate: rotation }}
-                    transition={{ duration: 1.8, ease: [0.2, 0.9, 0.2, 1] }}
+                    transition={{ duration: spinDurationMs / 1000, ease: [0.2, 0.9, 0.2, 1] }}
                     className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
                   >
                     <svg viewBox="0 0 300 300" className="w-full h-full">
@@ -818,16 +878,16 @@ export default function RouletteGame() {
               MAX
             </button>
           </div>
-          <p className="text-xs mt-2 text-slate-500">Total on table: {totalBet.toFixed(0)}</p>
+          <p className="text-xs mt-2 text-slate-500">Total on table: {totalOnTable.toFixed(0)}</p>
           {errorText ? <p className="text-red-500 text-xs mt-2 font-medium">{errorText}</p> : null}
         </div>
 
         <div className="flex w-full flex-col gap-3 md:flex-1 md:flex-row">
           <button
             onClick={clearBets}
-            disabled={isSpinning || activeBets.length === 0}
+            disabled={(isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0}
             className={`h-11 w-full rounded-lg font-bold text-sm uppercase transition-colors md:w-40 ${
-              isSpinning || activeBets.length === 0
+              (isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0
                 ? 'bg-slate-800 text-slate-500 cursor-not-allowed'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-100'
             }`}
@@ -855,10 +915,13 @@ export default function RouletteGame() {
   );
 }
 
-function ChipTag({ amount }: { amount: number }) {
+const ChipTag = memo(function ChipTag({ amount }: { amount: number }) {
   return (
-    <span className="absolute -top-2 -right-2 h-5 min-w-5 px-1 rounded-full bg-blue-600 text-[10px] leading-5 font-bold text-white">
+    <span
+      className="absolute top-0 right-0 h-5 min-w-5 px-1 rounded-full bg-blue-600 text-[10px] leading-5 font-bold text-white transform-gpu will-change-transform"
+      style={{ transform: 'translate3d(50%, -50%, 0)' }}
+    >
       {Math.round(amount)}
     </span>
   );
-}
+});
