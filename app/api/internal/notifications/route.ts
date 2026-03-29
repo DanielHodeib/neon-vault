@@ -27,13 +27,14 @@ export async function POST(request: Request) {
   }
 
   let payload: {
-    action?: 'create' | 'fetch' | 'mark-read';
+    action?: 'create' | 'fetch' | 'mark-read' | 'delete';
     userId?: string;
     type?: string;
     title?: string;
     message?: string;
     ids?: string[];
     markAll?: boolean;
+    clearAll?: boolean;
     limit?: number;
   };
 
@@ -121,6 +122,32 @@ export async function POST(request: Request) {
         id: { in: ids },
       },
       data: { isRead: true },
+    });
+
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === 'delete') {
+    const ids = Array.isArray(payload.ids)
+      ? payload.ids.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+
+    if (payload.clearAll) {
+      await prisma.notification.deleteMany({
+        where: { userId },
+      });
+      return NextResponse.json({ ok: true });
+    }
+
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'ids are required when clearAll is false.' }, { status: 400 });
+    }
+
+    await prisma.notification.deleteMany({
+      where: {
+        userId,
+        id: { in: ids },
+      },
     });
 
     return NextResponse.json({ ok: true });

@@ -2451,23 +2451,51 @@ export default function MainHubRealtime({
     [notifications]
   );
 
+  const emitWithTimeout = useCallback(
+    <T,>(event: string, payload: Record<string, unknown>, timeoutMs = 4000) =>
+      new Promise<T | null>((resolve) => {
+        const socket = socketRef.current;
+        if (!socket?.connected) {
+          resolve(null);
+          return;
+        }
+
+        let settled = false;
+        const timeout = window.setTimeout(() => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          resolve(null);
+        }, timeoutMs);
+
+        socket.emit(event, payload, (response: T) => {
+          if (settled) {
+            return;
+          }
+
+          settled = true;
+          window.clearTimeout(timeout);
+          resolve(response);
+        });
+      }),
+    []
+  );
+
   const loadNotifications = useCallback(async () => {
     setNotificationsLoading(true);
-    const socket = socketRef.current;
 
     try {
-      if (socket?.connected) {
-        await new Promise<void>((resolve) => {
-          socket.emit('fetch_notifications', { limit: 20 }, (response: { ok?: boolean; notifications?: NotificationItem[] }) => {
-            if (response?.ok) {
-              setNotifications(Array.isArray(response.notifications) ? response.notifications : []);
-            }
-            resolve();
-          });
-        });
+      const socketResponse = await emitWithTimeout<{ ok?: boolean; notifications?: NotificationItem[] }>('fetch_notifications', {
+        limit: 20,
+      });
+
+      if (socketResponse?.ok) {
+        setNotifications(Array.isArray(socketResponse.notifications) ? socketResponse.notifications : []);
       } else {
         const response = await fetch('/api/notifications', { cache: 'no-store' });
         if (!response.ok) {
+          setNotifications([]);
           return;
         }
 
@@ -2477,21 +2505,18 @@ export default function MainHubRealtime({
           setNotifications(Array.isArray(payload.notifications) ? payload.notifications : []);
         } else {
           console.error('Notifications API did not return JSON');
+          setNotifications([]);
         }
       }
     } finally {
       setNotificationsLoading(false);
     }
-  }, []);
+  }, [emitWithTimeout]);
 
   const markNotificationsRead = useCallback(async (ids: string[] = [], markAll = false) => {
-    const socket = socketRef.current;
+    const socketResponse = await emitWithTimeout<{ ok?: boolean }>('mark_notifications_read', { ids, markAll });
 
-    if (socket?.connected) {
-      await new Promise<void>((resolve) => {
-        socket.emit('mark_notifications_read', { ids, markAll }, () => resolve());
-      });
-    } else {
+    if (!socketResponse?.ok) {
       await fetch('/api/notifications', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2507,7 +2532,28 @@ export default function MainHubRealtime({
         return notification;
       })
     );
-  }, []);
+  }, [emitWithTimeout]);
+
+  const deleteNotifications = useCallback(async (ids: string[] = [], clearAll = false) => {
+    const socketResponse = await emitWithTimeout<{ ok?: boolean }>('delete_notifications', { ids, clearAll });
+
+    if (!socketResponse?.ok) {
+      await fetch('/api/notifications', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids, clearAll }),
+      }).catch(() => null);
+    }
+
+    setNotifications((current) => {
+      if (clearAll) {
+        return [];
+      }
+
+      const removals = new Set(ids);
+      return current.filter((notification) => !removals.has(notification.id));
+    });
+  }, [emitWithTimeout]);
 
   const handleOpenNotification = useCallback(
     (notification: NotificationItem) => {
@@ -2646,6 +2692,15 @@ export default function MainHubRealtime({
               }}
               onMarkAllRead={() => {
                 void markNotificationsRead([], true);
+              }}
+              onMarkReadNotification={(notificationId) => {
+                void markNotificationsRead([notificationId], false);
+              }}
+              onDeleteNotification={(notificationId) => {
+                void deleteNotifications([notificationId], false);
+              }}
+              onClearAll={() => {
+                void deleteNotifications([], true);
               }}
               onOpenNotification={handleOpenNotification}
             />

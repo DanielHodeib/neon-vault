@@ -23,27 +23,29 @@ export async function DELETE(
 
   const ticket = await prisma.ticket.findUnique({
     where: { id: ticketId },
-    select: { userId: true },
+    select: { id: true },
   });
 
   if (!ticket) {
     return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
   }
 
-  // Only allow deletion by:
-  // 1. The ticket owner (user who created it)
-  // 2. Staff members (SUPPORT, MODERATOR, ADMIN, OWNER)
-  const isOwner = ticket.userId === userId;
-  const isStaff = ['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER'].includes(String(userRole ?? '').toUpperCase());
+  // Emergency policy: only SUPPORT, ADMIN, OWNER can delete tickets.
+  const isStaff = ['SUPPORT', 'ADMIN', 'OWNER'].includes(String(userRole ?? '').toUpperCase());
 
-  if (!isOwner && !isStaff) {
+  if (!isStaff) {
     return NextResponse.json({ error: 'Forbidden: you cannot delete this ticket.' }, { status: 403 });
   }
 
-  // Delete ticket and cascade delete all messages
-  await prisma.ticket.delete({
-    where: { id: ticketId },
-  });
+  // Explicitly remove messages first, then ticket, to guarantee cleanup.
+  await prisma.$transaction([
+    prisma.ticketMessage.deleteMany({
+      where: { ticketId: ticket.id },
+    }),
+    prisma.ticket.delete({
+      where: { id: ticket.id },
+    }),
+  ]);
 
   return NextResponse.json({ ok: true });
 }

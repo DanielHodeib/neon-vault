@@ -3747,6 +3747,33 @@ io.on('connection', (socket) => {
     callback?.({ ok: true });
   });
 
+  socket.on('delete_notifications', async (payload, callback) => {
+    const profile = getSocketProfile(socket.id, username);
+    const userId = typeof profile?.userId === 'string' ? profile.userId.trim() : '';
+    if (!userId) {
+      callback?.({ ok: false, error: 'User id is required.' });
+      return;
+    }
+
+    const ids = Array.isArray(payload?.ids)
+      ? payload.ids.map((value) => String(value).trim()).filter(Boolean)
+      : [];
+    const clearAll = Boolean(payload?.clearAll);
+
+    const result = await callNotificationApi('delete', {
+      userId,
+      ids,
+      clearAll,
+    });
+
+    if (!result.ok) {
+      callback?.({ ok: false, error: result.error || 'Failed to delete notifications.' });
+      return;
+    }
+
+    callback?.({ ok: true });
+  });
+
   socket.on('update_ticket_status', async (payload, callback) => {
     const ticketId = typeof payload?.ticketId === 'string' ? payload.ticketId.trim() : '';
     const status = typeof payload?.status === 'string' ? payload.status.trim().toUpperCase() : '';

@@ -52,6 +52,7 @@ interface TicketThread {
 }
 
 const STAFF_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
+const TICKET_DELETE_ROLES = new Set(['SUPPORT', 'ADMIN', 'OWNER']);
 const CATEGORY_OPTIONS = ['Account', 'Payments', 'Bug Report', 'Security', 'Abuse', 'Other'];
 
 function statusTone(status: TicketStatus) {
@@ -100,6 +101,7 @@ export default function SupportPanel({
   const [loadError, setLoadError] = useState('');
 
   const isStaff = useMemo(() => STAFF_ROLES.has(String(role ?? '').toUpperCase()), [role]);
+  const canDeleteTickets = useMemo(() => TICKET_DELETE_ROLES.has(String(role ?? '').toUpperCase()), [role]);
   const shouldShowAllTickets = useMemo(
     () => ['OWNER', 'ADMIN', 'SUPPORT'].includes(String(role ?? '').toUpperCase()),
     [role]
@@ -392,9 +394,7 @@ export default function SupportPanel({
       return;
     }
 
-    // Check if user can delete (ticket owner or staff)
-    const isTicketOwner = String(thread.user?.username ?? '').toLowerCase() === username.toLowerCase();
-    if (!isStaff && !isTicketOwner) {
+    if (!canDeleteTickets) {
       toast.error('You cannot delete this ticket.');
       return;
     }
@@ -420,6 +420,7 @@ export default function SupportPanel({
       }
 
       toast.success('Ticket deleted.');
+      setTickets((current) => current.filter((ticket) => ticket.id !== ticketId));
       setSelectedTicketId('');
       setThread(null);
       void loadTickets();
@@ -565,18 +566,20 @@ export default function SupportPanel({
                     ))}
                   </div>
                 ) : null}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleDeleteTicket();
-                    }}
-                    disabled={submitting}
-                    className="h-8 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-bold uppercase text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-60"
-                  >
-                    Delete Ticket
-                  </button>
-                </div>
+                {canDeleteTickets ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void handleDeleteTicket();
+                      }}
+                      disabled={submitting}
+                      className="h-8 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 text-[11px] font-bold uppercase text-rose-200 hover:bg-rose-500/20 transition disabled:opacity-60"
+                    >
+                      Delete Ticket
+                    </button>
+                  </div>
+                ) : null}
               </div>
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
