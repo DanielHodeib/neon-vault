@@ -392,7 +392,8 @@ export default function RouletteGame() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [isSpinPending, setIsSpinPending] = useState(false);
   const [rotation, setRotation] = useState(0);
-  const [spinDurationMs, setSpinDurationMs] = useState(SPIN_ANIMATION_MS);
+  const [spinDurationMs, setSpinDurationMs] = useState(0);
+  const [spinPhase, setSpinPhase] = useState<'idle' | 'cruise' | 'decelerating'>('idle');
   const [winningNumber, setWinningNumber] = useState<number | null>(null);
   const [spinHistory, setSpinHistory] = useState<SpinHistoryItem[]>([]);
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
@@ -406,8 +407,25 @@ export default function RouletteGame() {
   const pendingSpinBetsRef = useRef<ActiveBet[]>([]);
   const settleSpinTimerRef = useRef<number | null>(null);
   const winningFocusTimerRef = useRef<number | null>(null);
+  const spinningTickerRef = useRef<number | null>(null);
   const [winningBetKey, setWinningBetKey] = useState<string | null>(null);
   const [isWinningFocus, setIsWinningFocus] = useState(false);
+
+  const stopContinuousSpin = useCallback(() => {
+    if (spinningTickerRef.current) {
+      window.clearInterval(spinningTickerRef.current);
+      spinningTickerRef.current = null;
+    }
+  }, []);
+
+  const startContinuousSpin = useCallback(() => {
+    stopContinuousSpin();
+    setSpinPhase('cruise');
+    setSpinDurationMs(130);
+    spinningTickerRef.current = window.setInterval(() => {
+      setRotation((current) => current + 110);
+    }, 120);
+  }, [stopContinuousSpin]);
 
   const effectiveUsername = (username ?? '').trim() || 'Guest';
 
@@ -485,11 +503,10 @@ export default function RouletteGame() {
         window.clearTimeout(winningFocusTimerRef.current);
       }
 
-      const configuredSpinMs = Number(payload.spinMs ?? SPIN_ANIMATION_MS);
-      const startedAt = Number(payload.startedAt ?? payload.emittedAt ?? Date.now());
-      const elapsed = Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
-      const syncedDuration = Math.max(550, configuredSpinMs - elapsed);
+      stopContinuousSpin();
+      const syncedDuration = 3400;
       setSpinDurationMs(syncedDuration);
+      setSpinPhase('decelerating');
 
       setWinningNumber(result);
       setIsSpinning(true);
@@ -542,6 +559,8 @@ export default function RouletteGame() {
         }
 
         setIsSpinning(false);
+        setSpinPhase('idle');
+        setSpinDurationMs(0);
       }, syncedDuration);
     };
 
@@ -554,6 +573,8 @@ export default function RouletteGame() {
       setSpinDurationMs(nextSpinMs);
       setIsSpinPending(false);
       setIsSpinning(true);
+      setSpinPhase('cruise');
+      startContinuousSpin();
       setStatus('Spin started. Wheel is running...');
     };
 
@@ -573,6 +594,7 @@ export default function RouletteGame() {
       if (winningFocusTimerRef.current) {
         window.clearTimeout(winningFocusTimerRef.current);
       }
+      stopContinuousSpin();
       socket.off('roulette_room_joined', rouletteRoomJoinedHandler);
       socket.off('roulette_room_members', rouletteRoomMembersHandler);
       socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
@@ -584,7 +606,7 @@ export default function RouletteGame() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [addWin, effectiveUsername]);
+  }, [addWin, effectiveUsername, startContinuousSpin, stopContinuousSpin]);
 
   const placeChip = useCallback((type: BetType, value: string) => {
     if (isSpinning) {
@@ -669,6 +691,8 @@ export default function RouletteGame() {
         setIsSpinning(true);
         setIsSpinPending(false);
         setSpinDurationMs(Math.max(1800, Number(response.spinMs ?? SPIN_ANIMATION_MS)));
+        setSpinPhase('cruise');
+        startContinuousSpin();
         setStatus('Bet accepted. Spin started...');
         return;
       }
@@ -678,6 +702,9 @@ export default function RouletteGame() {
       pendingSpinBetsRef.current = [];
       setIsSpinning(false);
       setIsSpinPending(false);
+      setSpinPhase('idle');
+      setSpinDurationMs(0);
+      stopContinuousSpin();
       setPendingStake(0);
       setLockedStake(0);
       setStatus('Roulette spin canceled. Refunding stake...');
@@ -690,7 +717,7 @@ export default function RouletteGame() {
         setStatus(response?.error ?? 'Spin request failed. Stake refunded.');
       })();
     });
-  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, syncBalanceFromServer, totalBet, totalOnTable]);
+  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, startContinuousSpin, stopContinuousSpin, syncBalanceFromServer, totalBet, totalOnTable]);
 
   const hasBet = useCallback((type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]), [bets]);
 
@@ -830,8 +857,11 @@ export default function RouletteGame() {
                   <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
                   {isHydrated ? (
                     <div
-                      style={{ transform: `rotate(${rotation}deg)` }}
-                      className={`absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden ${isSpinning ? 'animate-spin [animation-duration:3s] [animation-timing-function:linear]' : ''}`}
+                      style={{
+                        transform: `rotate(${rotation}deg)`,
+                        transition: `transform ${Math.max(0, spinDurationMs)}ms ${spinPhase === 'decelerating' ? 'cubic-bezier(0.12, 0.78, 0.15, 1)' : 'linear'}`,
+                      }}
+                      className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden will-change-transform"
                     >
                       <svg viewBox="0 0 300 300" className="w-full h-full">
                         <circle cx="150" cy="150" r="146" fill="#0f172a" />
