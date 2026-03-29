@@ -176,46 +176,44 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get('q') ?? '').trim().toLowerCase();
+  const bannedOnly = (searchParams.get('bannedOnly') ?? '').trim().toLowerCase() === 'true';
 
-  const users = (await prisma.$queryRawUnsafe(
-    `SELECT u.id, u.username, u.role, u.balance, u.xp,
-            COALESCE(u.clan_tag, '') AS clan_tag,
-            COALESCE(u.is_banned, 0) AS is_banned,
-            u.ban_expires_at AS ban_expires_at,
-            u.ban_reason AS ban_reason,
-            COALESCE(s.selected_rank_tag, 'BRONZE') AS selected_rank_tag
-     FROM users u
-     LEFT JOIN settings s ON s.user_id = u.id
-     ORDER BY u.username ASC`
-  )) as Array<{
-    id: string;
-    username: string;
-    role: string;
-    balance: string;
-    xp: number;
-    clan_tag: string;
-    is_banned: number | boolean;
-    ban_expires_at: string | null;
-    ban_reason: string | null;
-    selected_rank_tag: string;
-  }>;
-
-  const filtered = q
-    ? users.filter((user) => user.username.toLowerCase().includes(q))
-    : users;
+  const users = await prisma.user.findMany({
+    where: {
+      ...(bannedOnly ? { isBanned: true } : {}),
+      ...(q ? { username: { contains: q } } : {}),
+    },
+    orderBy: { username: 'asc' },
+    select: {
+      id: true,
+      username: true,
+      role: true,
+      balance: true,
+      xp: true,
+      clanTag: true,
+      isBanned: true,
+      banExpiresAt: true,
+      banReason: true,
+      settings: {
+        select: {
+          selectedRankTag: true,
+        },
+      },
+    },
+  });
 
   return NextResponse.json({
-    users: filtered.map((user) => ({
+    users: users.map((user) => ({
       id: user.id,
       username: user.username,
       role: user.role,
       balance: user.balance,
       xp: user.xp,
-      clanTag: user.clan_tag || null,
-      isBanned: user.is_banned === true || user.is_banned === 1,
-      banExpiresAt: user.ban_expires_at,
-      banReason: user.ban_reason,
-      selectedRankTag: user.selected_rank_tag,
+      clanTag: user.clanTag || null,
+      isBanned: Boolean(user.isBanned),
+      banExpiresAt: user.banExpiresAt ? user.banExpiresAt.toISOString() : null,
+      banReason: user.banReason,
+      selectedRankTag: user.settings?.selectedRankTag ?? 'BRONZE',
     })),
   });
 }

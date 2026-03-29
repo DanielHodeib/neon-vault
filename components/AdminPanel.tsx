@@ -337,6 +337,9 @@ export default function AdminPanel() {
       if (search.trim()) {
         query.set('q', search.trim());
       }
+      if (showBannedOnly) {
+        query.set('bannedOnly', 'true');
+      }
 
       const response = await fetch(`/api/admin/update?${query.toString()}`, { cache: 'no-store' });
       const payload = (await response.json()) as { error?: string; users?: AdminUser[] };
@@ -428,7 +431,7 @@ export default function AdminPanel() {
     } finally {
       setLoading(false);
     }
-  }, [hasAdminAccess, search]);
+  }, [hasAdminAccess, search, showBannedOnly]);
 
   const loadDashboard = useCallback(async () => {
     if (!hasAdminAccess) {
@@ -636,10 +639,7 @@ export default function AdminPanel() {
     };
   }, [activeTab, permissions.systemFinance, loadGlobalEventStatus]);
 
-  const visibleUsers = useMemo(
-    () => (showBannedOnly ? users.filter((user) => user.isBanned) : users),
-    [showBannedOnly, users]
-  );
+  const visibleUsers = useMemo(() => users, [users]);
 
   if (!accessChecked || !hasAdminAccess) {
     return null;
@@ -702,19 +702,20 @@ export default function AdminPanel() {
         throw new Error(payload.error ?? 'Ban action failed.');
       }
       setUsers((current) =>
-        current.map((entry) =>
-          entry.id === userId
-            ? {
-                ...entry,
-                isBanned: nextIsBanned,
-                banExpiresAt: nextIsBanned ? payload.banExpiresAt ?? null : null,
-                banReason: nextIsBanned ? payload.banReason ?? null : null,
-              }
-            : entry
-        )
+        current
+          .map((entry) =>
+            entry.id === userId
+              ? {
+                  ...entry,
+                  isBanned: nextIsBanned,
+                  banExpiresAt: nextIsBanned ? payload.banExpiresAt ?? null : null,
+                  banReason: nextIsBanned ? payload.banReason ?? null : null,
+                }
+              : entry
+          )
+          .filter((entry) => !(showBannedOnly && !entry.isBanned))
       );
       setNotice(isBanned ? 'User unbanned.' : 'User banned.');
-      await loadUsers();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'Ban action failed.');
     } finally {
@@ -1178,7 +1179,12 @@ export default function AdminPanel() {
                       className="flex items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-950/50 px-3 py-2 text-left hover:border-slate-700"
                     >
                       <div className="min-w-0">
-                        <p className="font-semibold text-slate-200 truncate">{user.username}</p>
+                        <div className="flex items-center gap-2 min-w-0">
+                          <p className="font-semibold text-slate-200 truncate">{user.username}</p>
+                          {user.isBanned ? (
+                            <span className="ml-1 px-2 py-0.5 bg-red-600/20 border border-red-500 text-red-500 text-[10px] font-bold rounded uppercase tracking-wider">BANNED</span>
+                          ) : null}
+                        </div>
                         <p className="text-xs text-slate-500">Role: {roleLabel}</p>
                       </div>
                       <div className="shrink-0 text-slate-500">
