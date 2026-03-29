@@ -385,6 +385,7 @@ const BetCell = memo(function BetCell({
 
 export default function RouletteGame() {
   const { balance, username, placeBet: reserveStake, addWin, persistWalletAction, syncBalanceFromServer } = useCasinoStore();
+  const [isMounted, setIsMounted] = useState(false);
   const [chipValue, setChipValue] = useState(100);
   const [bets, setBets] = useState<BetMap>({});
   const [pendingStake, setPendingStake] = useState(0);
@@ -443,8 +444,16 @@ export default function RouletteGame() {
   const totalOnTable = totalBet + pendingStake + lockedStake;
 
   useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  useEffect(() => {
     setIsHydrated(true);
   }, []);
+
+  if (!isMounted) {
+    return <div className="min-h-[400px] bg-transparent" />;
+  }
 
   useEffect(() => {
     rouletteRoomIdRef.current = rouletteRoomId;
@@ -752,7 +761,7 @@ export default function RouletteGame() {
                 <div className="w-full min-w-0 overflow-hidden pb-2">
                   <div className="roulette-board-fluid">
                     <div className="roulette-board-scale rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
-                    <div className="grid grid-cols-[minmax(34px,0.95fr)_12fr_minmax(34px,0.9fr)] gap-[2px]">
+                    <div className="grid grid-cols-[40px_minmax(0,1fr)_40px] md:grid-cols-[56px_minmax(0,1fr)_52px] gap-[2px]">
                       <BetCell
                         label="0"
                         type="number"
@@ -859,7 +868,9 @@ export default function RouletteGame() {
                     <div
                       style={{
                         transform: `rotate(${rotation}deg)`,
-                        transition: `transform ${Math.max(0, spinDurationMs)}ms ${spinPhase === 'decelerating' ? 'cubic-bezier(0.12, 0.78, 0.15, 1)' : 'linear'}`,
+                        transition: isSpinning
+                          ? `transform ${Math.max(0, spinDurationMs)}ms ${spinPhase === 'decelerating' ? 'cubic-bezier(0.12, 0.78, 0.15, 1)' : 'linear'}`
+                          : 'none',
                       }}
                       className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden will-change-transform"
                     >
