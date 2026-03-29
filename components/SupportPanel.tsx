@@ -423,7 +423,7 @@ export default function SupportPanel({
   };
 
   const handleDeleteTicket = async () => {
-    if (!selectedTicketId || !thread) {
+    if (!selectedTicketId) {
       return;
     }
 
@@ -446,6 +446,7 @@ export default function SupportPanel({
       console.log('[SupportPanel] Sending ticket delete request', { ticketId });
       const response = await fetch(`/api/support/tickets/${ticketId}`, {
         method: 'DELETE',
+        credentials: 'include',
       });
       const payload = await readApiPayload<{ error?: string; success?: boolean; alreadyDeleted?: boolean }>(response);
       console.log('[SupportPanel] Ticket delete response received', {
@@ -455,14 +456,14 @@ export default function SupportPanel({
         error: payload.error,
       });
 
-      if (!response.ok) {
+      if (!response.ok && response.status !== 404) {
         const reason = payload.error ?? `Delete failed (${response.status})`;
         setLoadError(reason);
         toast.error(reason);
         return;
       }
 
-      toast.success(payload.alreadyDeleted ? 'Ticket already deleted.' : 'Ticket deleted.');
+      toast.success(payload.alreadyDeleted || response.status === 404 ? 'Ticket already deleted.' : 'Ticket deleted.');
       setTickets((current) => current.filter((ticket) => ticket.id !== ticketId));
       setSelectedTicketId('');
       setThread(null);

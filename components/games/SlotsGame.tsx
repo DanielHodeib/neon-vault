@@ -625,6 +625,7 @@ export default function SlotsGame() {
                         >
                           {reelStripSymbols.map((item, index) => (
                             <div
+                              suppressHydrationWarning
                               key={`${item.name}-${index}`}
                               className="slot-reel-symbol flex h-[clamp(112px,20vh,196px)] items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]"
                             >
@@ -633,7 +634,7 @@ export default function SlotsGame() {
                           ))}
                         </div>
                       ) : (
-                        <div className="slot-reel-symbol flex h-full items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]">
+                        <div suppressHydrationWarning className="slot-reel-symbol flex h-full items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]">
                           {symbol.icon}
                         </div>
                       )}

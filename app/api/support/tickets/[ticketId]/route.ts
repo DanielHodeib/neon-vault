@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { Prisma } from '@prisma/client';
 
 import { auth } from '@/auth';
 import { getGameServerUrl, getInternalHeaders } from '@/lib/gameServerInternal';
