@@ -5,15 +5,15 @@ import { TicketStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 
 export async function POST(request: Request) {
-  let payload: { username?: string; guestContact?: string; category?: string; message?: string };
+  let payload: { username?: string; guestUsername?: string; guestContact?: string; category?: string; message?: string };
 
   try {
-    payload = (await request.json()) as { username?: string; guestContact?: string; category?: string; message?: string };
+    payload = (await request.json()) as { username?: string; guestUsername?: string; guestContact?: string; category?: string; message?: string };
   } catch {
     return NextResponse.json({ error: 'Invalid JSON payload.' }, { status: 400 });
   }
 
-  const username = String(payload.username ?? '').trim().slice(0, 40);
+  const guestUsername = String(payload.guestUsername ?? payload.username ?? '').trim().slice(0, 40);
   const guestContact = String(payload.guestContact ?? '').trim().slice(0, 160);
   const category = String(payload.category ?? '').trim().slice(0, 60);
   const message = String(payload.message ?? '').trim().slice(0, 4000);
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     data: {
       userId: null,
       guestContact,
-      guestUsername: username || null,
+      guestUsername: guestUsername || null,
       category,
       subject,
       content: message,

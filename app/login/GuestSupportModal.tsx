@@ -37,7 +37,7 @@ export default function GuestSupportModal({ open, onClose, initialReason = 'supp
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          username: username.trim(),
+          guestUsername: username.trim(),
           guestContact: guestContact.trim(),
           category: category.trim(),
           message: message.trim(),

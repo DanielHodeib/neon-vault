@@ -506,8 +506,8 @@ export default function SupportPanel({
                     {ticket.category}
                     {staffMode
                       ? ticket.user?.username
-                        ? ` - ${ticket.user.username}`
-                        : ` - Guest ${ticket.guestUsername || 'Anonymous'}`
+                        ? ` - User: ${ticket.user.username}`
+                        : ` - User: ${ticket.guestUsername || 'Unknown'} (Guest)`
                       : ''}
                   </p>
                   <p className="mt-1 line-clamp-1 text-xs text-slate-500">{ticket.messages?.[0]?.content ?? ticket.content ?? 'No messages yet.'}</p>
@@ -541,6 +541,13 @@ export default function SupportPanel({
                   </div>
                   <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase ${statusTone(thread.status)}`}>{thread.status.replace('_', ' ')}</span>
                 </div>
+                {!thread.userId && thread.guestUsername ? (
+                  <div className="mt-3 rounded-xl border border-cyan-500/35 bg-cyan-500/10 px-3 py-2">
+                    <p className="text-[10px] uppercase tracking-[0.16em] text-cyan-300">TARGET ACCOUNT (GUEST CLAIM):</p>
+                    <p className="mt-1 text-lg font-black text-cyan-200">{thread.guestUsername}</p>
+                    <p className="mt-1 text-xs text-slate-300">Contact: {thread.guestContact || 'No contact provided'}</p>
+                  </div>
+                ) : null}
                 {isStaff ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {(['OPEN', 'IN_PROGRESS', 'ANSWERED', 'CLOSED'] as TicketStatus[]).map((status) => (
