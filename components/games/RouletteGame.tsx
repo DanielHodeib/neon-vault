@@ -1,7 +1,6 @@
 'use client';
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import toast from 'react-hot-toast';
 
@@ -321,12 +320,12 @@ function getTargetRotationForWinningNumber(winningNumber: number, currentRotatio
 
 function getNumberCellIdleClass(color: 'red' | 'black' | 'green') {
   if (color === 'green') {
-    return 'border-emerald-300/70 bg-[#16a34a]/90 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(22,163,74,0.55)]';
+    return 'border-emerald-300/80 bg-[#16a34a] text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(22,163,74,0.55)]';
   }
   if (color === 'red') {
-    return 'border-red-300/70 bg-[#dc2626]/90 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(220,38,38,0.55)]';
+    return 'border-red-300/80 bg-[#dc2626] text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(220,38,38,0.55)]';
   }
-  return 'border-slate-400/45 bg-[#1a1a1a]/90 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(148,163,184,0.35)]';
+  return 'border-slate-400/55 bg-[#1a1a1a] text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(148,163,184,0.35)]';
 }
 
 interface BetCellProps {
@@ -678,8 +677,8 @@ export default function RouletteGame() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3">
-              <div className="min-h-0 flex-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+            <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-3">
+              <div className="min-h-0 lg:col-span-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
                 <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
                   <div className="h-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
                 <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
@@ -777,15 +776,14 @@ export default function RouletteGame() {
               </div>
               </div>
 
-              <div className="min-h-[340px] lg:min-h-0 lg:w-[320px] rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex flex-col items-center justify-center">
-                <div className="relative w-64 h-64 mx-auto">
+              <div className="min-h-[300px] lg:min-h-0 lg:col-span-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex flex-col items-center justify-center z-50">
+                <div className="relative w-48 h-48 md:w-64 md:h-64 mx-auto z-50">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
                   <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
                   {isHydrated ? (
-                    <motion.div
-                      animate={{ rotate: rotation }}
-                      transition={{ duration: spinDurationMs / 1000, ease: [0.2, 0.9, 0.2, 1] }}
-                      className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
+                    <div
+                      style={{ transform: `rotate(${rotation}deg)` }}
+                      className={`absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden ${isSpinning ? 'animate-spin [animation-duration:3s] [animation-timing-function:linear]' : ''}`}
                     >
                       <svg viewBox="0 0 300 300" className="w-full h-full">
                         <circle cx="150" cy="150" r="146" fill="#0f172a" />
@@ -832,7 +830,7 @@ export default function RouletteGame() {
                           </linearGradient>
                         </defs>
                       </svg>
-                    </motion.div>
+                    </div>
                   ) : (
                     <div className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900" />
                   )}

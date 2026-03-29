@@ -277,6 +277,7 @@ export default function SlotsGame() {
   const [winStreak, setWinStreak] = useState(0);
   const [freeSpinsLeft, setFreeSpinsLeft] = useState(0);
   const [totalCascades, setTotalCascades] = useState(0);
+  const [reelSpinning, setReelSpinning] = useState<boolean[]>(Array(config.reelCount).fill(false));
 
   const symbolSet = ['bookofra', 'luxor', 'treasurehunt'].includes(mode) ? BOOK_SYMBOLS : SYMBOLS;
 
@@ -302,6 +303,11 @@ export default function SlotsGame() {
     ];
   }, [config, mode]);
 
+  const reelStripSymbols = useMemo(() => {
+    const loop = [...symbolSet, ...symbolSet, ...symbolSet, ...symbolSet];
+    return loop;
+  }, [symbolSet]);
+
   useEffect(() => {
     if (!isSpinning && !isCascading) return;
 
@@ -323,6 +329,7 @@ export default function SlotsGame() {
     setReels(Array(nextConfig.reelCount).fill(null).map(() => getWeightedSymbol(nextMode)));
     setExpandedReels(new Set());
     setTotalCascades(0);
+    setReelSpinning(Array(nextConfig.reelCount).fill(false));
     
     if (nextMode !== 'freespins') {
       setFreeSpinsLeft(0);
@@ -390,12 +397,22 @@ export default function SlotsGame() {
     setErrorMsg('');
     setTotalCascades(0);
     setExpandedReels(new Set());
+    setReelSpinning(Array(config.reelCount).fill(true));
 
     setTimeout(() => {
       const outcome = rollWeightedOutcome();
       const newReels = buildReelsForOutcome(mode, config.reelCount, symbolSet, outcome.tier);
       setReels(newReels);
-      setIsSpinning(false);
+
+      newReels.forEach((_reel, index) => {
+        window.setTimeout(() => {
+          setReelSpinning((current) => {
+            const next = [...current];
+            next[index] = false;
+            return next;
+          });
+        }, index * 200);
+      });
 
       const { payout, message, willCascade, outcome: winningOutcome } = evaluateWin(newReels, safeBet, outcome);
 
@@ -439,6 +456,10 @@ export default function SlotsGame() {
       }
 
       setBetAmount(safeBet);
+
+      window.setTimeout(() => {
+        setIsSpinning(false);
+      }, (config.reelCount - 1) * 200 + 80);
     }, config.spinMs);
   };
 
@@ -535,23 +556,28 @@ export default function SlotsGame() {
                     className="relative flex h-[clamp(112px,20vh,196px)] min-h-[112px] items-center justify-center overflow-hidden rounded-xl border-2 bg-gradient-to-br from-slate-950 to-slate-900 shadow-2xl"
                   >
                     <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,0.1),transparent)]" />
-                    
-                    {/* Reel Symbol */}
-                    <motion.div
-                      animate={{
-                        scale: isSpinning || isCascading ? [1, 1.06, 1] : 1,
-                        rotate: isSpinning || isCascading ? [0, -6, 6, 0] : 0,
-                        filter: isSpinning || isCascading ? 'blur(0.6px)' : 'blur(0px)',
-                      }}
-                      transition={{
-                        duration: 0.22,
-                        repeat: isSpinning || isCascading ? Infinity : 0,
-                        ease: 'easeInOut',
-                      }}
-                      className="leading-none select-none drop-shadow-lg flex items-center justify-center text-center text-[44px] md:text-[70px] xl:text-[92px] will-change-transform"
-                    >
-                      {symbol.icon}
-                    </motion.div>
+
+                    <div className="slot-reel-window relative h-full w-full overflow-hidden">
+                      {reelSpinning[i] ? (
+                        <div
+                          className="slot-reel-strip slot-reel-strip-spinning"
+                          style={{ animationDelay: `${i * 0.2}s` }}
+                        >
+                          {reelStripSymbols.map((item, index) => (
+                            <div
+                              key={`${item.name}-${index}`}
+                              className="slot-reel-symbol flex h-[clamp(112px,20vh,196px)] items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]"
+                            >
+                              {item.icon}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="slot-reel-symbol flex h-full items-center justify-center text-center text-[44px] leading-none md:text-[70px] xl:text-[92px]">
+                          {symbol.icon}
+                        </div>
+                      )}
+                    </div>
 
                     {/* Expanded Highlight */}
                     {expandedReels.has(i) && (
