@@ -319,6 +319,16 @@ function getTargetRotationForWinningNumber(winningNumber: number, currentRotatio
   return currentRotation + EXTRA_SPIN_ROTATIONS * 360 + deltaToTarget;
 }
 
+function getNumberCellIdleClass(color: 'red' | 'black' | 'green') {
+  if (color === 'green') {
+    return 'border-emerald-300/70 bg-[#16a34a]/90 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(22,163,74,0.55)]';
+  }
+  if (color === 'red') {
+    return 'border-red-300/70 bg-[#dc2626]/90 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(220,38,38,0.55)]';
+  }
+  return 'border-slate-400/45 bg-[#1a1a1a]/90 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(148,163,184,0.35)]';
+}
+
 interface BetCellProps {
   label: string;
   type: BetType;
@@ -525,6 +535,7 @@ export default function RouletteGame() {
     socket.on('roulette_win_announcement', rouletteWinAnnouncementHandler);
     socket.on('roulette_spin_result', rouletteSpinResultHandler);
     socket.on('roulette_result', rouletteSpinResultHandler);
+    socket.on('roulette_spin', rouletteSpinResultHandler);
 
     return () => {
       if (settleSpinTimerRef.current) {
@@ -538,6 +549,7 @@ export default function RouletteGame() {
       socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
       socket.off('roulette_spin_result', rouletteSpinResultHandler);
       socket.off('roulette_result', rouletteSpinResultHandler);
+      socket.off('roulette_spin', rouletteSpinResultHandler);
       socket.disconnect();
       socketRef.current = null;
     };
@@ -666,9 +678,10 @@ export default function RouletteGame() {
               </div>
             </div>
 
-            <div className="flex-1 min-h-0 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
-              <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
-                <div className="h-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(5,150,105,0.3),rgba(2,44,34,0.8)_46%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
+            <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-3">
+              <div className="min-h-0 flex-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+                <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
+                  <div className="h-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
                 <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
                   <BetCell
                     label="0"
@@ -680,7 +693,7 @@ export default function RouletteGame() {
                     isWinning={winningBetKey === getBetKey('number', '0')}
                     dimmed={isWinningFocus && winningBetKey !== getBetKey('number', '0')}
                     baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
-                    idleClassName="border-white/10 bg-white/5 text-white backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.32)]"
+                    idleClassName={getNumberCellIdleClass('green')}
                   />
 
                   <div className="grid grid-rows-3 gap-[2px]">
@@ -701,11 +714,7 @@ export default function RouletteGame() {
                               isWinning={winningBetKey === getBetKey('number', String(number))}
                               dimmed={isWinningFocus && winningBetKey !== getBetKey('number', String(number))}
                               baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)] md:p-3 md:text-base"
-                              idleClassName={
-                                color === 'red'
-                                  ? 'bg-white/5 text-white border-white/10 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(248,113,113,0.4)]'
-                                  : 'bg-white/5 text-slate-100 border-white/10 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]'
-                              }
+                              idleClassName={getNumberCellIdleClass(color)}
                               selectedClassName="bg-blue-600/40 text-white border-cyan-300/50 ring-1 ring-cyan-300/60 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
                             />
                           );
@@ -767,6 +776,76 @@ export default function RouletteGame() {
                 </div>
               </div>
               </div>
+
+              <div className="min-h-[340px] lg:min-h-0 lg:w-[320px] rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex flex-col items-center justify-center">
+                <div className="relative w-64 h-64 mx-auto">
+                  <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
+                  <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
+                  {isHydrated ? (
+                    <motion.div
+                      animate={{ rotate: rotation }}
+                      transition={{ duration: spinDurationMs / 1000, ease: [0.2, 0.9, 0.2, 1] }}
+                      className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
+                    >
+                      <svg viewBox="0 0 300 300" className="w-full h-full">
+                        <circle cx="150" cy="150" r="146" fill="#0f172a" />
+                        <circle cx="150" cy="150" r="141" fill="none" stroke="#64748b" strokeWidth="3" />
+                        {WHEEL_NUMBERS.map((num, index) => {
+                          const step = WHEEL_SEGMENT_DEGREES;
+                          const startAngle = index * step - step / 2;
+                          const endAngle = startAngle + step;
+                          const midAngle = startAngle + step / 2;
+                          const textPos = polarToCartesian(150, 150, 122, midAngle);
+                          return (
+                            <g key={`${num}-${index}`}>
+                              <path
+                                d={describeRingSegment(150, 150, 138, 108, startAngle, endAngle)}
+                                fill={getWheelSegmentFill(num)}
+                                stroke="#1e293b"
+                                strokeWidth="1.6"
+                              />
+                              <text
+                                x={textPos.x}
+                                y={textPos.y}
+                                fill={getWheelTextFill(num)}
+                                fontSize="11"
+                                fontWeight="700"
+                                textAnchor="middle"
+                                dominantBaseline="middle"
+                                transform={`rotate(${midAngle + 90}, ${textPos.x}, ${textPos.y})`}
+                              >
+                                {num}
+                              </text>
+                            </g>
+                          );
+                        })}
+                        <circle cx="150" cy="150" r="100" fill="url(#innerTrackWheelInline)" stroke="#334155" strokeWidth="2" />
+                        <circle cx="150" cy="150" r="64" fill="url(#hubGradWheelInline)" stroke="#64748b" strokeWidth="2" />
+                        <defs>
+                          <linearGradient id="innerTrackWheelInline" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#334155" />
+                            <stop offset="100%" stopColor="#020617" />
+                          </linearGradient>
+                          <linearGradient id="hubGradWheelInline" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stopColor="#cbd5e1" />
+                            <stop offset="100%" stopColor="#64748b" />
+                          </linearGradient>
+                        </defs>
+                      </svg>
+                    </motion.div>
+                  ) : (
+                    <div className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900" />
+                  )}
+                  <div className="absolute left-1/2 top-[9px] -translate-x-1/2 text-[16px] text-slate-100 font-bold tracking-wider">▼</div>
+                  <div className="absolute left-1/2 top-[30px] -translate-x-1/2 h-4 w-4 rounded-full bg-white border border-slate-300 shadow-[0_0_14px_rgba(255,255,255,0.6)]" />
+                  <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full border border-cyan-300/40 bg-slate-950/80 px-4 py-2 text-center shadow-[0_0_18px_rgba(34,211,238,0.35)] backdrop-blur-sm">
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Winner</p>
+                    <p className="text-xl font-black text-cyan-300">{winningNumber ?? '-'}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-sm text-slate-400 text-center">Last: {winningNumber ?? '-'} | Active bets: {activeBets.length}</p>
+              </div>
+            </div>
             </div>
           </div>
 
@@ -794,71 +873,6 @@ export default function RouletteGame() {
                   ))
                 )}
               </div>
-            </div>
-
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 flex-1 min-h-0 flex flex-col items-center justify-center backdrop-blur-sm">
-              <div className="relative w-72 h-72 mx-auto">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
-                <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
-                {isHydrated ? (
-                  <motion.div
-                    animate={{ rotate: rotation }}
-                    transition={{ duration: spinDurationMs / 1000, ease: [0.2, 0.9, 0.2, 1] }}
-                    className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden"
-                  >
-                    <svg viewBox="0 0 300 300" className="w-full h-full">
-                      <circle cx="150" cy="150" r="146" fill="#0f172a" />
-                      <circle cx="150" cy="150" r="141" fill="none" stroke="#64748b" strokeWidth="3" />
-                      {WHEEL_NUMBERS.map((num, index) => {
-                        const step = WHEEL_SEGMENT_DEGREES;
-                        const startAngle = index * step - step / 2;
-                        const endAngle = startAngle + step;
-                        const midAngle = startAngle + step / 2;
-                        const textPos = polarToCartesian(150, 150, 122, midAngle);
-                        return (
-                          <g key={`${num}-${index}`}>
-                            <path
-                              d={describeRingSegment(150, 150, 138, 108, startAngle, endAngle)}
-                              fill={getWheelSegmentFill(num)}
-                              stroke="#1e293b"
-                              strokeWidth="1.6"
-                            />
-                            <text
-                              x={textPos.x}
-                              y={textPos.y}
-                              fill={getWheelTextFill(num)}
-                              fontSize="11"
-                              fontWeight="700"
-                              textAnchor="middle"
-                              dominantBaseline="middle"
-                              transform={`rotate(${midAngle + 90}, ${textPos.x}, ${textPos.y})`}
-                            >
-                              {num}
-                            </text>
-                          </g>
-                        );
-                      })}
-                      <circle cx="150" cy="150" r="100" fill="url(#innerTrack)" stroke="#334155" strokeWidth="2" />
-                      <circle cx="150" cy="150" r="64" fill="url(#hubGrad)" stroke="#64748b" strokeWidth="2" />
-                      <defs>
-                        <linearGradient id="innerTrack" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#334155" />
-                          <stop offset="100%" stopColor="#020617" />
-                        </linearGradient>
-                        <linearGradient id="hubGrad" x1="0" y1="0" x2="1" y2="1">
-                          <stop offset="0%" stopColor="#cbd5e1" />
-                          <stop offset="100%" stopColor="#64748b" />
-                        </linearGradient>
-                      </defs>
-                    </svg>
-                  </motion.div>
-                ) : (
-                  <div className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900" />
-                )}
-                <div className="absolute left-1/2 top-[9px] -translate-x-1/2 text-[16px] text-slate-100 font-bold tracking-wider">▼</div>
-                <div className="absolute left-1/2 top-[30px] -translate-x-1/2 h-4 w-4 rounded-full bg-white border border-slate-300 shadow-[0_0_14px_rgba(255,255,255,0.6)]" />
-              </div>
-              <p className="mt-3 text-sm text-slate-400 text-center">Last: {winningNumber ?? '-'} | Active bets: {activeBets.length}</p>
             </div>
 
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">

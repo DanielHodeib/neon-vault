@@ -367,6 +367,10 @@ export default function SlotsGame() {
   };
 
   const spin = () => {
+    if (isSpinning || isCascading) {
+      return;
+    }
+
     const safeBet = Math.max(config.minBet, Math.floor(Number.isFinite(betAmount) ? betAmount : config.minBet));
     const usingFreeSpin = mode === 'freespins' && freeSpinsLeft > 0;
 
@@ -525,26 +529,28 @@ export default function SlotsGame() {
                       borderColor: expandedReels.has(i) ? ['#3b82f6', '#0ea5e9', '#3b82f6'] : '#64748b',
                     }}
                     transition={{
-                      duration: 0.4,
+                      duration: 0.45,
                       repeat: isSpinning || isCascading ? Infinity : 0,
                     }}
-                    className="h-[clamp(112px,20vh,196px)] rounded-xl bg-gradient-to-br from-slate-950 to-slate-900 border-2 flex items-center justify-center overflow-hidden relative shadow-2xl"
+                    className="relative flex h-[clamp(112px,20vh,196px)] min-h-[112px] items-center justify-center overflow-hidden rounded-xl border-2 bg-gradient-to-br from-slate-950 to-slate-900 shadow-2xl"
                   >
                     <div className="absolute inset-0 bg-[linear-gradient(135deg,rgba(59,130,246,0.1),transparent)]" />
                     
                     {/* Reel Symbol */}
                     <motion.div
                       animate={{
-                        y: isSpinning || isCascading ? [0, -400, 400, 0] : 0,
-                        filter: isSpinning || isCascading ? 'blur(2px)' : 'blur(0px)',
+                        scale: isSpinning || isCascading ? [1, 1.06, 1] : 1,
+                        rotate: isSpinning || isCascading ? [0, -6, 6, 0] : 0,
+                        filter: isSpinning || isCascading ? 'blur(0.6px)' : 'blur(0px)',
                       }}
                       transition={{
-                        duration: 0.12,
+                        duration: 0.22,
                         repeat: isSpinning || isCascading ? Infinity : 0,
+                        ease: 'easeInOut',
                       }}
-                      className="text-[44px] md:text-[70px] xl:text-[92px] leading-none select-none drop-shadow-lg"
+                      className="leading-none select-none drop-shadow-lg flex items-center justify-center text-center text-[44px] md:text-[70px] xl:text-[92px] will-change-transform"
                     >
-                      {isSpinning || isCascading ? '🎰' : symbol.icon}
+                      {symbol.icon}
                     </motion.div>
 
                     {/* Expanded Highlight */}
