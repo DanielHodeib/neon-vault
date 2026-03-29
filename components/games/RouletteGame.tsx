@@ -451,10 +451,6 @@ export default function RouletteGame() {
     setIsHydrated(true);
   }, []);
 
-  if (!isMounted) {
-    return <div className="min-h-[400px] bg-transparent" />;
-  }
-
   useEffect(() => {
     rouletteRoomIdRef.current = rouletteRoomId;
   }, [rouletteRoomId]);
@@ -731,6 +727,10 @@ export default function RouletteGame() {
   const hasBet = useCallback((type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]), [bets]);
 
   const getStake = useCallback((type: BetType, value: string) => bets[getBetKey(type, value)]?.stake ?? 0, [bets]);
+
+  if (!isMounted) {
+    return <div className="min-h-[600px] bg-transparent" />;
+  }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_540px_at_35%_20%,rgba(20,83,45,0.35),rgba(2,6,23,0.95))]">
