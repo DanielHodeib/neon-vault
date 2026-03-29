@@ -17,8 +17,8 @@ export async function DELETE(
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!['OWNER', 'ADMIN', 'SUPPORT'].includes(userRole)) {
-    return NextResponse.json({ error: 'Forbidden: only OWNER, ADMIN or SUPPORT can delete tickets.' }, { status: 403 });
+  if (!['OWNER', 'ADMIN', 'SUPPORT', 'MODERATOR'].includes(userRole)) {
+    return NextResponse.json({ error: 'Forbidden: only OWNER, ADMIN, SUPPORT or MODERATOR can delete tickets.' }, { status: 403 });
   }
 
   const { ticketId } = await params;
@@ -34,7 +34,11 @@ export async function DELETE(
     console.log('[support.delete] ticket messages deleted', { ticketId });
 
     console.log('[support.delete] deleting ticket record', { ticketId });
-    await prisma.ticket.delete({ where: { id: ticketId } });
+    const deleted = await prisma.ticket.deleteMany({ where: { id: ticketId } });
+    if (deleted.count === 0) {
+      console.log('[support.delete] ticket already missing', { ticketId });
+      return NextResponse.json({ success: true, alreadyDeleted: true });
+    }
     console.log('[support.delete] ticket deleted', { ticketId });
 
     const broadcastUrl = `${getGameServerUrl()}/internal/support/ticket-deleted`;
@@ -50,10 +54,6 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
-      return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
-    }
-
     const message = error instanceof Error ? error.message : 'Unknown deletion error.';
     console.error('Deletion failed:', error);
     return NextResponse.json({ error: message }, { status: 500 });

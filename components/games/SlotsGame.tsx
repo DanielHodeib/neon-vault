@@ -289,13 +289,19 @@ function waitForServerSlotResult(timeoutMs: number): Promise<ServerSlotResultPay
   });
 }
 
+function buildInitialReels(mode: SlotMode, reelCount: number): SlotSymbol[] {
+  const isBookMode = ['bookofra', 'luxor', 'treasurehunt'].includes(mode);
+  const set = isBookMode ? BOOK_SYMBOLS : SYMBOLS;
+  return Array.from({ length: reelCount }, (_, index) => set[index % set.length]);
+}
+
 export default function SlotsGame() {
   const { balance, placeBet, addWin } = useCasinoStore();
   const [mode, setMode] = useState<SlotMode>('classic');
   const config = MODE_CONFIG[mode];
   
-  const [reels, setReels] = useState<SlotSymbol[]>(
-    Array(config.reelCount).fill(null).map(() => getWeightedSymbol(mode))
+  const [reels, setReels] = useState<SlotSymbol[]>(() =>
+    buildInitialReels('classic', MODE_CONFIG.classic.reelCount)
   );
   const [expandedReels, setExpandedReels] = useState<Set<number>>(new Set());
   const [isSpinning, setIsSpinning] = useState(false);

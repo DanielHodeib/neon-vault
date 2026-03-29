@@ -52,7 +52,7 @@ interface TicketThread {
 }
 
 const STAFF_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
-const TICKET_DELETE_ROLES = new Set(['SUPPORT', 'ADMIN', 'OWNER']);
+const TICKET_DELETE_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
 const CATEGORY_OPTIONS = ['Account', 'Payments', 'Bug Report', 'Security', 'Abuse', 'Other'];
 
 function statusTone(status: TicketStatus) {
@@ -447,7 +447,7 @@ export default function SupportPanel({
       const response = await fetch(`/api/support/tickets/${ticketId}`, {
         method: 'DELETE',
       });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      const payload = await readApiPayload<{ error?: string; success?: boolean; alreadyDeleted?: boolean }>(response);
       console.log('[SupportPanel] Ticket delete response received', {
         ticketId,
         ok: response.ok,
@@ -462,7 +462,7 @@ export default function SupportPanel({
         return;
       }
 
-      toast.success('Ticket deleted.');
+      toast.success(payload.alreadyDeleted ? 'Ticket already deleted.' : 'Ticket deleted.');
       setTickets((current) => current.filter((ticket) => ticket.id !== ticketId));
       setSelectedTicketId('');
       setThread(null);
