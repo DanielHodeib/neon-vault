@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  neon-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neon-app
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://postgres:postgres@neon-db:5432/neon_vault
+      - REDIS_URL=redis://neon-redis:6379
+    depends_on:
+      - neon-db
+      - neon-redis
+    networks:
+      - neon-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  neon-db:
+    image: postgres:16-alpine
+    container_name: neon-db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=neon_vault
+    volumes:
+      - ./postgres_data:/var/lib/postgresql/data
+    networks:
+      - neon-network
+    ports:
+      - "5432:5432"
+
+  neon-redis:
+    image: redis:7-alpine
+    container_name: neon-redis
+    restart: always
+    networks:
+      - neon-network
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+
+networks:
+  neon-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
