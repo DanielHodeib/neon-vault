@@ -394,7 +394,8 @@ export default function RouletteGame() {
   const [isSpinPending, setIsSpinPending] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [spinDurationMs, setSpinDurationMs] = useState(0);
-  const [spinPhase, setSpinPhase] = useState<'idle' | 'cruise' | 'decelerating'>('idle');
+  const [awaitingResult, setAwaitingResult] = useState(false);
+  const [stopOnTransition, setStopOnTransition] = useState(false);
   const [winningNumber, setWinningNumber] = useState<number | null>(null);
   const [spinHistory, setSpinHistory] = useState<SpinHistoryItem[]>([]);
   const [status, setStatus] = useState('Click any field to place chips. Multiple bets are allowed.');
@@ -408,25 +409,8 @@ export default function RouletteGame() {
   const pendingSpinBetsRef = useRef<ActiveBet[]>([]);
   const settleSpinTimerRef = useRef<number | null>(null);
   const winningFocusTimerRef = useRef<number | null>(null);
-  const spinningTickerRef = useRef<number | null>(null);
   const [winningBetKey, setWinningBetKey] = useState<string | null>(null);
   const [isWinningFocus, setIsWinningFocus] = useState(false);
-
-  const stopContinuousSpin = useCallback(() => {
-    if (spinningTickerRef.current) {
-      window.clearInterval(spinningTickerRef.current);
-      spinningTickerRef.current = null;
-    }
-  }, []);
-
-  const startContinuousSpin = useCallback(() => {
-    stopContinuousSpin();
-    setSpinPhase('cruise');
-    setSpinDurationMs(130);
-    spinningTickerRef.current = window.setInterval(() => {
-      setRotation((current) => current + 110);
-    }, 120);
-  }, [stopContinuousSpin]);
 
   const effectiveUsername = (username ?? '').trim() || 'Guest';
 
@@ -508,10 +492,10 @@ export default function RouletteGame() {
         window.clearTimeout(winningFocusTimerRef.current);
       }
 
-      stopContinuousSpin();
-      const syncedDuration = 3400;
+      const syncedDuration = 4000;
       setSpinDurationMs(syncedDuration);
-      setSpinPhase('decelerating');
+      setAwaitingResult(false);
+      setStopOnTransition(true);
 
       setWinningNumber(result);
       setIsSpinning(true);
@@ -563,9 +547,6 @@ export default function RouletteGame() {
           setLockedStake(0);
         }
 
-        setIsSpinning(false);
-        setSpinPhase('idle');
-        setSpinDurationMs(0);
       }, syncedDuration);
     };
 
@@ -574,12 +555,16 @@ export default function RouletteGame() {
         return;
       }
 
-      const nextSpinMs = Math.max(1800, Number(payload.spinMs ?? SPIN_ANIMATION_MS));
-      setSpinDurationMs(nextSpinMs);
+      setSpinDurationMs(4000);
       setIsSpinPending(false);
       setIsSpinning(true);
-      setSpinPhase('cruise');
-      startContinuousSpin();
+      setAwaitingResult(true);
+      setStopOnTransition(false);
+      setRotation((current) => {
+        const newRotation = current + (360 * 5) + Math.random() * 360;
+        console.log('ROULETTE SPIN TRIGGERED', newRotation);
+        return newRotation;
+      });
       setStatus('Spin started. Wheel is running...');
     };
 
@@ -599,7 +584,6 @@ export default function RouletteGame() {
       if (winningFocusTimerRef.current) {
         window.clearTimeout(winningFocusTimerRef.current);
       }
-      stopContinuousSpin();
       socket.off('roulette_room_joined', rouletteRoomJoinedHandler);
       socket.off('roulette_room_members', rouletteRoomMembersHandler);
       socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
@@ -611,7 +595,7 @@ export default function RouletteGame() {
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [addWin, effectiveUsername, startContinuousSpin, stopContinuousSpin]);
+  }, [addWin, effectiveUsername]);
 
   const placeChip = useCallback((type: BetType, value: string) => {
     if (isSpinning) {
@@ -695,9 +679,14 @@ export default function RouletteGame() {
         setPendingStake(0);
         setIsSpinning(true);
         setIsSpinPending(false);
-        setSpinDurationMs(Math.max(1800, Number(response.spinMs ?? SPIN_ANIMATION_MS)));
-        setSpinPhase('cruise');
-        startContinuousSpin();
+        setSpinDurationMs(4000);
+        setAwaitingResult(true);
+        setStopOnTransition(false);
+        setRotation((current) => {
+          const newRotation = current + (360 * 5) + Math.random() * 360;
+          console.log('ROULETTE SPIN TRIGGERED', newRotation);
+          return newRotation;
+        });
         setStatus('Bet accepted. Spin started...');
         return;
       }
@@ -707,9 +696,9 @@ export default function RouletteGame() {
       pendingSpinBetsRef.current = [];
       setIsSpinning(false);
       setIsSpinPending(false);
-      setSpinPhase('idle');
+      setAwaitingResult(false);
+      setStopOnTransition(false);
       setSpinDurationMs(0);
-      stopContinuousSpin();
       setPendingStake(0);
       setLockedStake(0);
       setStatus('Roulette spin canceled. Refunding stake...');
@@ -722,7 +711,7 @@ export default function RouletteGame() {
         setStatus(response?.error ?? 'Spin request failed. Stake refunded.');
       })();
     });
-  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, startContinuousSpin, stopContinuousSpin, syncBalanceFromServer, totalBet, totalOnTable]);
+  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, syncBalanceFromServer, totalBet, totalOnTable]);
 
   const hasBet = useCallback((type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]), [bets]);
 
@@ -868,9 +857,15 @@ export default function RouletteGame() {
                     <div
                       style={{
                         transform: `rotate(${rotation}deg)`,
-                        transition: isSpinning
-                          ? `transform ${Math.max(0, spinDurationMs)}ms ${spinPhase === 'decelerating' ? 'cubic-bezier(0.12, 0.78, 0.15, 1)' : 'linear'}`
-                          : 'none',
+                        transition: isSpinning ? 'transform 4s cubic-bezier(0.15, 0, 0.2, 1)' : 'none',
+                        transformOrigin: 'center center',
+                      }}
+                      onTransitionEnd={() => {
+                        if (!awaitingResult && stopOnTransition) {
+                          setIsSpinning(false);
+                          setStopOnTransition(false);
+                          setSpinDurationMs(0);
+                        }
                       }}
                       className="absolute inset-7 rounded-full border border-slate-600 bg-slate-900 overflow-hidden will-change-transform"
                     >
