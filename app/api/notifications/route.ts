@@ -8,7 +8,7 @@ export async function GET() {
   const userId = session?.user?.id;
 
   if (!userId) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ notifications: [] }, { status: 401 });
   }
 
   const notifications = await prisma.notification.findMany({
@@ -26,7 +26,7 @@ export async function GET() {
     },
   });
 
-  return NextResponse.json({ ok: true, notifications });
+  return NextResponse.json({ notifications: notifications ?? [] }, { status: 200 });
 }
 
 export async function PATCH(request: Request) {

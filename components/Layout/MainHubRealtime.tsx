@@ -2467,9 +2467,16 @@ export default function MainHubRealtime({
         });
       } else {
         const response = await fetch('/api/notifications', { cache: 'no-store' });
-        const payload = (await response.json()) as { notifications?: NotificationItem[] };
-        if (response.ok) {
+        if (!response.ok) {
+          return;
+        }
+
+        const contentType = response.headers.get('content-type') ?? '';
+        if (contentType.includes('application/json')) {
+          const payload = (await response.json()) as { notifications?: NotificationItem[] };
           setNotifications(Array.isArray(payload.notifications) ? payload.notifications : []);
+        } else {
+          console.error('Notifications API did not return JSON');
         }
       }
     } finally {
