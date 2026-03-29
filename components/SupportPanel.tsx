@@ -52,7 +52,7 @@ interface TicketThread {
 }
 
 const STAFF_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
-const TICKET_DELETE_ROLES = new Set(['ADMIN', 'OWNER']);
+const TICKET_DELETE_ROLES = new Set(['SUPPORT', 'ADMIN', 'OWNER']);
 const CATEGORY_OPTIONS = ['Account', 'Payments', 'Bug Report', 'Security', 'Abuse', 'Other'];
 
 function statusTone(status: TicketStatus) {
@@ -407,21 +407,25 @@ export default function SupportPanel({
 
     const ticketId = selectedTicketId;
     setSubmitting(true);
+    setLoadError('');
 
     try {
       console.log('[SupportPanel] Sending ticket delete request', { ticketId });
       const response = await fetch(`/api/support/tickets/${ticketId}`, {
         method: 'DELETE',
       });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; success?: boolean };
       console.log('[SupportPanel] Ticket delete response received', {
         ticketId,
         ok: response.ok,
         status: response.status,
+        error: payload.error,
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
-        toast.error(payload.error ?? 'Failed to delete ticket.');
+        const reason = payload.error ?? `Delete failed (${response.status})`;
+        setLoadError(reason);
+        toast.error(reason);
         return;
       }
 
@@ -430,7 +434,9 @@ export default function SupportPanel({
       setSelectedTicketId('');
       setThread(null);
       void loadTickets();
-    } catch {
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : 'Failed to delete ticket.';
+      setLoadError(reason);
       toast.error('Failed to delete ticket.');
     } finally {
       setSubmitting(false);
