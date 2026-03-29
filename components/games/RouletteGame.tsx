@@ -656,128 +656,131 @@ export default function RouletteGame() {
   return (
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_540px_at_35%_20%,rgba(20,83,45,0.35),rgba(2,6,23,0.95))]">
       <div className="flex-1 min-h-0 px-3 py-3 overflow-hidden lg:px-4 lg:py-4">
-        <div className="grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70 p-3 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm lg:gap-4 lg:p-4 xl:grid-cols-[1.2fr_0.8fr]">
-          <div className="min-h-0 flex flex-col gap-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-base font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
-              <p className="text-sm text-slate-400">Single Zero Table · Global</p>
-            </div>
+        <div className="h-full min-h-0 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70 p-3 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm lg:p-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
+            <p className="text-sm text-slate-400">Single Zero Table · Global</p>
+          </div>
 
-            <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
-              <div className="mt-2 rounded-md border border-white/10 bg-slate-950/60 p-2">
-                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({uniquePlayers.length})</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {uniquePlayers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
-                  {uniquePlayers.map((member) => (
-                    <span key={member.id} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
-                      {member.username}
-                    </span>
-                  ))}
-                </div>
+          <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+            <div className="rounded-md border border-white/10 bg-slate-950/60 p-2">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Players Active ({uniquePlayers.length})</p>
+              <div className="mt-1 flex flex-wrap gap-1.5">
+                {uniquePlayers.length === 0 ? <span className="text-xs text-slate-500">No players yet</span> : null}
+                {uniquePlayers.map((member) => (
+                  <span key={member.id} className="px-2 py-1 rounded-md border border-slate-700 bg-slate-900 text-[11px] text-slate-200">
+                    {member.username}
+                  </span>
+                ))}
               </div>
             </div>
+          </div>
 
-            <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-3">
-              <div className="min-h-0 lg:col-span-2 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
-                <div className="w-full overflow-x-auto no-scrollbar pb-2 shrink-0">
-                  <div className="h-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
-                <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
-                  <BetCell
-                    label="0"
-                    type="number"
-                    value="0"
-                    selected={hasBet('number', '0')}
-                    stake={getStake('number', '0')}
-                    onPlaceBet={placeChip}
-                    isWinning={winningBetKey === getBetKey('number', '0')}
-                    dimmed={isWinningFocus && winningBetKey !== getBetKey('number', '0')}
-                    baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
-                    idleClassName={getNumberCellIdleClass('green')}
-                  />
-
-                  <div className="grid grid-rows-3 gap-[2px]">
-                    {BOARD_ROWS.map((row, rowIndex) => (
-                      <div key={rowIndex} className="grid grid-cols-12 gap-[2px]">
-                        {row.map((number) => {
-                          const color = getNumberColor(number);
-                          const selected = hasBet('number', String(number));
-                          return (
-                            <BetCell
-                              key={number}
-                              label={String(number)}
-                              type="number"
-                              value={String(number)}
-                              selected={selected}
-                              stake={getStake('number', String(number))}
-                              onPlaceBet={placeChip}
-                              isWinning={winningBetKey === getBetKey('number', String(number))}
-                              dimmed={isWinningFocus && winningBetKey !== getBetKey('number', String(number))}
-                              baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)] md:p-3 md:text-base"
-                              idleClassName={getNumberCellIdleClass(color)}
-                              selectedClassName="bg-blue-600/40 text-white border-cyan-300/50 ring-1 ring-cyan-300/60 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
-                            />
-                          );
-                        })}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-rows-3 gap-[2px]">
-                    {COLUMN_BET_CELLS.map((col) => (
+          <div className="mt-4 grid grid-cols-12 gap-4 items-start">
+            <div className="col-span-12 lg:col-span-8 order-2 lg:order-1 max-w-full">
+              <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
+                <div className="w-full overflow-x-auto no-scrollbar pb-2">
+                  <div className="max-w-full min-w-[680px] rounded-md border border-emerald-700/30 bg-[radial-gradient(circle_at_50%_40%,rgba(22,163,74,0.35),rgba(4,47,46,0.85)_42%,rgba(2,6,23,0.95)_100%)] p-2 shadow-[inset_0_0_50px_rgba(0,0,0,0.45)]">
+                    <div className="grid grid-cols-[56px_1fr_52px] gap-[2px]">
                       <BetCell
-                        key={col.value}
-                        label={col.label}
-                        type={col.type}
-                        value={col.value}
-                        selected={hasBet(col.type, col.value)}
-                        stake={getStake(col.type, col.value)}
+                        label="0"
+                        type="number"
+                        value="0"
+                        selected={hasBet('number', '0')}
+                        stake={getStake('number', '0')}
                         onPlaceBet={placeChip}
-                        dimmed={isWinningFocus}
-                        baseClassName="relative rounded-sm border text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
-                        idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
+                        isWinning={winningBetKey === getBetKey('number', '0')}
+                        dimmed={isWinningFocus && winningBetKey !== getBetKey('number', '0')}
+                        baseClassName="relative row-span-3 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                        idleClassName={getNumberCellIdleClass('green')}
                       />
-                    ))}
+
+                      <div className="grid grid-rows-3 gap-[2px]">
+                        {BOARD_ROWS.map((row, rowIndex) => (
+                          <div key={rowIndex} className="grid grid-cols-12 gap-[2px]">
+                            {row.map((number) => {
+                              const color = getNumberColor(number);
+                              const selected = hasBet('number', String(number));
+                              return (
+                                <BetCell
+                                  key={number}
+                                  label={String(number)}
+                                  type="number"
+                                  value={String(number)}
+                                  selected={selected}
+                                  stake={getStake('number', String(number))}
+                                  onPlaceBet={placeChip}
+                                  isWinning={winningBetKey === getBetKey('number', String(number))}
+                                  dimmed={isWinningFocus && winningBetKey !== getBetKey('number', String(number))}
+                                  baseClassName="relative rounded-sm border p-1 text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.38)] md:p-3 md:text-base"
+                                  idleClassName={getNumberCellIdleClass(color)}
+                                  selectedClassName="bg-blue-600/40 text-white border-cyan-300/50 ring-1 ring-cyan-300/60 shadow-[0_0_20px_rgba(34,211,238,0.35)]"
+                                />
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="grid grid-rows-3 gap-[2px]">
+                        {COLUMN_BET_CELLS.map((col) => (
+                          <BetCell
+                            key={col.value}
+                            label={col.label}
+                            type={col.type}
+                            value={col.value}
+                            selected={hasBet(col.type, col.value)}
+                            stake={getStake(col.type, col.value)}
+                            onPlaceBet={placeChip}
+                            dimmed={isWinningFocus}
+                            baseClassName="relative rounded-sm border text-xs font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                            idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-[2px] grid grid-cols-3 gap-[2px]">
+                      {DOZEN_BET_CELLS.map((item) => (
+                        <BetCell
+                          key={item.label}
+                          label={item.label}
+                          type={item.type}
+                          value={item.value}
+                          selected={hasBet(item.type, item.value)}
+                          stake={getStake(item.type, item.value)}
+                          onPlaceBet={placeChip}
+                          dimmed={isWinningFocus}
+                          baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                          idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
+                        />
+                      ))}
+                    </div>
+
+                    <div className="mt-[2px] grid grid-cols-6 gap-[2px]">
+                      {OUTSIDE_BET_CELLS.map((item) => (
+                        <BetCell
+                          key={item.label}
+                          label={item.label}
+                          type={item.type}
+                          value={item.value}
+                          selected={hasBet(item.type, item.value)}
+                          stake={getStake(item.type, item.value)}
+                          onPlaceBet={placeChip}
+                          dimmed={isWinningFocus}
+                          baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
+                          idleClassName="border-white/10 bg-white/5 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]"
+                        />
+                      ))}
+                    </div>
                   </div>
                 </div>
-
-                <div className="mt-[2px] grid grid-cols-3 gap-[2px]">
-                  {DOZEN_BET_CELLS.map((item) => (
-                    <BetCell
-                      key={item.label}
-                      label={item.label}
-                      type={item.type}
-                      value={item.value}
-                      selected={hasBet(item.type, item.value)}
-                      stake={getStake(item.type, item.value)}
-                      onPlaceBet={placeChip}
-                      dimmed={isWinningFocus}
-                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
-                      idleClassName="border-white/10 bg-white/5 text-emerald-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(250,204,21,0.28)]"
-                    />
-                  ))}
-                </div>
-
-                <div className="mt-[2px] grid grid-cols-6 gap-[2px]">
-                  {OUTSIDE_BET_CELLS.map((item) => (
-                    <BetCell
-                      key={item.label}
-                      label={item.label}
-                      type={item.type}
-                      value={item.value}
-                      selected={hasBet(item.type, item.value)}
-                      stake={getStake(item.type, item.value)}
-                      onPlaceBet={placeChip}
-                      dimmed={isWinningFocus}
-                      baseClassName="relative h-10 rounded-sm border text-sm font-bold transition-all duration-200 shadow-[inset_0_-8px_16px_rgba(0,0,0,0.35)]"
-                      idleClassName="border-white/10 bg-white/5 text-slate-100 backdrop-blur-sm hover:shadow-[0_0_15px_rgba(34,211,238,0.25)]"
-                    />
-                  ))}
-                </div>
               </div>
-              </div>
+            </div>
 
-              <div className="min-h-[300px] lg:min-h-0 lg:col-span-1 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex flex-col items-center justify-center z-50">
-                <div className="relative w-48 h-48 md:w-64 md:h-64 mx-auto z-50">
+            <div className="col-span-12 lg:col-span-4 order-1 lg:order-2 flex justify-center">
+              <div className="min-h-[300px] w-full rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex items-center justify-center z-50">
+                <div className="relative z-50 w-full max-w-[250px] aspect-square">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
                   <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
                   {isHydrated ? (
@@ -841,13 +844,11 @@ export default function RouletteGame() {
                     <p className="text-xl font-black text-cyan-300">{winningNumber ?? '-'}</p>
                   </div>
                 </div>
-                <p className="mt-3 text-sm text-slate-400 text-center">Last: {winningNumber ?? '-'} | Active bets: {activeBets.length}</p>
               </div>
-            </div>
             </div>
           </div>
 
-          <div className="min-h-0 flex flex-col gap-4">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-4 backdrop-blur-sm">
               <p className="text-xs font-bold text-slate-500 uppercase mb-3">History</p>
               <div className="flex flex-wrap gap-2 min-h-9">

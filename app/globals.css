@@ -246,12 +246,25 @@ button {
   }
 }
 
+@keyframes spin-effect {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-25%);
+  }
+}
+
 .slot-reel-strip {
   will-change: transform;
 }
 
 .slot-reel-strip-spinning {
   animation: slot-reel-slide 0.28s linear infinite;
+}
+
+.animate-spin-fast {
+  animation: spin-effect 0.28s linear infinite;
 }
 
 .slot-reel-symbol {

@@ -36,6 +36,13 @@ interface WeightedOutcome {
   multiplier: number;
 }
 
+interface ServerSlotResultPayload {
+  tier?: OutcomeTier;
+  multiplier?: number;
+  reels?: string[];
+  symbols?: string[];
+}
+
 const SYMBOLS: SlotSymbol[] = [
   { icon: '🍒', name: 'Cherry', baseMulti: 2.2, weight: 46 },
   { icon: '🍋', name: 'Lemon', baseMulti: 2.8, weight: 34 },
@@ -259,6 +266,29 @@ function trackSlotsQuestProgress() {
   });
 }
 
+function waitForServerSlotResult(timeoutMs: number): Promise<ServerSlotResultPayload | null> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve(null);
+      return;
+    }
+
+    const finish = (value: ServerSlotResultPayload | null) => {
+      window.clearTimeout(timeoutId);
+      window.removeEventListener('slot_result', onSlotResult as EventListener);
+      resolve(value);
+    };
+
+    const onSlotResult = (event: Event) => {
+      const custom = event as CustomEvent<ServerSlotResultPayload>;
+      finish(custom.detail ?? null);
+    };
+
+    window.addEventListener('slot_result', onSlotResult as EventListener, { once: true });
+    const timeoutId = window.setTimeout(() => finish(null), timeoutMs);
+  });
+}
+
 export default function SlotsGame() {
   const { balance, placeBet, addWin } = useCasinoStore();
   const [mode, setMode] = useState<SlotMode>('classic');
@@ -280,6 +310,14 @@ export default function SlotsGame() {
   const [reelSpinning, setReelSpinning] = useState<boolean[]>(Array(config.reelCount).fill(false));
 
   const symbolSet = ['bookofra', 'luxor', 'treasurehunt'].includes(mode) ? BOOK_SYMBOLS : SYMBOLS;
+  const symbolLookup = useMemo(() => {
+    const lookup = new Map<string, SlotSymbol>();
+    symbolSet.forEach((symbol) => {
+      lookup.set(symbol.icon, symbol);
+      lookup.set(symbol.name.toLowerCase(), symbol);
+    });
+    return lookup;
+  }, [symbolSet]);
 
   const paytable = useMemo(() => {
     const isBookTheme = ['bookofra', 'luxor', 'treasurehunt'].includes(mode);
@@ -393,15 +431,31 @@ export default function SlotsGame() {
 
     setIsSpinning(true);
     trackSlotsQuestProgress();
-    setResultMsg(usingFreeSpin ? `Bonus spin... (${freeSpinsLeft - 1} left)` : 'Spinning...');
+    setResultMsg(usingFreeSpin ? `Bonus spin... (${freeSpinsLeft - 1} left)` : 'Waiting for slot_result...');
     setErrorMsg('');
     setTotalCascades(0);
     setExpandedReels(new Set());
     setReelSpinning(Array(config.reelCount).fill(true));
 
-    setTimeout(() => {
-      const outcome = rollWeightedOutcome();
-      const newReels = buildReelsForOutcome(mode, config.reelCount, symbolSet, outcome.tier);
+    setTimeout(async () => {
+      const serverResult = await waitForServerSlotResult(500);
+      const serverTier = serverResult?.tier;
+      const outcome = serverTier && ['lose', 'small', 'medium', 'jackpot'].includes(serverTier)
+        ? {
+            tier: serverTier,
+            multiplier: Number.isFinite(serverResult.multiplier) ? Number(serverResult.multiplier) : SLOT_OUTCOME_WEIGHTS.find((entry) => entry.tier === serverTier)?.multiplier ?? 0,
+          }
+        : rollWeightedOutcome();
+
+      const serverSymbols = (Array.isArray(serverResult?.reels) ? serverResult.reels : serverResult?.symbols) ?? [];
+      const mappedServerReels = serverSymbols
+        .slice(0, config.reelCount)
+        .map((token) => symbolLookup.get(String(token).toLowerCase()) ?? symbolLookup.get(String(token)) ?? null)
+        .filter((symbol): symbol is SlotSymbol => symbol !== null);
+
+      const newReels = mappedServerReels.length === config.reelCount
+        ? mappedServerReels
+        : buildReelsForOutcome(mode, config.reelCount, symbolSet, outcome.tier);
       setReels(newReels);
 
       newReels.forEach((_reel, index) => {
@@ -560,7 +614,7 @@ export default function SlotsGame() {
                     <div className="slot-reel-window relative h-full w-full overflow-hidden">
                       {reelSpinning[i] ? (
                         <div
-                          className="slot-reel-strip slot-reel-strip-spinning"
+                          className="slot-reel-strip animate-spin-fast"
                           style={{ animationDelay: `${i * 0.2}s` }}
                         >
                           {reelStripSymbols.map((item, index) => (
