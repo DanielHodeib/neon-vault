@@ -9,10 +9,14 @@ export async function DELETE(
 ) {
   const session = await auth();
   const userId = session?.user?.id;
-  const userRole = session?.user?.role;
+  const userRole = String(session?.user?.role ?? '').toUpperCase();
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  if (!['OWNER', 'ADMIN'].includes(userRole)) {
+    return NextResponse.json({ error: 'Forbidden: only OWNER or ADMIN can delete tickets.' }, { status: 403 });
   }
 
   const { ticketId } = await params;
@@ -21,31 +25,12 @@ export async function DELETE(
     return NextResponse.json({ error: 'Invalid ticket ID.' }, { status: 400 });
   }
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { id: ticketId },
-    select: { id: true },
-  });
-
-  if (!ticket) {
-    return NextResponse.json({ error: 'Ticket not found.' }, { status: 404 });
+  try {
+    await prisma.ticket.delete({ where: { id: ticketId } });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown deletion error.';
+    console.error('Deletion failed:', error);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Emergency policy: only SUPPORT, ADMIN, OWNER can delete tickets.
-  const isStaff = ['SUPPORT', 'ADMIN', 'OWNER'].includes(String(userRole ?? '').toUpperCase());
-
-  if (!isStaff) {
-    return NextResponse.json({ error: 'Forbidden: you cannot delete this ticket.' }, { status: 403 });
-  }
-
-  // Explicitly remove messages first, then ticket, to guarantee cleanup.
-  await prisma.$transaction([
-    prisma.ticketMessage.deleteMany({
-      where: { ticketId: ticket.id },
-    }),
-    prisma.ticket.delete({
-      where: { id: ticket.id },
-    }),
-  ]);
-
-  return NextResponse.json({ ok: true });
 }

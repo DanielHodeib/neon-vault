@@ -52,7 +52,7 @@ interface TicketThread {
 }
 
 const STAFF_ROLES = new Set(['SUPPORT', 'MODERATOR', 'ADMIN', 'OWNER']);
-const TICKET_DELETE_ROLES = new Set(['SUPPORT', 'ADMIN', 'OWNER']);
+const TICKET_DELETE_ROLES = new Set(['ADMIN', 'OWNER']);
 const CATEGORY_OPTIONS = ['Account', 'Payments', 'Bug Report', 'Security', 'Abuse', 'Other'];
 
 function statusTone(status: TicketStatus) {
@@ -409,8 +409,14 @@ export default function SupportPanel({
     setSubmitting(true);
 
     try {
+      console.log('[SupportPanel] Sending ticket delete request', { ticketId });
       const response = await fetch(`/api/support/tickets/${ticketId}`, {
         method: 'DELETE',
+      });
+      console.log('[SupportPanel] Ticket delete response received', {
+        ticketId,
+        ok: response.ok,
+        status: response.status,
       });
 
       if (!response.ok) {
