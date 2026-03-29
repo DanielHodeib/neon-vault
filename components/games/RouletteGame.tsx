@@ -522,15 +522,15 @@ export default function RouletteGame() {
       setAwaitingResult(false);
       setStopOnTransition(true);
 
-      setWinningNumber(result);
       setIsSpinning(true);
       setCanSpin(false);
       setIsSpinPending(false);
       setStatus(`Server result locked: ${result}. Wheel spinning...`);
       console.log(`Spin triggered for number: ${result}`);
-      setRotation((current) => getTargetRotationForWinningNumber(result, current));
+      setRotation((prevRotation) => getTargetRotationForWinningNumber(result, prevRotation));
 
       settleSpinTimerRef.current = window.setTimeout(() => {
+        setWinningNumber(result);
         const resultColor = getNumberColor(result);
         const winningKey = getBetKey('number', String(result));
         setWinningBetKey(winningKey);
@@ -887,7 +887,7 @@ export default function RouletteGame() {
                     <div
                       style={{
                         transform: `rotate(${rotation}deg)`,
-                        transition: isSpinning ? 'transform 4s cubic-bezier(0.15, 0, 0.2, 1)' : 'none',
+                        transition: 'transform 4s cubic-bezier(0.1, 0, 0.1, 1)',
                         transformOrigin: 'center center',
                       }}
                       onTransitionEnd={() => {
