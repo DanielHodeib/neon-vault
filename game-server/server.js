@@ -3872,7 +3872,23 @@ io.on('connection', (socket) => {
     callback?.({ ok: true, friends: result.friends || [] });
   });
 
-  socket.on('roulette_spin_request', (_payload, callback) => {
+  const getRouletteTotalBetFromPayload = (payload) => {
+    const directTotal = Math.floor(Number(payload?.totalBet ?? 0));
+    if (Number.isFinite(directTotal) && directTotal > 0) {
+      return directTotal;
+    }
+
+    if (!payload?.bets || typeof payload.bets !== 'object') {
+      return 0;
+    }
+
+    return Object.values(payload.bets).reduce((sum, rawBet) => {
+      const stake = Math.floor(Number(rawBet?.stake ?? 0));
+      return sum + (Number.isFinite(stake) && stake > 0 ? stake : 0);
+    }, 0);
+  };
+
+  const startRouletteSpinCycle = (payload, callback) => {
     const roomId = socket.data.rouletteRoomId;
     if (!roomId) {
       callback?.({ ok: false, error: 'Not in roulette room.' });
@@ -3885,27 +3901,98 @@ io.on('connection', (socket) => {
       return;
     }
 
+    if (room.spinInProgress) {
+      callback?.({ ok: false, error: 'Roulette already spinning. Wait for result.' });
+      return;
+    }
+
+    const totalBet = getRouletteTotalBetFromPayload(payload);
+    if (!Number.isFinite(totalBet) || totalBet <= 0) {
+      callback?.({ ok: false, error: 'No valid bets submitted.' });
+      return;
+    }
+
+    const profile = getSocketProfile(socket.id, username);
+    if (!Number.isFinite(Number(profile.balance))) {
+      callback?.({ ok: false, error: 'Balance not synced.' });
+      return;
+    }
+
+    if (totalBet > Number(profile.balance)) {
+      callback?.({ ok: false, error: 'Insufficient balance.' });
+      return;
+    }
+
+    profile.balance = Number(profile.balance) - totalBet;
+    socketProfiles.set(socket.id, profile);
+
     const result = spinRouletteResult();
     const roundId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const spinMs = 3800 + Math.floor(Math.random() * 1000);
+    const startedAt = Date.now();
 
-    io.to(rouletteChannel(roomId)).emit('roulette_spin_result', {
+    room.spinInProgress = true;
+    room.activeRoundId = roundId;
+
+    const startedPayload = {
       roomId,
       roundId,
-      winningNumber: result.winningNumber,
-      winningIndex: result.winningIndex,
-      wheelSize: result.wheelSize,
-      emittedAt: Date.now(),
+      startedAt,
+      spinMs,
       initiatedBy: username,
-    });
+      totalBet,
+      serverBalance: profile.balance,
+    };
+
+    io.to(rouletteChannel(roomId)).emit('roulette_spin_started', startedPayload);
+    io.to(rouletteChannel(roomId)).emit('roulette_started', startedPayload);
 
     callback?.({
       ok: true,
       roomId,
       roundId,
-      winningNumber: result.winningNumber,
-      winningIndex: result.winningIndex,
-      wheelSize: result.wheelSize,
+      spinMs,
+      serverBalance: profile.balance,
     });
+
+    setTimeout(() => {
+      const activeRoom = rouletteRooms.get(roomId);
+      if (!activeRoom || activeRoom.activeRoundId !== roundId) {
+        return;
+      }
+
+      activeRoom.spinInProgress = false;
+      activeRoom.activeRoundId = null;
+
+      const resultPayload = {
+        roomId,
+        roundId,
+        winningNumber: result.winningNumber,
+        winningIndex: result.winningIndex,
+        wheelSize: result.wheelSize,
+        startedAt,
+        spinMs,
+        emittedAt: Date.now(),
+        initiatedBy: username,
+        totalBet,
+        serverBalance: profile.balance,
+      };
+
+      io.to(rouletteChannel(roomId)).emit('roulette_result', resultPayload);
+      io.to(rouletteChannel(roomId)).emit('roulette_spin_result', resultPayload);
+    }, spinMs);
+  };
+
+  socket.on('roulette_spin_request', (payload, callback) => {
+    startRouletteSpinCycle(payload, callback);
+  });
+
+  socket.on('roulette_spin', (payload, callback) => {
+    startRouletteSpinCycle(payload, callback);
+  });
+
+  socket.on('roulette_place_bets', (payload, callback) => {
+    startRouletteSpinCycle(payload, callback);
   });
 
   socket.on('profile_sync', (payload, callback) => {

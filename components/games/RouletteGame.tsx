@@ -37,6 +37,17 @@ interface RouletteSpinResultPayload {
   winningIndex?: number;
   wheelSize?: number;
   emittedAt?: number;
+  startedAt?: number;
+  spinMs?: number;
+  initiatedBy?: string;
+  serverBalance?: number;
+}
+
+interface RouletteSpinStartedPayload {
+  roomId: string;
+  roundId: string;
+  startedAt?: number;
+  spinMs?: number;
   initiatedBy?: string;
 }
 
@@ -45,6 +56,8 @@ interface RouletteSpinRequestResponse {
   error?: string;
   roundId?: string;
   winningNumber?: number;
+  spinMs?: number;
+  serverBalance?: number;
 }
 
 interface RouletteRoomMember {
@@ -377,6 +390,7 @@ export default function RouletteGame() {
   const [pendingStake, setPendingStake] = useState(0);
   const [lockedStake, setLockedStake] = useState(0);
   const [isSpinning, setIsSpinning] = useState(false);
+  const [isSpinPending, setIsSpinPending] = useState(false);
   const [rotation, setRotation] = useState(0);
   const [spinDurationMs, setSpinDurationMs] = useState(SPIN_ANIMATION_MS);
   const [winningNumber, setWinningNumber] = useState<number | null>(null);
@@ -471,13 +485,15 @@ export default function RouletteGame() {
         window.clearTimeout(winningFocusTimerRef.current);
       }
 
-      const emittedAt = Number(payload.emittedAt ?? Date.now());
-      const elapsed = Number.isFinite(emittedAt) ? Math.max(0, Date.now() - emittedAt) : 0;
-      const syncedDuration = Math.max(500, SPIN_ANIMATION_MS - elapsed);
+      const configuredSpinMs = Number(payload.spinMs ?? SPIN_ANIMATION_MS);
+      const startedAt = Number(payload.startedAt ?? payload.emittedAt ?? Date.now());
+      const elapsed = Number.isFinite(startedAt) ? Math.max(0, Date.now() - startedAt) : 0;
+      const syncedDuration = Math.max(550, configuredSpinMs - elapsed);
       setSpinDurationMs(syncedDuration);
 
       setWinningNumber(result);
       setIsSpinning(true);
+      setIsSpinPending(false);
       setStatus(`Server result locked: ${result}. Wheel spinning...`);
       setRotation((current) => getTargetRotationForWinningNumber(result, current));
 
@@ -529,11 +545,25 @@ export default function RouletteGame() {
       }, syncedDuration);
     };
 
+    const rouletteSpinStartedHandler = (payload: RouletteSpinStartedPayload) => {
+      if (!payload || payload.roomId !== rouletteRoomIdRef.current) {
+        return;
+      }
+
+      const nextSpinMs = Math.max(1800, Number(payload.spinMs ?? SPIN_ANIMATION_MS));
+      setSpinDurationMs(nextSpinMs);
+      setIsSpinPending(false);
+      setIsSpinning(true);
+      setStatus('Spin started. Wheel is running...');
+    };
+
     socket.on('roulette_room_joined', rouletteRoomJoinedHandler);
     socket.on('roulette_room_members', rouletteRoomMembersHandler);
     socket.on('roulette_win_announcement', rouletteWinAnnouncementHandler);
     socket.on('roulette_spin_result', rouletteSpinResultHandler);
     socket.on('roulette_result', rouletteSpinResultHandler);
+    socket.on('roulette_spin_started', rouletteSpinStartedHandler);
+    socket.on('roulette_started', rouletteSpinStartedHandler);
     socket.on('roulette_spin', rouletteSpinResultHandler);
 
     return () => {
@@ -548,6 +578,8 @@ export default function RouletteGame() {
       socket.off('roulette_win_announcement', rouletteWinAnnouncementHandler);
       socket.off('roulette_spin_result', rouletteSpinResultHandler);
       socket.off('roulette_result', rouletteSpinResultHandler);
+      socket.off('roulette_spin_started', rouletteSpinStartedHandler);
+      socket.off('roulette_started', rouletteSpinStartedHandler);
       socket.off('roulette_spin', rouletteSpinResultHandler);
       socket.disconnect();
       socketRef.current = null;
@@ -597,7 +629,7 @@ export default function RouletteGame() {
       return;
     }
 
-    if (activeBets.length === 0) {
+    if (activeBets.length === 0 || totalOnTable <= 0) {
       setErrorText('Place at least one bet first');
       setTimeout(() => setErrorText(''), 2200);
       return;
@@ -622,12 +654,22 @@ export default function RouletteGame() {
     setPendingStake(queuedStake);
     setLockedStake(0);
     setBets({});
+    setIsSpinPending(true);
+    setStatus('Submitting bets to roulette engine...');
 
-    socket.emit('roulette_spin_request', { roomId: rouletteRoomId }, (response: RouletteSpinRequestResponse) => {
+    const serializedBets = queuedBets.reduce<Record<string, { type: BetType; value: string; stake: number }>>((acc, bet) => {
+      acc[bet.key] = { type: bet.type, value: bet.value, stake: bet.stake };
+      return acc;
+    }, {});
+
+    socket.emit('roulette_spin', { roomId: rouletteRoomId, totalBet: queuedStake, bets: serializedBets }, (response: RouletteSpinRequestResponse) => {
       if (response?.ok) {
         setLockedStake(queuedStake);
         setPendingStake(0);
-        setStatus('Bet accepted. Waiting for server roulette result...');
+        setIsSpinning(true);
+        setIsSpinPending(false);
+        setSpinDurationMs(Math.max(1800, Number(response.spinMs ?? SPIN_ANIMATION_MS)));
+        setStatus('Bet accepted. Spin started...');
         return;
       }
 
@@ -635,6 +677,7 @@ export default function RouletteGame() {
       pendingSpinStakeRef.current = 0;
       pendingSpinBetsRef.current = [];
       setIsSpinning(false);
+      setIsSpinPending(false);
       setPendingStake(0);
       setLockedStake(0);
       setStatus('Roulette spin canceled. Refunding stake...');
@@ -647,7 +690,7 @@ export default function RouletteGame() {
         setStatus(response?.error ?? 'Spin request failed. Stake refunded.');
       })();
     });
-  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, syncBalanceFromServer, totalBet]);
+  }, [activeBets, persistWalletAction, reserveStake, rouletteRoomId, syncBalanceFromServer, totalBet, totalOnTable]);
 
   const hasBet = useCallback((type: BetType, value: string) => Boolean(bets[getBetKey(type, value)]), [bets]);
 
@@ -931,9 +974,9 @@ export default function RouletteGame() {
         <div className="flex w-full flex-col gap-3 md:flex-1 md:flex-row">
           <button
             onClick={clearBets}
-            disabled={(isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0}
+              disabled={(isSpinning && pendingStake === 0 && lockedStake > 0) || isSpinPending || activeBets.length === 0}
             className={`h-11 w-full rounded-lg border font-bold text-sm uppercase transition-all md:w-40 ${
-              (isSpinning && pendingStake === 0 && lockedStake > 0) || activeBets.length === 0
+              (isSpinning && pendingStake === 0 && lockedStake > 0) || isSpinPending || activeBets.length === 0
                 ? 'border-white/10 bg-white/[0.04] text-slate-500 cursor-not-allowed'
                 : 'border-white/10 bg-white/[0.04] text-slate-100 hover:bg-white/[0.08]'
             }`}
@@ -942,14 +985,14 @@ export default function RouletteGame() {
           </button>
           <button
             onClick={spin}
-            disabled={isSpinning || activeBets.length === 0}
+            disabled={isSpinning || isSpinPending || activeBets.length === 0 || totalOnTable <= 0}
             className={`flex-1 h-11 rounded-lg border font-bold text-sm uppercase transition-all ${
-              isSpinning || activeBets.length === 0
+              isSpinning || isSpinPending || activeBets.length === 0 || totalOnTable <= 0
                 ? 'border-cyan-400/15 bg-slate-800 text-slate-500 cursor-not-allowed'
                 : 'border-cyan-300/50 bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-[0_0_20px_rgba(34,211,238,0.35)] hover:shadow-[0_0_30px_rgba(34,211,238,0.5)]'
             }`}
           >
-            {isSpinning ? 'Spinning...' : 'Spin'}
+            {isSpinPending ? 'Starting...' : isSpinning ? 'Spinning...' : 'Spin'}
           </button>
         </div>
         </div>
