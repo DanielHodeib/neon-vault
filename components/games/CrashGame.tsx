@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { io, Socket } from 'socket.io-client';
 import { useCasinoStore } from '../../store/useCasinoStore';
 
@@ -29,21 +29,6 @@ interface CrashCrashedPayload {
   history?: number[];
 }
 
-function burstOffset(index: number) {
-  const angle = (index / 16) * Math.PI * 2;
-  const radius = 8 + (index % 5) * 2.4;
-  return {
-    x: Math.cos(angle) * radius,
-    y: Math.sin(angle) * radius,
-  };
-}
-
-function multiplierToYPercent(value: number) {
-  const progress = Math.min(1, Math.log10(Math.max(1, value)) / Math.log10(45));
-  // Keep the rocket inside the visible flight corridor (away from top badges and bottom HUD).
-  return Math.max(18, 68 - progress * 50);
-}
-
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
@@ -67,9 +52,8 @@ export default function CrashGame() {
   const [autoCashOutEnabled, setAutoCashOutEnabled] = useState(false);
   const [autoCashOutInput, setAutoCashOutInput] = useState('2.00');
   const [errorMsg, setErrorMsg] = useState('');
-  const [launchPulse, setLaunchPulse] = useState(0);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [parallax, setParallax] = useState({ x: 0, y: 0 });
+  const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   
   const socketRef = useRef<Socket | null>(null);
   const previousPhaseRef = useRef<'waiting' | 'running' | 'crashed'>('waiting');
@@ -77,6 +61,13 @@ export default function CrashGame() {
   const lastCrashTickUpdateRef = useRef(0);
   const pendingCrashTickRef = useRef<{ multiplier: number; players: CrashPlayer[] } | null>(null);
   const crashTickFlushTimerRef = useRef<number | null>(null);
+  const graphContainerRef = useRef<HTMLDivElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const targetMultiplierRef = useRef(1);
+  const renderedMultiplierRef = useRef(1);
+  const crashedAtRef = useRef<number | null>(null);
 
   // Memoized Values
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
@@ -96,13 +87,7 @@ export default function CrashGame() {
   );
   const activeStake = Number(serverMe?.amount ?? 0);
   const potential = hasBetOnServer ? activeStake * multiplier : Number(betInput || 0) * multiplier;
-  const rocketX = 50;
-  const rocketY = multiplierToYPercent(multiplier);
-  const speedFactor = Math.max(0.8, Math.min(9, multiplier));
-  const trailDuration = Math.max(0.45, 4.5 / speedFactor);
-  const scanDuration = Math.max(2, 18 / speedFactor);
   const altitudeMeters = Math.floor(multiplier * 100);
-  const scaleMarks = useMemo(() => [1, 1.25, 1.5, 2, 3, 5, 8, 12, 20, 35], []);
   const autoCashOutValue = useMemo(() => {
     const parsed = Number(autoCashOutInput);
     if (!Number.isFinite(parsed)) {
@@ -110,7 +95,6 @@ export default function CrashGame() {
     }
     return Math.max(1.05, Math.min(100, parsed));
   }, [autoCashOutInput]);
-  const flameTier = multiplier >= 10 ? 3 : multiplier >= 5 ? 2 : multiplier >= 2 ? 1 : 0;
 
   const playTone = useCallback((frequency: number, durationMs: number, type: OscillatorType = 'sine', gain = 0.045) => {
     if (!soundEnabled || typeof window === 'undefined') {
@@ -175,7 +159,6 @@ export default function CrashGame() {
     const previousPhase = previousPhaseRef.current;
 
     if (phase === 'running' && previousPhase !== 'running') {
-      setLaunchPulse((current) => current + 1);
       playTone(520, 160, 'triangle', 0.05);
       window.setTimeout(() => playTone(760, 120, 'triangle', 0.04), 90);
     }
@@ -187,6 +170,184 @@ export default function CrashGame() {
 
     previousPhaseRef.current = phase;
   }, [phase, playTone]);
+
+  useEffect(() => {
+    targetMultiplierRef.current = Math.max(1, multiplier);
+
+    if (phase === 'waiting') {
+      renderedMultiplierRef.current = 1;
+      crashedAtRef.current = null;
+    }
+
+    if (phase === 'crashed') {
+      crashedAtRef.current = Math.max(1, multiplier);
+      renderedMultiplierRef.current = Math.max(renderedMultiplierRef.current, multiplier);
+    }
+  }, [multiplier, phase]);
+
+  useEffect(() => {
+    const container = graphContainerRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+
+    const syncSize = () => {
+      const nextWidth = Math.floor(container.clientWidth);
+      const nextHeight = Math.floor(container.clientHeight);
+      setCanvasSize((current) => {
+        if (current.width === nextWidth && current.height === nextHeight) {
+          return current;
+        }
+        return { width: nextWidth, height: nextHeight };
+      });
+    };
+
+    syncSize();
+    const observer = new ResizeObserver(syncSize);
+    resizeObserverRef.current = observer;
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      resizeObserverRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || canvasSize.width <= 0 || canvasSize.height <= 0) {
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      return;
+    }
+
+    const draw = () => {
+      const width = canvasSize.width;
+      const height = canvasSize.height;
+      const dpr = window.devicePixelRatio || 1;
+      const backingWidth = Math.floor(width * dpr);
+      const backingHeight = Math.floor(height * dpr);
+
+      if (canvas.width !== backingWidth || canvas.height !== backingHeight) {
+        canvas.width = backingWidth;
+        canvas.height = backingHeight;
+      }
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const padding = { top: 28, right: 26, bottom: 28, left: 26 };
+      const chartWidth = Math.max(1, width - padding.left - padding.right);
+      const chartHeight = Math.max(1, height - padding.top - padding.bottom);
+      const baseY = padding.top + chartHeight;
+
+      if (phase === 'waiting') {
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
+        ctx.font = '600 24px ui-sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Preparing...', width / 2, height / 2);
+
+        animationFrameRef.current = window.requestAnimationFrame(draw);
+        return;
+      }
+
+      if (phase === 'running') {
+        const current = renderedMultiplierRef.current;
+        const target = Math.max(1, targetMultiplierRef.current);
+        renderedMultiplierRef.current = current + (target - current) * 0.16;
+      }
+
+      const currentMultiplier = Math.max(1, renderedMultiplierRef.current);
+      const peakMultiplier = phase === 'crashed' ? Math.max(1.25, crashedAtRef.current ?? currentMultiplier) : Math.max(1.25, currentMultiplier);
+      const yScaleMax = Math.max(2, peakMultiplier * 1.25);
+
+      const pointsCount = 180;
+      const points: Array<{ x: number; y: number }> = [];
+      const safeMaxLog = Math.log(yScaleMax);
+
+      for (let i = 0; i < pointsCount; i += 1) {
+        const t = i / (pointsCount - 1);
+        const value = Math.exp(Math.log(peakMultiplier) * t);
+        const normalized = safeMaxLog > 0 ? Math.log(Math.max(1, value)) / safeMaxLog : 0;
+        const x = padding.left + chartWidth * t;
+        const y = baseY - chartHeight * normalized;
+        points.push({ x, y });
+      }
+
+      const strokeColor = phase === 'crashed' ? '#ff003c' : '#00f0ff';
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+
+      const areaGradient = ctx.createLinearGradient(0, padding.top, 0, baseY);
+      if (phase === 'crashed') {
+        areaGradient.addColorStop(0, 'rgba(255, 0, 60, 0.28)');
+        areaGradient.addColorStop(1, 'rgba(255, 0, 60, 0)');
+      } else {
+        areaGradient.addColorStop(0, 'rgba(0, 240, 255, 0.28)');
+        areaGradient.addColorStop(1, 'rgba(0, 240, 255, 0)');
+      }
+
+      ctx.lineTo(points[points.length - 1].x, baseY);
+      ctx.lineTo(points[0].x, baseY);
+      ctx.closePath();
+      ctx.fillStyle = areaGradient;
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        ctx.lineTo(points[i].x, points[i].y);
+      }
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = 3.4;
+      ctx.shadowColor = strokeColor;
+      ctx.shadowBlur = 14;
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const tip = points[points.length - 1];
+      const tipGlow = ctx.createRadialGradient(tip.x, tip.y, 0, tip.x, tip.y, 12);
+      tipGlow.addColorStop(0, phase === 'crashed' ? 'rgba(255, 0, 60, 0.95)' : 'rgba(0, 240, 255, 0.95)');
+      tipGlow.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = tipGlow;
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, 12, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = phase === 'crashed' ? '#ff8aa3' : '#9befff';
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, 4.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (phase === 'crashed') {
+        const crashValue = (crashedAtRef.current ?? targetMultiplierRef.current).toFixed(2);
+        ctx.fillStyle = 'rgba(255, 0, 60, 0.95)';
+        ctx.font = '700 32px ui-sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Crashed at ${crashValue}x`, width / 2, height / 2);
+      }
+
+      animationFrameRef.current = window.requestAnimationFrame(draw);
+    };
+
+    animationFrameRef.current = window.requestAnimationFrame(draw);
+
+    return () => {
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, [phase, canvasSize.width, canvasSize.height]);
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg);
@@ -353,86 +514,18 @@ export default function CrashGame() {
     });
   };
 
-  const handleParallaxMove = (event: React.MouseEvent<HTMLDivElement>) => {
-    const target = event.currentTarget.getBoundingClientRect();
-    const x = ((event.clientX - target.left) / target.width - 0.5) * 2;
-    const y = ((event.clientY - target.top) / target.height - 0.5) * 2;
-    setParallax({ x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)) });
-  };
-
-  const resetParallax = () => {
-    setParallax({ x: 0, y: 0 });
-  };
-
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-slate-950">
-      <div className="relative h-[35vh] max-h-[600px] shrink-0 border-b border-slate-800 overflow-hidden md:h-[50vh]" onMouseMove={handleParallaxMove} onMouseLeave={resetParallax}>
+      <div className="relative h-[35vh] max-h-[600px] shrink-0 border-b border-slate-800 overflow-hidden md:h-[50vh]">
         <motion.div
           className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.22),_rgba(2,6,23,1)_64%)]"
           animate={{ opacity: phase === 'crashed' ? [1, 0.88, 1] : 1 }}
           transition={{ duration: 0.42 }}
         />
 
-        <div className="absolute left-3 top-14 bottom-28 z-20 w-20 pointer-events-none">
-          <div className="absolute left-2 top-0 bottom-0 w-px bg-cyan-500/30" />
-          {scaleMarks.map((mark) => {
-            const y = multiplierToYPercent(mark);
-            return (
-              <div
-                key={`scale-${mark}`}
-                className="absolute left-0 right-0"
-                style={{ top: `${y}%`, transform: 'translateY(-50%)' }}
-              >
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-px bg-cyan-400/55" />
-                  <span className="text-[10px] font-mono text-cyan-300/90">{mark.toFixed(mark < 2 ? 2 : 0)}x</span>
-                </div>
-              </div>
-            );
-          })}
+        <div ref={graphContainerRef} className="absolute inset-0 pb-28">
+          <canvas ref={canvasRef} className="h-full w-full" />
         </div>
-
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          animate={{ x: parallax.x * -8, y: parallax.y * -6 }}
-          transition={{ type: 'spring', stiffness: 80, damping: 18, mass: 0.5 }}
-        >
-          <div className="absolute top-8 left-10 h-24 w-72 rounded-full bg-cyan-500/10 blur-3xl" />
-          <div className="absolute top-24 right-16 h-20 w-56 rounded-full bg-blue-500/10 blur-3xl" />
-          <div className="absolute top-48 left-1/3 h-16 w-44 rounded-full bg-sky-400/10 blur-3xl" />
-        </motion.div>
-
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          animate={{ x: parallax.x * 6, y: parallax.y * 4 }}
-          transition={{ type: 'spring', stiffness: 85, damping: 20, mass: 0.45 }}
-        >
-          <div className="absolute bottom-0 left-0 right-0 h-40 bg-[linear-gradient(180deg,transparent_0%,rgba(8,47,73,0.35)_56%,rgba(2,6,23,0.95)_100%)]" />
-        </motion.div>
-
-        <motion.div
-          className="absolute inset-x-0 bottom-0 h-36 pointer-events-none"
-          animate={phase === 'running' ? { opacity: [0.45, 0.8, 0.5], y: [0, -4, 0] } : { opacity: phase === 'crashed' ? [0.7, 0.95, 0.75] : 0.35, y: 0 }}
-          transition={{ duration: 0.65, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_92%,rgba(248,113,113,0.42)_0%,rgba(248,113,113,0.2)_22%,rgba(239,68,68,0.11)_38%,transparent_72%)]" />
-          <div className="absolute inset-0 bg-[linear-gradient(180deg,transparent_8%,rgba(244,63,94,0.12)_72%,rgba(190,24,93,0.2)_100%)]" />
-        </motion.div>
-
-        <motion.div
-          className="absolute inset-0 opacity-45"
-          animate={{ x: ['0%', '-50%'] }}
-          transition={{ duration: scanDuration, ease: 'linear', repeat: Infinity }}
-        >
-          <div className="absolute inset-y-0 left-0 flex w-[200%]">
-            {[0, 1].map((index) => (
-              <div
-                key={`scan-${index}`}
-                className="h-full w-1/2 bg-[repeating-linear-gradient(105deg,transparent_0_28px,rgba(56,189,248,0.16)_28px_29px,transparent_29px_64px)]"
-              />
-            ))}
-          </div>
-        </motion.div>
 
         <div className="absolute top-4 left-4 right-4 z-20 flex items-center justify-between">
           <div className="px-3 py-1 rounded-md border border-slate-700 bg-slate-950/75 text-xs uppercase tracking-wide text-slate-300">
@@ -445,106 +538,6 @@ export default function CrashGame() {
             {phase === 'waiting' ? 'Armed' : phase === 'running' ? 'In Flight' : 'Crashed'}
           </div>
         </div>
-
-        <motion.div
-          className="absolute z-30 -translate-x-1/2 transform-gpu will-change-transform"
-          initial={false}
-          animate={phase === 'running'
-            ? {
-                left: `${rocketX}%`,
-                top: `${rocketY}%`,
-                x: [-0.5, 0.5, -0.5, 0.5, 0],
-                y: [-1, 1, -1, 1, 0],
-                rotate: [-0.4, 0.4, -0.4, 0.4, 0],
-              }
-            : {
-                left: `${rocketX}%`,
-                top: `${rocketY}%`,
-                x: 0,
-                y: 0,
-                rotate: phase === 'crashed' ? -12 : 0,
-              }}
-          transition={phase === 'running'
-            ? { left: { duration: 0.16, ease: 'linear' }, top: { duration: 0.16, ease: 'linear' }, duration: 0.42, repeat: Infinity, ease: 'easeInOut' }
-            : { left: { duration: 0.2, ease: 'easeOut' }, top: { duration: 0.2, ease: 'easeOut' }, duration: 0.24 }}
-        >
-          <motion.div
-            className={`relative h-28 w-20 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
-            animate={phase === 'crashed' ? { filter: ['drop-shadow(0 0 9px rgba(251,113,133,0.72))', 'drop-shadow(0 0 24px rgba(251,113,133,1))', 'drop-shadow(0 0 9px rgba(251,113,133,0.72))'] } : { filter: 'drop-shadow(0 0 15px rgba(34,211,238,0.86))' }}
-            transition={{ duration: 0.55 }}
-          >
-            <svg viewBox="0 0 120 220" className="h-full w-full" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
-              <path d="M60 14 L78 46 L78 140 L42 140 L42 46 Z" />
-              <path d="M42 46 L60 14 L78 46 Z" />
-              <path d="M42 120 L22 148 L42 140 Z" />
-              <path d="M78 120 L98 148 L78 140 Z" />
-              <path d="M42 140 L60 178 L78 140 Z" />
-              <circle cx="60" cy="86" r="10" className="text-slate-950" fill="currentColor" />
-            </svg>
-            <motion.div
-              className="absolute left-1/2 -bottom-8 h-10 w-4 -translate-x-1/2 rounded-full bg-rose-500/70 blur-md"
-              animate={{
-                scaleY: phase === 'running' ? [0.8 + flameTier * 0.06, 1.45 + flameTier * 0.24, 0.86 + flameTier * 0.08] : 0.55,
-                opacity: phase === 'crashed' ? 0 : [0.45, 1, 0.45],
-              }}
-              transition={{ duration: trailDuration, repeat: Infinity, ease: 'linear' }}
-            />
-            <motion.div
-              className="absolute left-1/2 -bottom-11 h-8 w-8 -translate-x-1/2 rounded-full bg-orange-400/40 blur-lg"
-              animate={{
-                scale: phase === 'running' ? [0.88 + flameTier * 0.06, 1.24 + flameTier * 0.14, 0.92 + flameTier * 0.08] : 0.72,
-                opacity: phase === 'crashed' ? 0 : [0.35, 0.9, 0.35],
-              }}
-              transition={{ duration: 0.36, repeat: Infinity, ease: 'easeInOut' }}
-            />
-            <motion.div
-              className="absolute left-1/2 -bottom-14 h-10 w-10 -translate-x-1/2 rounded-full bg-red-500/35 blur-xl"
-              animate={{
-                scale: phase === 'running' ? [0.9 + flameTier * 0.08, 1.16 + flameTier * 0.18, 0.95 + flameTier * 0.1] : 0.78,
-                opacity: phase === 'crashed' ? 0 : [0.2, 0.62, 0.22],
-              }}
-              transition={{ duration: 0.44, repeat: Infinity, ease: 'easeInOut' }}
-            />
-          </motion.div>
-        </motion.div>
-
-        <AnimatePresence>
-          {launchPulse > 0 && phase === 'running' ? (
-            <motion.div
-              key={`launch-pulse-${launchPulse}`}
-              className="absolute inset-0 z-25 pointer-events-none"
-              initial={{ opacity: 0.4, scale: 0.98 }}
-              animate={{ opacity: 0, scale: 1.08 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.45, ease: 'easeOut' }}
-            >
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_80%,rgba(34,211,238,0.32)_0%,rgba(34,211,238,0.08)_24%,transparent_60%)]" />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-
-        <AnimatePresence>
-          {phase === 'crashed' ? (
-            <>
-              {Array.from({ length: 16 }).map((_, index) => {
-                const offset = burstOffset(index);
-                const nextLeft = Math.max(0, Math.min(100, rocketX + offset.x));
-                const nextTop = Math.max(0, Math.min(100, rocketY + offset.y));
-
-                return (
-                  <motion.span
-                    key={`rocket-burst-${index}`}
-                    className="absolute z-40 h-1.5 w-1.5 rounded-full bg-rose-400"
-                    initial={{ left: `${rocketX}%`, top: `${rocketY}%`, opacity: 1, scale: 1 }}
-                    animate={{ left: `${nextLeft}%`, top: `${nextTop}%`, opacity: 0, scale: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.72, ease: 'easeOut' }}
-                  />
-                );
-              })}
-            </>
-          ) : null}
-        </AnimatePresence>
 
         <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-slate-800 bg-slate-950/80 backdrop-blur p-4">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs uppercase tracking-wide">
