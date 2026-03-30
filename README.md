@@ -33,7 +33,7 @@ ipconfig getifaddr en0
 
 ```env
 NEXTAUTH_URL="http://YOUR_IP:3000"
-NEXT_PUBLIC_SOCKET_URL="http://YOUR_IP:4001"
+NEXT_PUBLIC_SOCKET_URL="http://YOUR_IP:5000"
 ```
 
 3. Start both services with LAN host binding:
@@ -46,7 +46,7 @@ npm run dev:lan
 npm run dev:game-server:lan
 ```
 
-4. Open firewall for ports `3000` and `4001` if macOS prompts.
+4. Open firewall for ports `3000` and `5000` if macOS prompts.
 
 5. Friends open `http://YOUR_IP:3000`, register/login, then join your room id (Crash/Poker/Blackjack).
 6. In Poker/Blackjack, friends only need the room id string (for example `bj-ab123`) in the room input, then click `Join Room`.
@@ -62,7 +62,7 @@ npm run dev:game-server:lan
 This repository includes a full deployment setup for:
 
 - Next.js app (`3000`)
-- Socket game server (`4001`)
+- Socket game server (`5000`)
 - Persistent Prisma SQLite database volume
 
 ### 1) Prepare env files
@@ -80,14 +80,14 @@ Edit `.env.production`:
 DATABASE_URL="file:/app/prisma/prod.db"
 NEXTAUTH_SECRET="your-long-random-secret"
 NEXTAUTH_URL="https://your-domain.com"
-NEXT_PUBLIC_SOCKET_URL="https://your-domain.com:4001"
+NEXT_PUBLIC_SOCKET_URL="https://your-domain.com:5000"
 ```
 
 Edit `game-server/.env.production`:
 
 ```env
 HOST=0.0.0.0
-PORT=4001
+PORT=5000
 CLIENT_ORIGIN=https://your-domain.com
 CLIENT_ORIGINS=https://your-domain.com
 ```
@@ -112,7 +112,7 @@ npm run deploy:down
 
 ### Notes
 
-- Open inbound ports `3000` and `4001` on your host/firewall.
+- Open inbound ports `3000` and `5000` on your host/firewall.
 - For public internet deployment, place a reverse proxy in front (for HTTPS and domain routing).
 - Prisma data is persisted in the Docker volume `prisma_data`.
 

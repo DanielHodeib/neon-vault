@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Neon Vault Production Deployment Script
-# This script automates the deployment process on Oracle Cloud
+# This script automates the deployment process on AWS EC2
 
 set -e
 
@@ -33,5 +33,6 @@ echo "- HTTP: http://localhost"
 echo "- HTTPS: https://localhost (with proper certificate)"
 echo ""
 echo "Database: PostgreSQL on neon-db:5432"
+echo "Backend: Socket server on neon-backend:5000"
 echo "Redis: Running on neon-redis:6379"
 echo "================================"

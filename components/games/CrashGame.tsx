@@ -47,9 +47,9 @@ function multiplierToYPercent(value: number) {
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  if (typeof window === 'undefined') return fromEnv ?? 'http://localhost:4001';
+  if (typeof window === 'undefined') return fromEnv ?? 'http://localhost:5000';
   if (fromEnv === 'same-origin') return window.location.origin;
-  return fromEnv ?? (window.location.hostname === 'localhost' ? 'http://localhost:4001' : window.location.origin);
+  return fromEnv ?? (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
 }
 
 export default function CrashGame() {

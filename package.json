@@ -11,7 +11,7 @@
     "db:ui": "prisma studio",
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "dev:all": "sh -c 'npm run dev & web=$!; (cd game-server && npm run dev) & game=$!; trap \"kill $web $game\" INT TERM EXIT; wait'",
-    "restart:all": "sh -c 'web=$(lsof -ti tcp:3000 2>/dev/null || true); game=$(lsof -ti tcp:4001 2>/dev/null || true); [ -n \"$web\" ] && kill -9 $web || true; [ -n \"$game\" ] && kill -9 $game || true; npm run dev:all'",
+    "restart:all": "sh -c 'web=$(lsof -ti tcp:3000 2>/dev/null || true); game=$(lsof -ti tcp:5000 2>/dev/null || true); [ -n \"$web\" ] && kill -9 $web || true; [ -n \"$game\" ] && kill -9 $game || true; npm run dev:all'",
     "build": "prisma generate && next build",
     "start": "next start",
     "tunnel": "sh ./tunnel-tailscale.sh",

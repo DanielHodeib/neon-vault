@@ -7,17 +7,17 @@ function getGameServerUrl() {
     process.env.NEXT_PUBLIC_SOCKET_URL ??
     process.env.NEXT_PUBLIC_GAME_SERVER_URL;
   if (!fromEnv) {
-    return 'http://localhost:4001';
+    return 'http://localhost:5000';
   }
 
   if (fromEnv === 'same-origin') {
-    return 'http://localhost:4001';
+    return 'http://localhost:5000';
   }
 
   try {
     return new URL(fromEnv).toString().replace(/\/$/, '');
   } catch {
-    return 'http://localhost:4001';
+    return 'http://localhost:5000';
   }
 }
 

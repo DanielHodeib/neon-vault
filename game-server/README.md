@@ -6,11 +6,11 @@
 2. `npm install`
 3. `npm run dev`
 
-Server defaults to `http://localhost:4001`.
+Server defaults to `http://localhost:5000`.
 
 ## Env
 
-- `PORT` (default: `4001`)
+- `PORT` (default: `5000`)
 - `CLIENT_ORIGIN` (default: `http://localhost:3000`)
 
 ## Features

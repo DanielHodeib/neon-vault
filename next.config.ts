@@ -28,15 +28,15 @@ const nextConfig: NextConfig = {
       // Keep Socket.IO on same origin so one public app tunnel is enough.
       {
         source: '/socket.io',
-        destination: 'http://127.0.0.1:4001/socket.io/',
+        destination: 'http://127.0.0.1:5000/socket.io/',
       },
       {
         source: '/socket.io/',
-        destination: 'http://127.0.0.1:4001/socket.io/',
+        destination: 'http://127.0.0.1:5000/socket.io/',
       },
       {
         source: '/socket.io/:path*',
-        destination: 'http://127.0.0.1:4001/socket.io/:path*',
+        destination: 'http://127.0.0.1:5000/socket.io/:path*',
       },
     ];
   },

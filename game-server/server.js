@@ -4,7 +4,7 @@ const cors = require('cors');
 const { Server } = require('socket.io');
 
 const HOST = process.env.HOST || '0.0.0.0';
-const PORT = Number(process.env.PORT || 4001);
+const PORT = Number(process.env.PORT || 5000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')

@@ -8,13 +8,13 @@ export async function notifyLeaderboardRefresh(payload: {
     process.env.NEXT_PUBLIC_SOCKET_URL ??
     process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
-  let target = 'http://127.0.0.1:4001';
+  let target = 'http://127.0.0.1:5000';
   const internalToken = (process.env.INTERNAL_API_TOKEN ?? '').trim();
   if (base && base !== 'same-origin') {
     try {
       target = new URL(base).toString().replace(/\/$/, '');
     } catch {
-      target = 'http://127.0.0.1:4001';
+      target = 'http://127.0.0.1:5000';
     }
   }
 
@@ -45,13 +45,13 @@ export async function notifyGlobalWinMessage(payload: {
     process.env.NEXT_PUBLIC_SOCKET_URL ??
     process.env.NEXT_PUBLIC_GAME_SERVER_URL;
 
-  let target = 'http://127.0.0.1:4001';
+  let target = 'http://127.0.0.1:5000';
   const internalToken = (process.env.INTERNAL_API_TOKEN ?? '').trim();
   if (base && base !== 'same-origin') {
     try {
       target = new URL(base).toString().replace(/\/$/, '');
     } catch {
-      target = 'http://127.0.0.1:4001';
+      target = 'http://127.0.0.1:5000';
     }
   }
 
