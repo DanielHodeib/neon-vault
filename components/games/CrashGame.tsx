@@ -47,9 +47,10 @@ function multiplierToYPercent(value: number) {
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  if (typeof window === 'undefined') return fromEnv ?? 'http://localhost:5000';
+  const fallbackUrl = 'http://63.179.106.186:5000';
+  if (typeof window === 'undefined') return fromEnv ?? fallbackUrl;
   if (fromEnv === 'same-origin') return window.location.origin;
-  return fromEnv ?? (window.location.hostname === 'localhost' ? 'http://localhost:5000' : window.location.origin);
+  return fromEnv ?? fallbackUrl;
 }
 
 export default function CrashGame() {
@@ -197,7 +198,8 @@ export default function CrashGame() {
     const url = getSocketUrl();
     const socket = io(url, {
       path: '/socket.io',
-      transports: ['polling', 'websocket'], // Polling zuerst für stabilere Tunnel-Verbindungen
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
       query: { username: effectiveUsername, crashRoomId: GLOBAL_CRASH_ROOM_ID },
       reconnectionAttempts: 5,
       timeout: 10000,

@@ -20,9 +20,10 @@ interface DailyLeaderboardEntry {
 
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
+  const fallbackUrl = 'http://63.179.106.186:5000';
 
   if (typeof window === 'undefined') {
-    return fromEnv ?? 'http://localhost:5000';
+    return fromEnv ?? fallbackUrl;
   }
 
   if (fromEnv === 'same-origin') {
@@ -30,19 +31,13 @@ function getSocketUrl() {
   }
 
   if (!fromEnv) {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
-    return window.location.origin;
+    return fallbackUrl;
   }
 
   try {
     return new URL(fromEnv).toString().replace(/\/$/, '');
   } catch {
-    return window.location.origin;
+    return fallbackUrl;
   }
 }
 
@@ -88,7 +83,8 @@ export default function LeaderboardPanel() {
 
     const socket = io(getSocketUrl(), {
       path: '/socket.io',
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
     });
 
     socket.on('leaderboard_refresh', () => {
