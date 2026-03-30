@@ -17,16 +17,23 @@ interface CrashPlayer {
 
 interface CrashStatePayload {
   roomId?: string;
-  phase: 'waiting' | 'running' | 'crashed';
+  phase: 'waiting' | 'countdown' | 'running' | 'crashed';
   multiplier: number;
   history?: number[];
   players: CrashPlayer[];
+  roundStartAt?: number;
 }
 
 interface CrashCrashedPayload {
   crashPoint?: number;
   multiplier?: number;
   history?: number[];
+}
+
+interface CrashCountdownTickPayload {
+  roomId?: string;
+  roundId?: number;
+  timeLeft: number;
 }
 
 // Hilfsfunktion für die URL (optimiert für Tunnel/Lokale Setups)
@@ -42,7 +49,7 @@ export default function CrashGame() {
   const { balance, username, placeBet, addWin } = useCasinoStore();
   
   // States
-  const [phase, setPhase] = useState<'waiting' | 'running' | 'crashed'>('waiting');
+  const [phase, setPhase] = useState<'waiting' | 'countdown' | 'running' | 'crashed'>('waiting');
   const [multiplier, setMultiplier] = useState(1.0);
   const [betInput, setBetInput] = useState('100');
   const [players, setPlayers] = useState<CrashPlayer[]>([]);
@@ -52,11 +59,12 @@ export default function CrashGame() {
   const [autoCashOutEnabled, setAutoCashOutEnabled] = useState(false);
   const [autoCashOutInput, setAutoCashOutInput] = useState('2.00');
   const [errorMsg, setErrorMsg] = useState('');
+  const [countdownLeft, setCountdownLeft] = useState<number | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [canvasSize, setCanvasSize] = useState({ width: 0, height: 0 });
   
   const socketRef = useRef<Socket | null>(null);
-  const previousPhaseRef = useRef<'waiting' | 'running' | 'crashed'>('waiting');
+  const previousPhaseRef = useRef<'waiting' | 'countdown' | 'running' | 'crashed'>('waiting');
   const audioContextRef = useRef<AudioContext | null>(null);
   const lastCrashTickUpdateRef = useRef(0);
   const pendingCrashTickRef = useRef<{ multiplier: number; players: CrashPlayer[] } | null>(null);
@@ -80,7 +88,7 @@ export default function CrashGame() {
 
   const hasBetOnServer = Boolean(serverMe && !serverMe.cashedOut);
   const hasBet = hasBetOnServer;
-  const canEditBet = phase === 'waiting' && !isPlacingBet && !hasBetOnServer;
+  const canEditBet = ['waiting', 'countdown'].includes(phase) && !isPlacingBet && !hasBetOnServer;
   const activePlayers = useMemo(
     () => Array.from(new Set(players.map((player) => player.username).filter(Boolean))),
     [players]
@@ -177,6 +185,7 @@ export default function CrashGame() {
     if (phase === 'waiting') {
       renderedMultiplierRef.current = 1;
       crashedAtRef.current = null;
+      setCountdownLeft(null);
     }
 
     if (phase === 'crashed') {
@@ -239,17 +248,68 @@ export default function CrashGame() {
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, width, height);
 
-      const padding = { top: 28, right: 26, bottom: 28, left: 26 };
+      const padding = { top: 22, right: 26, bottom: 50, left: 62 };
       const chartWidth = Math.max(1, width - padding.left - padding.right);
       const chartHeight = Math.max(1, height - padding.top - padding.bottom);
       const baseY = padding.top + chartHeight;
 
-      if (phase === 'waiting') {
-        ctx.fillStyle = 'rgba(148, 163, 184, 0.95)';
-        ctx.font = '600 24px ui-sans-serif';
+      const drawAxesAndGrid = (yScaleMax: number, xScaleMaxSeconds: number) => {
+        const yTickCount = 6;
+        const xTickStepSeconds = 2;
+        const xTickCount = Math.max(2, Math.floor(xScaleMaxSeconds / xTickStepSeconds));
+
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+
+        for (let i = 0; i <= yTickCount; i += 1) {
+          const ratio = i / yTickCount;
+          const value = 1 + (yScaleMax - 1) * ratio;
+          const y = baseY - chartHeight * ratio;
+
+          ctx.beginPath();
+          ctx.moveTo(padding.left, y);
+          ctx.lineTo(padding.left + chartWidth, y);
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(`${value.toFixed(value < 3 ? 1 : 0)}x`, padding.left - 8, y);
+        }
+
+        for (let i = 0; i <= xTickCount; i += 1) {
+          const seconds = i * xTickStepSeconds;
+          const ratio = seconds / Math.max(1, xScaleMaxSeconds);
+          const x = padding.left + chartWidth * ratio;
+
+          ctx.beginPath();
+          ctx.moveTo(x, padding.top);
+          ctx.lineTo(x, baseY);
+          ctx.stroke();
+
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+          ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(`${seconds}s`, x, baseY + 8);
+        }
+      };
+
+      if (phase === 'waiting' || phase === 'countdown') {
+        drawAxesAndGrid(2, 10);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
+        ctx.shadowColor = 'rgba(0, 240, 255, 0.35)';
+        ctx.shadowBlur = 12;
+        ctx.font = '700 34px system-ui, -apple-system, Segoe UI, Roboto, Arial';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText('Preparing...', width / 2, height / 2);
+        if (phase === 'countdown' && countdownLeft !== null) {
+          ctx.fillText(`Starting in ${countdownLeft.toFixed(1)}s`, width / 2, height / 2);
+        } else {
+          ctx.fillText('Preparing...', width / 2, height / 2);
+        }
+        ctx.shadowBlur = 0;
 
         animationFrameRef.current = window.requestAnimationFrame(draw);
         return;
@@ -264,16 +324,23 @@ export default function CrashGame() {
       const currentMultiplier = Math.max(1, renderedMultiplierRef.current);
       const peakMultiplier = phase === 'crashed' ? Math.max(1.25, crashedAtRef.current ?? currentMultiplier) : Math.max(1.25, currentMultiplier);
       const yScaleMax = Math.max(2, peakMultiplier * 1.25);
+      const elapsedSeconds = phase === 'running' ? Math.max(0.01, Math.log(currentMultiplier) / Math.log(1.0124)) * 0.075 : Math.max(0.01, Math.log(peakMultiplier) / Math.log(1.0124)) * 0.075;
+      const xScaleMaxSeconds = Math.max(8, Math.ceil((elapsedSeconds + 2) / 2) * 2);
+
+      drawAxesAndGrid(yScaleMax, xScaleMaxSeconds);
 
       const pointsCount = 180;
       const points: Array<{ x: number; y: number }> = [];
       const safeMaxLog = Math.log(yScaleMax);
+      const lineSpanSeconds = Math.min(xScaleMaxSeconds, elapsedSeconds);
 
       for (let i = 0; i < pointsCount; i += 1) {
-        const t = i / (pointsCount - 1);
+        const timeRatio = i / (pointsCount - 1);
+        const seconds = lineSpanSeconds * timeRatio;
+        const t = lineSpanSeconds > 0 ? seconds / lineSpanSeconds : 0;
         const value = Math.exp(Math.log(peakMultiplier) * t);
         const normalized = safeMaxLog > 0 ? Math.log(Math.max(1, value)) / safeMaxLog : 0;
-        const x = padding.left + chartWidth * t;
+        const x = padding.left + chartWidth * (seconds / xScaleMaxSeconds);
         const y = baseY - chartHeight * normalized;
         points.push({ x, y });
       }
@@ -347,7 +414,7 @@ export default function CrashGame() {
         animationFrameRef.current = null;
       }
     };
-  }, [phase, canvasSize.width, canvasSize.height]);
+  }, [phase, canvasSize.width, canvasSize.height, countdownLeft]);
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg);
@@ -375,7 +442,19 @@ export default function CrashGame() {
       setMultiplier(payload.multiplier);
       setHistory(Array.isArray(payload.history) ? payload.history : []);
       setPlayers(payload.players || []);
+      if (payload.phase === 'countdown' && Number.isFinite(Number(payload.roundStartAt))) {
+        const timeLeft = Math.max(0, (Number(payload.roundStartAt) - Date.now()) / 1000);
+        setCountdownLeft(Number(timeLeft.toFixed(1)));
+      } else if (payload.phase !== 'countdown') {
+        setCountdownLeft(null);
+      }
       if (payload.phase !== 'running') setIsSyncingCashOut(false);
+    });
+
+    socket.on('crash_countdown_tick', (payload: CrashCountdownTickPayload) => {
+      setPhase('countdown');
+      const safeLeft = Number.isFinite(Number(payload?.timeLeft)) ? Number(payload.timeLeft) : 0;
+      setCountdownLeft(Math.max(0, Number(safeLeft.toFixed(1))));
     });
 
     socket.on('crash_tick', (payload: { roomId?: string; multiplier: number; players: CrashPlayer[] }) => {
@@ -451,7 +530,7 @@ export default function CrashGame() {
 
   // Bet status is driven by server players list (crash_state/crash_tick), not local toggles.
   const handleBet = async () => {
-    if (isPlacingBet || hasBetOnServer || phase !== 'waiting') return;
+    if (isPlacingBet || hasBetOnServer || !['waiting', 'countdown'].includes(phase)) return;
 
     const safeBet = Math.floor(Number(betInput));
     if (isNaN(safeBet) || safeBet < MIN_BET) return showError(`Min. Bet is ${MIN_BET}`);
@@ -535,7 +614,7 @@ export default function CrashGame() {
             {autoCashOutEnabled ? `Auto ${autoCashOutValue.toFixed(2)}x` : 'Auto Off'}
           </div>
           <div className={`px-3 py-1 rounded-md border text-xs uppercase tracking-wide ${phase === 'crashed' ? 'border-rose-500/50 text-rose-300 bg-rose-500/10' : 'border-cyan-500/40 text-cyan-300 bg-cyan-500/10'}`}>
-            {phase === 'waiting' ? 'Armed' : phase === 'running' ? 'In Flight' : 'Crashed'}
+            {phase === 'waiting' ? 'Armed' : phase === 'countdown' ? 'Countdown' : phase === 'running' ? 'In Flight' : 'Crashed'}
           </div>
         </div>
 
