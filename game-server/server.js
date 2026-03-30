@@ -7,6 +7,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 5000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
+const AWS_FRONTEND_ORIGIN = 'http://63.179.106.186:3000';
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -53,6 +54,7 @@ const app = express();
 const allowedOrigins = new Set([
   CORS_ORIGIN,
   CLIENT_ORIGIN,
+  AWS_FRONTEND_ORIGIN,
   ...CLIENT_ORIGINS,
   ...(VERCEL_FRONTEND_ORIGIN ? [VERCEL_FRONTEND_ORIGIN] : []),
   'http://localhost:3000',
