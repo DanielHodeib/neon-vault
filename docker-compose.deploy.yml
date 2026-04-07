@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
     command: sh -c "npx prisma migrate deploy && npm run start -- -H 0.0.0.0 -p 3000"
     volumes:
-      - prisma_data:/app/prisma
+      - ./prisma/dev.db:/app/prisma/dev.db
 
   game-server:
     build:
@@ -23,6 +23,3 @@ services:
     ports:
       - "5000:5000"
     restart: unless-stopped
-
-volumes:
-  prisma_data:

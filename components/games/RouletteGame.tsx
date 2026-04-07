@@ -119,29 +119,13 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:5000';
   }
 
-  if (fromEnv === 'same-origin') {
-    return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
+  if (fromEnv === 'same-origin' || !fromEnv) {
     return window.location.origin;
   }
 
   try {
     return new URL(fromEnv).toString().replace(/\/$/, '');
   } catch {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
     return window.location.origin;
   }
 }
@@ -458,7 +442,9 @@ export default function RouletteGame() {
 
     const socket = io(socketUrl, {
       path: '/socket.io',
-      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
       upgrade: !forcePolling,
       query: { username: effectiveUsername, rouletteRoomId: 'global' },
     });

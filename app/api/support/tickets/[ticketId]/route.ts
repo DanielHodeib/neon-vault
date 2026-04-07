@@ -4,19 +4,33 @@ import { auth } from '@/auth';
 import { getGameServerUrl, getInternalHeaders } from '@/lib/gameServerInternal';
 import { prisma } from '@/lib/prisma';
 
+const STAFF_ROLES = new Set(['OWNER', 'ADMIN', 'SUPPORT', 'MODERATOR']);
+
+function normalizeRole(value: unknown) {
+  return String(value ?? '').trim().toUpperCase();
+}
+
 export async function DELETE(
   request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
   const session = await auth();
   const userId = session?.user?.id;
-  const userRole = String(session?.user?.role ?? '').toUpperCase();
+  const sessionRole = normalizeRole(session?.user?.role);
 
   if (!userId) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  if (!['OWNER', 'ADMIN', 'SUPPORT', 'MODERATOR'].includes(userRole)) {
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+
+  const dbRole = normalizeRole(currentUser?.role);
+  const effectiveRole = STAFF_ROLES.has(dbRole) ? dbRole : sessionRole;
+
+  if (!STAFF_ROLES.has(effectiveRole)) {
     return NextResponse.json({ error: 'Forbidden: only OWNER, ADMIN, SUPPORT or MODERATOR can delete tickets.' }, { status: 403 });
   }
 
@@ -27,7 +41,7 @@ export async function DELETE(
   }
 
   try {
-    console.log('[support.delete] requested', { ticketId, userId, userRole });
+    console.log('[support.delete] requested', { ticketId, userId, sessionRole, dbRole, effectiveRole });
     console.log('[support.delete] deleting linked ticket messages', { ticketId });
     await prisma.ticketMessage.deleteMany({ where: { ticketId } });
     console.log('[support.delete] ticket messages deleted', { ticketId });
@@ -45,7 +59,7 @@ export async function DELETE(
     await fetch(broadcastUrl, {
       method: 'POST',
       headers: getInternalHeaders(),
-      body: JSON.stringify({ ticketId, deletedBy: userId, deletedRole: userRole }),
+      body: JSON.stringify({ ticketId, deletedBy: userId, deletedRole: effectiveRole }),
       cache: 'no-store',
     }).catch((error) => {
       console.error('[support.delete] broadcast failed', error);
