@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "build": "prisma generate && next build",
     "prebuild": "npm run check:production-readiness",
     "check:production-readiness": "prisma generate && npm run check:types && npm run check:viprank && npm run check:frontend-api",
     "check:types": "tsc --noEmit",
@@ -12,13 +13,17 @@
     "dev": "next dev -H 0.0.0.0 -p 3000",
     "dev:all": "sh -c 'npm run dev & web=$!; (cd game-server && npm run dev) & game=$!; trap \"kill $web $game\" INT TERM EXIT; wait'",
     "restart:all": "sh -c 'web=$(lsof -ti tcp:3000 2>/dev/null || true); game=$(lsof -ti tcp:5000 2>/dev/null || true); [ -n \"$web\" ] && kill -9 $web || true; [ -n \"$game\" ] && kill -9 $game || true; npm run dev:all'",
-    "build": "prisma generate && next build",
     "start": "next start",
     "tunnel": "sh ./tunnel-tailscale.sh",
     "tunnel:stop": "sh ./tunnel-tailscale-stop.sh",
-    "tunnel:url": "sh ./tunnel-url.sh"
+    "tunnel:url": "sh ./tunnel-url.sh",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.18.0",
     "@prisma/client": "^6.5.0",
     "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^2.4.3",
@@ -44,6 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.2.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "wrangler": "^4.80.0"
   }
 }
