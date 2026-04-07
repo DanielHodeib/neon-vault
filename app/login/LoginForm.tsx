@@ -13,6 +13,11 @@ type PublicStats = {
   activeTables: number;
 };
 
+function getApiUrl() {
+  const base = process.env.NEXT_PUBLIC_API_URL || window.location.origin + '/api';
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const [username, setUsername] = useState('');
@@ -40,7 +45,7 @@ export default function LoginForm() {
     const loadStats = async () => {
       setStatsLoading(true);
       try {
-        const response = await fetch('/api/public/stats', { cache: 'no-store' });
+        const response = await fetch(`${getApiUrl()}/public/stats`, { cache: 'no-store' });
         const payload = (await response.json()) as Partial<PublicStats>;
         if (!active || !response.ok) {
           return;
@@ -75,9 +80,10 @@ export default function LoginForm() {
     setLoading(true);
     setError('');
 
-    const precheckResponse = await fetch('/api/auth/login', {
+    const precheckResponse = await fetch(`${getApiUrl()}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username: username.trim(), password }),
     });
 

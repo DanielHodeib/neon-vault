@@ -65,18 +65,13 @@ const OTHER_ROLE_LABELS = ['BTN', 'SB', 'BB', 'UTG', 'CO'];
 
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  const fallbackUrl = 'http://63.179.106.186:5000';
 
   if (typeof window === 'undefined') {
-    return fromEnv ?? fallbackUrl;
+    return fromEnv ?? 'http://localhost:5000';
   }
 
-  if (fromEnv === 'same-origin') {
+  if (fromEnv === 'same-origin' || !fromEnv) {
     return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    return fallbackUrl;
   }
 
   try {
@@ -90,7 +85,7 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return fallbackUrl;
+    return window.location.origin;
   }
 }
 
@@ -293,6 +288,7 @@ export default function PokerFriendsGame({ username }: { username: string }) {
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       withCredentials: true,
+      secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
       upgrade: !forcePolling,
       query: { username, userId: username, pokerRoomId: 'global' },
     });

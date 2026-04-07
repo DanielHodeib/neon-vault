@@ -95,18 +95,13 @@ const SOLO_TURN_ORDER: SoloSeatId[] = ['player', 'bot-1', 'bot-2', 'bot-3'];
 
 function getSocketUrl() {
   const fromEnv = process.env.NEXT_PUBLIC_SOCKET_URL ?? process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  const fallbackUrl = 'http://63.179.106.186:5000';
 
   if (typeof window === 'undefined') {
-    return fromEnv ?? fallbackUrl;
+    return fromEnv ?? 'http://localhost:5000';
   }
 
-  if (fromEnv === 'same-origin') {
+  if (fromEnv === 'same-origin' || !fromEnv) {
     return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    return fallbackUrl;
   }
 
   try {
@@ -120,7 +115,7 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return fallbackUrl;
+    return window.location.origin;
   }
 }
 
@@ -392,6 +387,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
       path: '/socket.io',
       transports: ['websocket', 'polling'],
       withCredentials: true,
+      secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
       upgrade: !forcePolling,
       query: { username, blackjackRoomId: 'global' },
     });
