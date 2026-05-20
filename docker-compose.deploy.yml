@@ -49,6 +49,7 @@ services:
     # Network exposure
     ports:
       - "3000:3000"
+      - "5555:5555"
     
     # Volume mounts (using named volumes for persistence)
     volumes:
