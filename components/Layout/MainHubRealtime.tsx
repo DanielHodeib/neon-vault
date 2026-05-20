@@ -255,9 +255,6 @@ function getSocketUrl() {
     return window.location.origin;
   }
 
-  return fromEnv;
-  }
-
   try {
     const parsed = new URL(fromEnv);
     const appHost = window.location.hostname;
@@ -269,7 +266,7 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    return fallbackUrl;
+    return fromEnv;
   }
 }
 

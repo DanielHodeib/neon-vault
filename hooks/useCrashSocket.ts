@@ -55,13 +55,18 @@ function getSocketUrl() {
     return window.location.origin;
   }
 
-  return fromEnv;
-  }
-
   try {
-    return new URL(fromEnv).toString().replace(/\/$/, '');
+    const parsed = new URL(fromEnv);
+    const appHost = window.location.hostname;
+
+    if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && appHost !== 'localhost' && appHost !== '127.0.0.1') {
+      parsed.hostname = appHost;
+      return parsed.toString().replace(/\/$/, '');
+    }
+
+    return parsed.toString().replace(/\/$/, '');
   } catch {
-    return fallbackUrl;
+    return fromEnv;
   }
 }
 
