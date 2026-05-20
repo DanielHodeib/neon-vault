@@ -7,6 +7,7 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 5000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
+const PRODUCTION_APP_ORIGIN = 'https://daniel-hodeib-vault.chickenkiller.com';
 const AWS_FRONTEND_ORIGIN = 'http://63.179.106.186:3000';
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')
   .split(',')
@@ -56,6 +57,7 @@ const app = express();
 const allowedOrigins = new Set([
   CORS_ORIGIN,
   CLIENT_ORIGIN,
+  PRODUCTION_APP_ORIGIN,
   AWS_FRONTEND_ORIGIN,
   ...CLIENT_ORIGINS,
   ...(VERCEL_FRONTEND_ORIGIN ? [VERCEL_FRONTEND_ORIGIN] : []),
@@ -91,6 +93,7 @@ app.use(cors({
   origin(origin, callback) {
     callback(null, isAllowedOrigin(origin));
   },
+  methods: ['GET', 'POST'],
   credentials: true,
 }));
 app.use(express.json());
@@ -98,6 +101,8 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   path: '/socket.io',
+  allowEIO3: true,
+  transports: ['websocket', 'polling'],
   cors: {
     origin(origin, callback) {
       callback(null, isAllowedOrigin(origin));

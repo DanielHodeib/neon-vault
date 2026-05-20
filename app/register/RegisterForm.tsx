@@ -6,6 +6,11 @@ import { signIn } from 'next-auth/react';
 import { FormEvent, useState } from 'react';
 import LegalFooter from '@/components/LegalFooter';
 
+function getApiUrl() {
+  const base = process.env.NEXT_PUBLIC_API_URL || window.location.origin + '/api';
+  return base.endsWith('/') ? base.slice(0, -1) : base;
+}
+
 export default function RegisterForm() {
   const router = useRouter();
 
@@ -40,9 +45,10 @@ export default function RegisterForm() {
     setError('');
     setSuccess('');
 
-    const response = await fetch('/api/auth/register', {
+    const response = await fetch(`${getApiUrl()}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ username: trimmedUsername, password }),
     });
 
