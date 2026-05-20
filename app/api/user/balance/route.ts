@@ -11,32 +11,48 @@ interface BalancePostPayload {
   type?: BalanceActionType;
 }
 
-const MAX_WALLET_AMOUNT = 999999999999; // 12 digit max
+const MAX_WALLET_AMOUNT = 999999999999n; // 12 digit max in cents
 
 function normalizeAmount(raw: number | string): string {
-  const numeric = Number(raw);
-  if (!Number.isFinite(numeric)) {
-    return '0.00';
-  }
+  const s = typeof raw === 'number' ? raw.toString() : String(raw ?? '0');
+  const m = /^\s*-?\d+(?:\.\d{0,})?\s*$/.exec(s);
+  if (!m) return '0.00';
 
-  const rounded = Math.round((numeric + Number.EPSILON) * 100) / 100;
-  if (rounded <= 0 || rounded > MAX_WALLET_AMOUNT) {
-    return '0.00';
-  }
+  const cents = toCents(s);
+  if (cents <= 0n || cents > MAX_WALLET_AMOUNT * 100n) return '0.00';
 
-  return rounded.toFixed(2);
+  return centsToString(cents);
 }
 
-function addBalances(balance: string | number, amount: string | number): string {
-  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
-  const a = typeof amount === 'string' ? parseFloat(amount) : amount;
-  return (b + a).toFixed(2);
+function toCents(value: string | number): bigint {
+  const s = typeof value === 'number' ? value.toFixed(2) : String(value);
+  const [whole, frac = ''] = s.split('.');
+  const sign = whole.startsWith('-') ? -1n : 1n;
+  const wholeDigits = BigInt(whole.replace(/[^0-9]/g, '') || '0');
+  const fracDigits = (frac + '00').slice(0, 2);
+  const cents = wholeDigits * 100n + BigInt(fracDigits);
+  return sign * cents;
 }
 
-function subtractBalances(balance: string | number, amount: string | number): string {
-  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
-  const a = typeof amount === 'string' ? parseFloat(amount) : amount;
-  return Math.max(0, b - a).toFixed(2);
+function centsToString(cents: bigint): string {
+  const sign = cents < 0n ? '-' : '';
+  const abs = cents < 0n ? -cents : cents;
+  const whole = (abs / 100n).toString();
+  const frac = Number(abs % 100n).toString().padStart(2, '0');
+  return `${sign}${whole}.${frac}`;
+}
+
+function addBalances(balance: unknown, amount: unknown): string {
+  const b = typeof balance === 'object' && balance && 'toString' in (balance as any) ? String((balance as any).toString()) : String(balance ?? '0');
+  const a = String(amount ?? '0');
+  return centsToString(toCents(b) + toCents(a));
+}
+
+function subtractBalances(balance: unknown, amount: unknown): string {
+  const b = typeof balance === 'object' && balance && 'toString' in (balance as any) ? String((balance as any).toString()) : String(balance ?? '0');
+  const a = String(amount ?? '0');
+  const result = toCents(b) - toCents(a);
+  return centsToString(result < 0n ? 0n : result);
 }
 
 export async function GET() {
@@ -56,7 +72,8 @@ export async function GET() {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ balance: user.balance });
+  const balanceStr = typeof user.balance === 'object' && user.balance && 'toString' in (user.balance as any) ? String((user.balance as any).toString()) : String(user.balance ?? '0');
+  return NextResponse.json({ balance: balanceStr });
 }
 
 export async function POST(request: Request) {
@@ -92,8 +109,12 @@ export async function POST(request: Request) {
       return { error: 'User not found' as const };
     }
 
-    if (type === 'bet' && parseFloat(current.balance) < amount) {
-      return { error: 'Insufficient balance' as const, balance: current.balance };
+    if (type === 'bet') {
+      const balCents = toCents(typeof current.balance === 'object' && current.balance && 'toString' in (current.balance as any) ? String((current.balance as any).toString()) : String(current.balance ?? '0'));
+      const amtCents = toCents(amountStr);
+      if (balCents < amtCents) {
+        return { error: 'Insufficient balance' as const, balance: current.balance };
+      }
     }
 
     const updated = await tx.user.update({

@@ -25,6 +25,14 @@ function parseBalanceValue(value: unknown): string | null {
     }
   }
 
+  if (typeof value === 'object' && value && 'toString' in (value as any)) {
+    const s = String((value as any).toString());
+    const numeric = Number(s);
+    if (Number.isFinite(numeric)) {
+      return normalizeCurrency(numeric);
+    }
+  }
+
   return null;
 }
 
