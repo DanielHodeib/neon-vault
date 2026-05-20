@@ -10,6 +10,8 @@ type WalletAction = 'bet' | 'win' | 'faucet' | 'refund';
 
 const DAILY_FAUCET_REWARD = 5000;
 
+type BalanceValue = { toNumber(): number; toString(): string } | string | number | null | undefined;
+
 function todayKey() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -36,20 +38,26 @@ function normalizeAmount(raw: number | string): string {
   return centsToString(cents);
 }
 
-function addBalances(balance: string | number, amount: string | number): string {
-  const b = typeof balance === 'object' && balance && 'toString' in (balance as any) ? String((balance as any).toString()) : String(balance ?? '0');
-  const a = String(amount ?? '0');
-  return centsToString(toCents(b) + toCents(a));
+function balanceToString(balance: BalanceValue): string {
+  if (balance && typeof balance === 'object' && 'toString' in balance) {
+    return balance.toString();
+  }
+
+  return String(balance ?? '0');
 }
 
-function subtractBalances(balance: string | number, amount: string | number): string {
-  const b = typeof balance === 'object' && balance && 'toString' in (balance as any) ? String((balance as any).toString()) : String(balance ?? '0');
+function addBalances(balance: BalanceValue, amount: string | number): string {
   const a = String(amount ?? '0');
-  const result = toCents(b) - toCents(a);
+  return centsToString(toCents(balanceToString(balance)) + toCents(a));
+}
+
+function subtractBalances(balance: BalanceValue, amount: string | number): string {
+  const a = String(amount ?? '0');
+  const result = toCents(balanceToString(balance)) - toCents(a);
   return centsToString(result < 0n ? 0n : result);
 }
 
-function toCents(value: string | number): bigint {
+function toCents(value: BalanceValue): bigint {
   const s = typeof value === 'number' ? value.toFixed(2) : String(value);
   const [whole, frac = ''] = s.split('.');
   const sign = whole.startsWith('-') ? -1n : 1n;
@@ -150,7 +158,7 @@ export async function POST(request: Request) {
         if (current.dailyFaucetClaimed) {
           return {
             error: 'Daily faucet already claimed. Come back tomorrow.' as const,
-            balance: typeof current.balance === 'object' && current.balance && 'toString' in (current.balance as any) ? String((current.balance as any).toString()) : String(current.balance ?? '0'),
+              balance: balanceToString(current.balance),
             xp: current.xp,
             daily: {
               date: current.dailyStatsDate,
@@ -183,7 +191,7 @@ export async function POST(request: Request) {
 
         return {
           username: updated.username,
-          balance: typeof updated.balance === 'object' && updated.balance && 'toString' in (updated.balance as any) ? String((updated.balance as any).toString()) : String(updated.balance ?? '0'),
+          balance: balanceToString(updated.balance),
           xp: updated.xp,
           daily: {
             date: updated.dailyStatsDate,
@@ -196,12 +204,12 @@ export async function POST(request: Request) {
       }
 
       if (action === 'bet') {
-        const balCents = toCents(typeof current.balance === 'object' && current.balance && 'toString' in (current.balance as any) ? String((current.balance as any).toString()) : String(current.balance ?? '0'));
+        const balCents = toCents(balanceToString(current.balance));
         const amtCents = toCents(amountStr);
         if (balCents < amtCents) {
           return {
             error: 'Insufficient balance' as const,
-            balance: typeof current.balance === 'object' && current.balance && 'toString' in (current.balance as any) ? String((current.balance as any).toString()) : String(current.balance ?? '0'),
+            balance: balanceToString(current.balance),
             xp: current.xp,
             daily: {
               date: current.dailyStatsDate,

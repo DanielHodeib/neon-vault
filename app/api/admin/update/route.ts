@@ -64,6 +64,23 @@ function canUseSystemFinance(actorRole: UserRole) {
   return actorRole === 'OWNER' || actorRole === 'ADMIN';
 }
 
+function balanceToNumber(balance: { toNumber(): number } | string | number | null | undefined) {
+  if (balance && typeof balance === 'object' && 'toNumber' in balance) {
+    return balance.toNumber();
+  }
+
+  const value = Number(balance ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function balanceToString(balance: { toString(): string } | string | number | null | undefined) {
+  if (balance && typeof balance === 'object' && 'toString' in balance) {
+    return balance.toString();
+  }
+
+  return String(balance ?? '0');
+}
+
 function canUseUserManagement(actorRole: UserRole) {
   return actorRole === 'OWNER' || actorRole === 'ADMIN';
 }
@@ -207,7 +224,7 @@ export async function GET(request: Request) {
       id: user.id,
       username: user.username,
       role: user.role,
-      balance: user.balance,
+      balance: balanceToString(user.balance),
       xp: user.xp,
       clanTag: user.clanTag || null,
       isBanned: Boolean(user.isBanned),
@@ -528,8 +545,7 @@ export async function PATCH(request: Request) {
       if (!user) {
         return NextResponse.json({ error: 'User not found.' }, { status: 404 });
       }
-      const balance = Number.parseFloat(user.balance ?? '0');
-      const nextBalance = (Number.isFinite(balance) ? balance : 0) + delta;
+      const nextBalance = balanceToNumber(user.balance) + delta;
       await prisma.user.update({ where: { id: targetUserId }, data: { balance: nextBalance.toFixed(2) } });
       void notifyUserWalletRefresh(exists.username);
       return NextResponse.json({ ok: true });

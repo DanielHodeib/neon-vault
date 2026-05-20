@@ -4,6 +4,14 @@ import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { getRankInfo } from '@/lib/ranks';
 
+function balanceToString(balance: { toString(): string } | string | number | null | undefined) {
+  if (balance && typeof balance === 'object' && 'toString' in balance) {
+    return balance.toString();
+  }
+
+  return String(balance ?? '0');
+}
+
 export async function GET() {
   const session = await auth();
   const userId = session?.user?.id;
@@ -29,7 +37,7 @@ export async function GET() {
     | null = null;
 
   try {
-    user = await prisma.user.findUnique({
+    const foundUser = await prisma.user.findUnique({
       where: { id: userId },
       select: {
         id: true,
@@ -45,6 +53,22 @@ export async function GET() {
         dailyQuestClaimed: true,
       },
     });
+
+    user = foundUser
+      ? {
+          id: foundUser.id,
+          username: foundUser.username,
+          role: foundUser.role,
+          clanTag: foundUser.clanTag,
+          balance: balanceToString(foundUser.balance),
+          xp: foundUser.xp,
+          dailyStatsDate: foundUser.dailyStatsDate,
+          dailyBets: foundUser.dailyBets,
+          dailyWins: foundUser.dailyWins,
+          dailyFaucetClaimed: foundUser.dailyFaucetClaimed,
+          dailyQuestClaimed: foundUser.dailyQuestClaimed,
+        }
+      : null;
   } catch (error) {
     const message = error instanceof Error ? error.message : '';
     const missingRoleColumns =
@@ -71,7 +95,15 @@ export async function GET() {
 
     user = fallbackUser
       ? {
-          ...fallbackUser,
+          id: fallbackUser.id,
+          username: fallbackUser.username,
+          balance: balanceToString(fallbackUser.balance),
+          xp: fallbackUser.xp,
+          dailyStatsDate: fallbackUser.dailyStatsDate,
+          dailyBets: fallbackUser.dailyBets,
+          dailyWins: fallbackUser.dailyWins,
+          dailyFaucetClaimed: fallbackUser.dailyFaucetClaimed,
+          dailyQuestClaimed: fallbackUser.dailyQuestClaimed,
           role: 'USER',
           clanTag: null,
         }
@@ -99,6 +131,6 @@ export async function GET() {
     }))
     .sort((a, b) => b.netProfit - a.netProfit)[0]?.username;
 
-  const rank = getRankInfo(user.xp, user.balance);
+  const rank = getRankInfo(user.xp, Number(balanceToString(user.balance)));
   return NextResponse.json({ user: { ...user, isKing: user.username === kingUsername, level: rank.level, rankTag: rank.tag, rankColor: rank.color } });
 }

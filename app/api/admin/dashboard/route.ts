@@ -9,6 +9,15 @@ type OnlineStatsPayload = {
   onlineUsers?: number;
 };
 
+function balanceToNumber(balance: { toNumber(): number } | string | number | null | undefined) {
+  if (balance && typeof balance === 'object' && 'toNumber' in balance) {
+    return balance.toNumber();
+  }
+
+  const value = Number(balance ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export async function GET() {
   const access = await assertAdminAccess();
   if (!access.ok) {
@@ -27,8 +36,7 @@ export async function GET() {
   ]);
 
   const totalEconomy = users.reduce((sum, user) => {
-    const value = Number.parseFloat(user.balance || '0');
-    return sum + (Number.isFinite(value) ? value : 0);
+    return sum + balanceToNumber(user.balance);
   }, 0);
 
   let onlineUsers = 0;

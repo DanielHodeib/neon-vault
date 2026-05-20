@@ -8,6 +8,15 @@ type Theme = 'slate' | 'steel' | 'sunset' | 'ocean' | 'matrix';
 
 const ALLOWED_THEMES = new Set<Theme>(['slate', 'steel', 'sunset', 'ocean', 'matrix']);
 
+function balanceToNumber(balance: { toNumber(): number } | string | number | null | undefined) {
+  if (balance && typeof balance === 'object' && 'toNumber' in balance) {
+    return balance.toNumber();
+  }
+
+  const value = Number(balance ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
 export async function GET() {
   const session = await auth();
   const userId = session?.user?.id;
@@ -131,8 +140,9 @@ export async function PATCH(request: Request) {
           )
         : false;
 
-      const { level } = getRankInfo(user.xp, user.balance);
-      if (!canUseRankTag(level, user.balance, selectedRankTag, { hasDanielFriend })) {
+      const balance = balanceToNumber(user.balance);
+      const { level } = getRankInfo(user.xp, balance);
+      if (!canUseRankTag(level, balance, selectedRankTag, { hasDanielFriend })) {
         if (selectedRankTag === 'BALLER') {
           return NextResponse.json({ error: 'BALLER is only available if you are friends with Daniel.' }, { status: 400 });
         }

@@ -12,17 +12,29 @@ interface TransferPayload {
   message?: string;
 }
 
-function toNumericBalance(raw: string | number): number {
-  const parsed = typeof raw === 'string' ? parseFloat(raw) : raw;
+function balanceToNumber(raw: { toNumber(): number } | string | number | null | undefined): number {
+  if (raw && typeof raw === 'object' && 'toNumber' in raw) {
+    return raw.toNumber();
+  }
+
+  const parsed = Number(raw ?? 0);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function addBalance(balance: string | number, amount: number): string {
-  return (toNumericBalance(balance) + amount).toFixed(2);
+function balanceToString(raw: { toString(): string } | string | number | null | undefined): string {
+  if (raw && typeof raw === 'object' && 'toString' in raw) {
+    return raw.toString();
+  }
+
+  return String(raw ?? '0');
 }
 
-function subtractBalance(balance: string | number, amount: number): string {
-  return Math.max(0, toNumericBalance(balance) - amount).toFixed(2);
+function addBalance(balance: { toNumber(): number } | string | number | null | undefined, amount: number): string {
+  return (balanceToNumber(balance) + amount).toFixed(2);
+}
+
+function subtractBalance(balance: { toNumber(): number } | string | number | null | undefined, amount: number): string {
+  return Math.max(0, balanceToNumber(balance) - amount).toFixed(2);
 }
 
 export async function POST(request: Request) {
@@ -98,8 +110,8 @@ export async function POST(request: Request) {
       return { error: 'Target user not found.' as const };
     }
 
-    if (toNumericBalance(sender.balance) < amount) {
-      return { error: 'Insufficient balance.' as const, balance: sender.balance };
+    if (balanceToNumber(sender.balance) < amount) {
+      return { error: 'Insufficient balance.' as const, balance: balanceToString(sender.balance) };
     }
 
     const [updatedSender] = await Promise.all([
@@ -144,5 +156,5 @@ export async function POST(request: Request) {
     message: `You received ${amount} NVC from a friend transfer.`,
   });
 
-  return NextResponse.json({ ok: true, balance: result.balance, receiverUsername: targetExists.username });
+  return NextResponse.json({ ok: true, balance: balanceToString(result.balance), receiverUsername: targetExists.username });
 }

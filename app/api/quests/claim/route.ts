@@ -9,8 +9,25 @@ import { ensureUserQuests, resetExpiredUserQuests } from '@/lib/userQuests';
 const DAILY_XP = 5000;
 const WEEKLY_XP = 20000;
 
-function addBalances(balance: string | number, amount: string | number): string {
-  const b = typeof balance === 'string' ? parseFloat(balance) : balance;
+function balanceToNumber(balance: { toNumber(): number } | string | number | null | undefined): number {
+  if (balance && typeof balance === 'object' && 'toNumber' in balance) {
+    return balance.toNumber();
+  }
+
+  const value = Number(balance ?? 0);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function balanceToString(balance: { toString(): string } | string | number | null | undefined): string {
+  if (balance && typeof balance === 'object' && 'toString' in balance) {
+    return balance.toString();
+  }
+
+  return String(balance ?? '0');
+}
+
+function addBalances(balance: { toNumber(): number } | string | number | null | undefined, amount: string | number): string {
+  const b = balanceToNumber(balance);
   const a = typeof amount === 'string' ? parseFloat(amount) : amount;
   return (b + a).toFixed(2);
 }
@@ -77,7 +94,7 @@ export async function POST(request: Request) {
     const updatedUser = await tx.user.update({
       where: { id: userId },
       data: {
-        balance: addBalances(user.balance ?? '0.00', reward),
+        balance: addBalances(user.balance, reward),
         xp: { increment: xpReward },
       },
       select: { balance: true, xp: true },
@@ -87,7 +104,7 @@ export async function POST(request: Request) {
       ok: true as const,
       reward,
       xpReward,
-      balance: updatedUser.balance,
+      balance: balanceToString(updatedUser.balance),
       xp: updatedUser.xp,
     };
   });
