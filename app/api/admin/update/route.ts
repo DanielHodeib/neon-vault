@@ -206,8 +206,8 @@ export async function PATCH(request: Request) {
   }
 
   if (action === 'set-role') {
-    if (!canManageRoles(access.actorRole)) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    if (access.actorUsername !== FOUNDER_USERNAME) {
+      return NextResponse.json({ error: 'Only the founder can assign roles.' }, { status: 403 });
     }
 
     if (targetUserId === access.adminUserId) {
@@ -303,8 +303,8 @@ export async function PATCH(request: Request) {
         return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
       }
 
-      if (!canManageRoles(access.actorRole)) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      if (access.actorUsername !== FOUNDER_USERNAME) {
+        return NextResponse.json({ error: 'Only the founder can assign roles.' }, { status: 403 });
       }
 
       if (targetUserId === access.adminUserId) {

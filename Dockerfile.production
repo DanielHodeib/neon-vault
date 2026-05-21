@@ -1,44 +1,26 @@
 # ============================================================================
-# STAGE 1: Dependencies Installation
+# STAGE 1: Dependencies (Sowohl Prod als auch Dev für den Build-Prozess)
 # ============================================================================
 FROM node:20-alpine AS dependencies
-
 WORKDIR /app
 
-# Copy package files
+# Kopiere NUR die Paketdateien für perfektes Caching
 COPY package*.json ./
 
-# Install dependencies with ci (reproducible, faster, stricter than install)
-RUN npm ci --only=production && \
-    npm cache clean --force
+# Installiert alle Dependencies (wird NUR neu ausgeführt, wenn sich package.json ändert!)
+RUN npm ci && npm cache clean --force
 
 # ============================================================================
 # STAGE 2: Build Stage
 # ============================================================================
 FROM node:20-alpine AS builder
-
 WORKDIR /app
 
-# Copy dependencies from stage 1
+# Hole die installierten node_modules aus Stage 1
 COPY --from=dependencies /app/node_modules ./node_modules
-
-# Copy package files
-COPY package*.json ./
-
-# Copy prisma schema for code generation
-COPY prisma ./prisma
-
-# Copy all source files
 COPY . .
 
-# Next.js expects a public/ directory at build and runtime (may be empty).
-RUN mkdir -p public
-
-# Install dev dependencies needed for build
-RUN npm ci && npm cache clean --force
-
-# Build Next.js application
-# These args can be overridden at build time: docker build --build-arg NEXT_PUBLIC_API_URL=...
+# Environment-Variablen für den Next.js Build
 ARG NEXT_PUBLIC_API_URL=/api
 ARG NEXT_PUBLIC_SOCKET_URL=
 ARG NODE_ENV=production
@@ -47,47 +29,38 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
 ENV NODE_ENV=$NODE_ENV
 
-# Generate Prisma client
+# Prisma Client generieren
 RUN npx prisma generate
 
-# Build Next.js
+# Next.js App builden
 RUN npm run build
 
 # ============================================================================
-# STAGE 3: Runtime (Optimized)
+# STAGE 3: Runtime (Ultra-schlank dank Standalone-Output)
 # ============================================================================
 FROM node:20-alpine AS runtime
-
 WORKDIR /app
 
-# Set production environment
 ENV NODE_ENV=production
 
-# Install dumb-init for proper signal handling and curl for healthchecks
+# System-Tools installieren
 RUN apk add --no-cache dumb-init curl
 
-# Copy production dependencies from dependencies stage
-COPY --from=dependencies /app/node_modules ./node_modules
-
-# Copy necessary files from builder
-COPY --from=builder /app/.next ./.next
-RUN mkdir -p ./public
+# WICHTIG: Next.js generiert im Standalone-Modus einen autarken "server.js" Ordner,
+# der die benötigten node_modules bereits im .next-Ordner integriert hat!
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 COPY --from=builder /app/public ./public
-COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
 
-# Copy startup script for database migrations
+# Startup-Skript kopieren
 COPY scripts/docker-entrypoint.sh ./docker-entrypoint.sh
 RUN chmod +x ./docker-entrypoint.sh
 
-# Expose port
 EXPOSE 3000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:3000/api/public/health || exit 1
 
-# Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
-# Start the application with database migrations
 CMD ["./docker-entrypoint.sh"]

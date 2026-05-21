@@ -28,18 +28,12 @@ const nextConfig: NextConfig = {
   // ====================================================================
   // Rewrites: Proxy backend requests
   // ====================================================================
-  // In production, the reverse proxy (Nginx/Cloudflare) handles routing
-  // In development, we proxy to localhost:5000 for Socket.IO
   async rewrites() {
     if (!isDevelopment) {
-      // Production: No rewrites needed, reverse proxy handles routing
-      // Relative URLs are used in frontend (e.g., /api, /socket.io)
       return [];
     }
 
-    // Development: Proxy Socket.IO to local game server
     return [
-      // Keep Socket.IO on same origin so one public app tunnel is enough.
       {
         source: '/socket.io',
         destination: 'http://127.0.0.1:5000/socket.io/',
@@ -78,7 +72,6 @@ const nextConfig: NextConfig = {
           key: 'Permissions-Policy',
           value: 'geolocation=(), microphone=(), camera=()',
         },
-        // Allow Cloudflare and internal proxies
         {
           key: 'Access-Control-Allow-Headers',
           value: 'Content-Type, Authorization',
@@ -95,14 +88,8 @@ const nextConfig: NextConfig = {
   // ====================================================================
   // Production Build Configuration
   // ====================================================================
-  productionBrowserSourceMaps: false, // Disable source maps in production for security
-  
-  // ====================================================================
-  // Experimental Features (if needed)
-  // ====================================================================
-  // experimental: {
-  //   isrMemoryCacheSize: 52 * 1024 * 1024, // 52MB ISR cache
-  // },
+  output: 'standalone', // 👈 DIESE ZEILE ERZEUGT DEN ULTRA-SCHLENKEN DOCKER-OUTPUT!
+  productionBrowserSourceMaps: false, 
 };
 
 export default nextConfig;
