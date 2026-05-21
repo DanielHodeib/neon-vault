@@ -49,6 +49,9 @@ ENV NODE_ENV=production
 # System-Tools installieren
 RUN apk add --no-cache dumb-init curl
 
+# Prisma CLI in Version 6 fest pinnen, damit das Entrypoint-Skript kein Prisma 7 nachlädt
+RUN npm install -g prisma@6
+
 # WICHTIG: Next.js generiert im Standalone-Modus einen autarken "server.js" Ordner
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
