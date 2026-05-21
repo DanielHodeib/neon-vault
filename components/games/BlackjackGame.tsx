@@ -225,6 +225,30 @@ function normalizeFriendPlayerKey(player: FriendPlayer) {
   return `socket:${player.socketId}`;
 }
 
+function normalizeIdentity(value: unknown) {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function isCurrentFriendPlayer(
+  player: FriendPlayer,
+  currentUserId: string,
+  currentSocketId: string,
+  currentUsername: string
+) {
+  const playerUserId = normalizeIdentity(player.userId);
+  if (playerUserId && currentUserId) {
+    return playerUserId === currentUserId;
+  }
+
+  const playerSocketId = normalizeIdentity(player.socketId);
+  if (playerSocketId && currentSocketId) {
+    return playerSocketId === currentSocketId;
+  }
+
+  const playerUsername = normalizeIdentity(player.username);
+  return Boolean(playerUsername && currentUsername && playerUsername === currentUsername);
+}
+
 function normalizeFriendPlayer(payload: unknown): FriendPlayer | null {
   if (!payload || typeof payload !== 'object') {
     return null;
@@ -324,6 +348,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const [friendsBetInput, setFriendsBetInput] = useState('');
   const [joiningRoom, setJoiningRoom] = useState(false);
   const [friendsNotice, setFriendsNotice] = useState('Create or join a room to play with friends.');
+  const [currentSocketId, setCurrentSocketId] = useState('');
   const [friendsRoundOverlay, setFriendsRoundOverlay] = useState<{
     headline: string;
     detail: string;
@@ -344,10 +369,9 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const socketRef = useRef<Socket | null>(null);
   const friendsRoomIdRef = useRef('global');
 
-  const myPlayerKey = useMemo(() => {
-    const normalizedUsername = typeof username === 'string' ? username.trim().toLowerCase() : '';
-    return normalizedUsername;
-  }, [username]);
+  const currentUsername = useMemo(() => normalizeIdentity(username), [username]);
+  const currentUserId = useMemo(() => '', []);
+  const normalizedSocketId = useMemo(() => normalizeIdentity(currentSocketId), [currentSocketId]);
 
   const dedupedFriendPlayers = useMemo(() => {
     const latestByKey = new Map<string, FriendPlayer>();
@@ -362,14 +386,9 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   const myFriendSeat = useMemo(
     () =>
       dedupedFriendPlayers.find((player) => {
-        const playerKey = normalizeFriendPlayerKey(player);
-        if (myPlayerKey && (playerKey === myPlayerKey || playerKey === `name:${myPlayerKey}`)) {
-          return true;
-        }
-
-        return player.username.trim().toLowerCase() === username.trim().toLowerCase();
+        return isCurrentFriendPlayer(player, currentUserId, normalizedSocketId, currentUsername);
       }),
-    [dedupedFriendPlayers, myPlayerKey, username]
+    [currentUserId, currentUsername, dedupedFriendPlayers, normalizedSocketId]
   );
 
   const myFriendTurnDone = myFriendSeat ? isPlayerDone(myFriendSeat) : true;
@@ -395,8 +414,13 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     socketRef.current = socket;
 
     socket.on('connect', () => {
+      setCurrentSocketId(socket.id ?? '');
       const roomId = friendsRoomIdRef.current || 'global';
       socket.emit('join_blackjack_room', { roomId });
+    });
+
+    socket.on('disconnect', () => {
+      setCurrentSocketId('');
     });
 
     socket.on('blackjack_room_joined', (payload: { ok: boolean; roomId?: string }) => {
@@ -864,8 +888,9 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const soloPlayerSeat = useMemo(() => soloSeats.find((seat) => seat.id === 'player') ?? null, [soloSeats]);
   const soloBots = useMemo(() => soloSeats.filter((seat) => seat.isBot), [soloSeats]);
+  const soloRoundEnded = soloPhase === 'result';
   const canPlayerAct = soloPhase === 'playing' && soloCurrentTurnId === 'player';
-  const soloDealerVisible = soloPhase === 'result' ? soloDealerCards : soloDealerCards.map((card, index) => (index === 1 ? '??' : card));
+  const soloDealerVisible = soloRoundEnded ? soloDealerCards : soloDealerCards.map((card, index) => (index === 0 ? card : '??'));
   const canDealSolo = (soloPhase === 'idle' || soloPhase === 'result') && soloBet >= 1 && soloBet <= Number(balance);
   const soloPlayerValue = handValue(soloPlayerSeat?.hand ?? []);
   const soloDealerKnownValue = handValue(soloDealerVisible.filter((card) => card !== '??'));
@@ -893,13 +918,9 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
     canFriendAct &&
     Number(myFriendSeat?.insuranceBet || 0) <= 0 &&
     Number(balance) >= Math.floor(Number(myFriendSeat?.totalBet || 0) / 2);
-  const friendsOtherPlayers = dedupedFriendPlayers.filter((player) => {
-    if (!myFriendSeat) {
-      return player.username !== username;
-    }
-
-    return normalizeFriendPlayerKey(player) !== normalizeFriendPlayerKey(myFriendSeat);
-  });
+  const friendsOtherPlayers = dedupedFriendPlayers.filter(
+    (player) => !isCurrentFriendPlayer(player, currentUserId, normalizedSocketId, currentUsername)
+  );
 
   const soloTurnLabel =
     soloCurrentTurnId === 'player'
@@ -956,12 +977,14 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
               {soloBots.map((bot, index) => {
                 const slots = ['top-24 left-8', 'top-24 right-8', 'bottom-24 right-14'];
+                const displayedBotCards = soloRoundEnded ? bot.hand : bot.hand.map(() => '??');
+                const botValueLabel = soloRoundEnded ? handValue(bot.hand) : '?';
                 return (
                   <SeatBox
                     key={bot.id}
                     title={bot.name}
-                    subtitle={`${bot.status} · ${handValue(bot.hand)}${soloCurrentTurnId === bot.id ? ' · Turn' : ''}`}
-                    cards={bot.hand}
+                    subtitle={`${bot.status} · ${botValueLabel}${soloCurrentTurnId === bot.id ? ' · Turn' : ''}`}
+                    cards={displayedBotCards}
                     roleLabel={SOLO_ROLE_LABELS[index] ?? 'Seat'}
                     className={slots[index] ?? 'bottom-24 left-14'}
                   />
