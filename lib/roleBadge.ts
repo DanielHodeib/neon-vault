@@ -1,4 +1,4 @@
-export type UserRole = 'OWNER' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'USER' | string;
+type UserRole = 'OWNER' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'USER' | string;
 
 export function getRoleBadge(role?: UserRole | null) {
   const normalized = String(role ?? '')

@@ -1,7 +1,5 @@
 import { create } from 'zustand';
 
-export type VipRank = 'Bronze' | 'Silver' | 'Gold' | 'Neon';
-
 const COMPACT_BALANCE_STORAGE_KEY = 'nvc_use_compact_balance';
 
 function normalizeCurrency(value: number | string): string {

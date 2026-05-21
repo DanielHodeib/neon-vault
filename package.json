@@ -4,9 +4,8 @@
   "private": true,
   "scripts": {
     "prebuild": "npm run check:production-readiness",
-    "check:production-readiness": "prisma generate && npm run check:types && npm run check:viprank && npm run check:frontend-api",
+    "check:production-readiness": "prisma generate && npm run check:types && npm run check:frontend-api",
     "check:types": "tsc --noEmit",
-    "check:viprank": "node scripts/validate-viprank-export.js",
     "check:frontend-api": "node scripts/validate-frontend-api-url.js",
     "db:ui": "prisma studio",
     "dev": "next dev -H 0.0.0.0 -p 3000",
@@ -20,9 +19,7 @@
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
-    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^2.4.3",
-    "clsx": "^2.1.1",
     "framer-motion": "^12.38.0",
     "lucide-react": "^0.577.0",
     "next": "16.2.0",
@@ -32,7 +29,6 @@
     "react-dom": "19.2.4",
     "react-hot-toast": "^2.6.0",
     "socket.io-client": "^4.8.1",
-    "tailwind-merge": "^3.5.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
