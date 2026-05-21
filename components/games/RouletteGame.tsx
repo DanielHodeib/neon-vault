@@ -738,12 +738,12 @@ export default function RouletteGame() {
   }
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-[radial-gradient(1200px_540px_at_35%_20%,rgba(20,83,45,0.35),rgba(2,6,23,0.95))]">
-      <div className="flex-1 min-h-0 px-3 py-3 overflow-hidden lg:px-4 lg:py-4">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-y-auto overflow-x-hidden bg-[radial-gradient(1200px_540px_at_35%_20%,rgba(20,83,45,0.35),rgba(2,6,23,0.95))]">
+      <div className="flex-1 min-h-0 px-2 py-2 sm:px-3 sm:py-3 lg:px-4 lg:py-4">
         <div className="h-full min-h-0 overflow-hidden rounded-xl border border-white/10 bg-slate-950/70 p-3 shadow-[0_30px_80px_rgba(0,0,0,0.45)] backdrop-blur-sm lg:p-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base font-black tracking-wide text-slate-100 uppercase">Roulette</h2>
-            <p className="text-sm text-slate-400">Single Zero Table · Global</p>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-black tracking-wide text-slate-100 uppercase sm:text-base">Roulette</h2>
+            <p className="text-xs text-slate-400 sm:text-sm">Single Zero · Global</p>
           </div>
 
           <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm">
@@ -760,8 +760,8 @@ export default function RouletteGame() {
             </div>
           </div>
 
-          <div className="mt-4 grid min-w-0 grid-cols-12 gap-4 items-start overflow-hidden">
-            <div className="col-span-12 lg:col-span-8 order-2 lg:order-1 min-w-0 max-w-full overflow-hidden">
+          <div className="mt-3 grid min-w-0 grid-cols-12 gap-3 items-start sm:mt-4 sm:gap-4">
+            <div className="col-span-12 order-2 min-w-0 max-w-full overflow-x-auto lg:order-1 lg:col-span-8">
               <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm overflow-hidden">
                 <div className="w-full min-w-0 overflow-hidden pb-2">
                   <div className="roulette-board-fluid">
@@ -864,9 +864,9 @@ export default function RouletteGame() {
               </div>
             </div>
 
-            <div className="col-span-12 lg:col-span-4 order-1 lg:order-2 min-w-0 overflow-hidden flex justify-center">
-              <div className="min-h-[300px] w-full rounded-lg border border-white/10 bg-white/[0.03] p-3 backdrop-blur-sm flex items-center justify-center z-50">
-                <div className="relative z-50 w-full max-w-[250px] aspect-square">
+            <div className="col-span-12 order-1 flex min-w-0 justify-center overflow-hidden lg:order-2 lg:col-span-4">
+              <div className="flex min-h-[220px] w-full max-w-[min(100%,320px)] items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] p-2 backdrop-blur-sm sm:min-h-[280px] sm:p-3">
+                <div className="relative z-50 aspect-square w-full max-w-[280px]">
                   <div className="absolute inset-0 rounded-full bg-gradient-to-b from-slate-400 to-slate-800 border border-slate-500 shadow-[inset_0_12px_26px_rgba(255,255,255,0.18)]" />
                   <div className="absolute inset-3 rounded-full bg-slate-950 border border-slate-700 shadow-[inset_0_8px_20px_rgba(0,0,0,0.6)]" />
                   {isHydrated ? (

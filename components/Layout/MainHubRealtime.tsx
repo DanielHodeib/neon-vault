@@ -50,6 +50,7 @@ import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
 import GlobalEventBanner from '@/components/GlobalEventBanner';
 import CorporateFooter from '@/components/CorporateFooter';
+import { isHubGameTab } from '@/lib/gameTabs';
 import NotificationCenter from '@/components/NotificationCenter';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
@@ -2637,8 +2638,8 @@ export default function MainHubRealtime({
                     </span>
                   ) : null}
                 </div>
-                <p className="font-mono text-[10px] text-slate-400 whitespace-nowrap">Level {level} · XP {xp}</p>
-                <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden xl:block">
+                <p className="font-mono text-[10px] text-slate-400 whitespace-nowrap hidden sm:block">Level {level} · XP {xp}</p>
+                <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden lg:block">
                   {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
                 </p>
               </div>
@@ -2720,7 +2721,7 @@ export default function MainHubRealtime({
           ) : null}
 
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-            <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-2 sm:p-4 md:p-8 lg:p-12 gap-3 lg:gap-4 xl:gap-2 overflow-y-auto overflow-x-hidden lg:justify-center">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-2 sm:p-3 md:p-6 lg:p-10 gap-2 sm:gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden lg:justify-center">
           <div className="hub-panel relative flex-1 min-h-0 min-w-0 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -3385,7 +3386,9 @@ export default function MainHubRealtime({
             </div>
           </div>
 
-          <CorporateFooter className="mt-auto shrink-0" />
+          <CorporateFooter
+            className={`mt-auto shrink-0 ${isHubGameTab(activeTab) ? 'hidden md:block' : ''}`}
+          />
         </div>
 
         <ProfilePopup

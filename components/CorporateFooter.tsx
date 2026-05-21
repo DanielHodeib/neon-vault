@@ -8,9 +8,9 @@ export default function CorporateFooter({ className = '' }: { className?: string
   const copyrightYear = process.env.NEXT_PUBLIC_COPYRIGHT_YEAR || currentYear;
 
   return (
-    <footer className={`w-full bg-slate-950 border-t border-slate-800/40 py-2 px-4 ${className}`.trim()}>
+    <footer className={`w-full bg-slate-950 border-t border-slate-800/40 py-1.5 px-3 sm:py-2 sm:px-4 ${className}`.trim()}>
       <div className="mx-auto max-w-full">
-        <div className="flex flex-col gap-1 text-[10px] leading-tight text-slate-600 md:flex-row md:items-center md:justify-between md:gap-3">
+        <div className="flex flex-col gap-1 text-[9px] leading-tight text-slate-600 sm:text-[10px] md:flex-row md:items-center md:justify-between md:gap-3">
           <div className="min-w-0 md:flex-1">
             <p className="truncate text-[10px] font-semibold text-slate-400">© {copyrightYear} {companyName}</p>
             <p className="truncate text-[10px] text-slate-700">

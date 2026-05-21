@@ -12,7 +12,7 @@ tailscale up
 Start everything (web + game server + public URL):
 
 ```bash
-npm run tunnel:dev
+npm run tunnel
 ```
 
 Get current URL any time:

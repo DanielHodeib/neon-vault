@@ -13,9 +13,13 @@
     "restart:all": "sh -c 'web=$(lsof -ti tcp:3000 2>/dev/null || true); game=$(lsof -ti tcp:5000 2>/dev/null || true); [ -n \"$web\" ] && kill -9 $web || true; [ -n \"$game\" ] && kill -9 $game || true; npm run dev:all'",
     "build": "prisma generate && next build",
     "start": "next start",
-    "tunnel": "sh ./tunnel-tailscale.sh",
-    "tunnel:stop": "sh ./tunnel-tailscale-stop.sh",
-    "tunnel:url": "sh ./tunnel-url.sh"
+    "tunnel": "sh ./scripts/tunnel/tunnel-tailscale.sh",
+    "tunnel:stop": "sh ./scripts/tunnel/tunnel-tailscale-stop.sh",
+    "tunnel:url": "sh ./scripts/tunnel/tunnel-url.sh",
+    "deploy:up": "docker compose -f docker-compose.deploy.yml up -d --build",
+    "deploy:down": "docker compose -f docker-compose.deploy.yml down",
+    "deploy:logs": "docker compose -f docker-compose.deploy.yml logs -f app game-server",
+    "deploy:aws": "sh ./scripts/docker-deploy.sh"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

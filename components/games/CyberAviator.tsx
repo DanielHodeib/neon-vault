@@ -136,7 +136,7 @@ export default function CyberAviator() {
 
   return (
     <div className="h-full min-h-0 flex flex-col bg-slate-950 overflow-hidden">
-      <div className="relative h-[35vh] max-h-[600px] shrink-0 border-b border-slate-800 overflow-hidden md:h-[50vh]">
+      <div className="relative h-[min(32vh,260px)] shrink-0 border-b border-slate-800 overflow-hidden sm:h-[38vh] md:h-[50vh] md:max-h-[600px]">
         <motion.div
           className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(56,189,248,0.15),_rgba(2,6,23,1)_68%)]"
           animate={{ opacity: phase === 'crashed' ? [1, 0.85, 1] : 1 }}
@@ -199,13 +199,13 @@ export default function CyberAviator() {
         </div>
 
         <motion.div
-          className="absolute z-30"
+          className="absolute z-20 max-sm:!left-auto max-sm:!top-auto max-sm:right-4 max-sm:bottom-[5.75rem] sm:z-30"
           style={{ left: `${planeX}%`, top: `${planeY}%` }}
           animate={phase === 'running' ? { x: [-2, 2, -1, 1, 0], y: [-1, 1, -2, 1, 0], rotate: [-1, 1, -1, 1, 0] } : { x: 0, y: 0, rotate: phase === 'crashed' ? -18 : 0 }}
           transition={phase === 'running' ? { duration: 0.45, repeat: Infinity, ease: 'easeInOut' } : { duration: 0.25 }}
         >
           <motion.div
-            className={`relative h-14 w-24 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
+            className={`relative h-10 w-16 sm:h-14 sm:w-24 ${phase === 'crashed' ? 'text-rose-300' : 'text-cyan-300'}`}
             animate={phase === 'crashed' ? { filter: ['drop-shadow(0 0 8px rgba(251,113,133,0.75))', 'drop-shadow(0 0 24px rgba(251,113,133,1))', 'drop-shadow(0 0 8px rgba(251,113,133,0.75))'] } : { filter: 'drop-shadow(0 0 14px rgba(34,211,238,0.8))' }}
             transition={{ duration: 0.5 }}
           >
@@ -252,29 +252,29 @@ export default function CyberAviator() {
           ) : null}
         </AnimatePresence>
 
-        <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-slate-800 bg-slate-950/80 backdrop-blur p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs uppercase tracking-wide">
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+        <div className="absolute bottom-0 left-0 right-0 z-20 border-t border-slate-800 bg-slate-950/90 backdrop-blur p-2 sm:p-4">
+          <div className="grid grid-cols-2 gap-2 text-[10px] uppercase tracking-wide sm:gap-3 md:grid-cols-4">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 sm:px-3 sm:py-2">
               <p className="text-slate-500">Multiplier</p>
-              <p className="font-mono text-cyan-300 text-lg normal-case">{multiplier.toFixed(2)}x</p>
+              <p className="font-mono text-sm text-cyan-300 normal-case sm:text-lg">{multiplier.toFixed(2)}x</p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 sm:px-3 sm:py-2">
               <p className="text-slate-500">Altitude</p>
-              <p className="font-mono text-cyan-300 text-lg normal-case">{altitudeMeters}m</p>
+              <p className="font-mono text-sm text-cyan-300 normal-case sm:text-lg">{altitudeMeters}m</p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
-              <p className="text-slate-500">Current Speed</p>
-              <p className="font-mono text-cyan-300 text-lg normal-case">{speedMach}x Mach</p>
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 sm:px-3 sm:py-2">
+              <p className="text-slate-500">Speed</p>
+              <p className="font-mono text-sm text-cyan-300 normal-case sm:text-lg">{speedMach}x</p>
             </div>
-            <div className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 px-2 py-1.5 sm:px-3 sm:py-2">
               <p className="text-slate-500">Potential</p>
-              <p className="font-mono text-emerald-300 text-lg normal-case">{potential.toFixed(2)} NVC</p>
+              <p className="font-mono text-sm text-emerald-300 normal-case sm:text-lg">{potential.toFixed(2)}</p>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="shrink-0 p-4 bg-slate-900 border-t border-slate-800">
+      <div className="shrink-0 p-3 sm:p-4 bg-slate-900 border-t border-slate-800">
         <div className="mt-4 flex w-full flex-col items-center gap-3 md:flex-row">
           <input
             type="number"
