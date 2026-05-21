@@ -20,6 +20,9 @@ WORKDIR /app
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 
+# HÄRTUNG: Erstelle leeren public-Ordner, falls er im Git gefehlt hat
+RUN mkdir -p public
+
 # Environment-Variablen für den Next.js Build
 ARG NEXT_PUBLIC_API_URL=/api
 ARG NEXT_PUBLIC_SOCKET_URL=
@@ -46,12 +49,14 @@ ENV NODE_ENV=production
 # System-Tools installieren
 RUN apk add --no-cache dumb-init curl
 
-# WICHTIG: Next.js generiert im Standalone-Modus einen autarken "server.js" Ordner,
-# der die benötigten node_modules bereits im .next-Ordner integriert hat!
+# WICHTIG: Next.js generiert im Standalone-Modus einen autarken "server.js" Ordner
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+
+# HÄRTUNG: Ordner erstellen und nur kopieren, wenn er im Builder existiert
+RUN mkdir -p ./public
+COPY --from=builder /app/public ./public
 
 # Startup-Skript kopieren
 COPY scripts/docker-entrypoint.sh ./docker-entrypoint.sh
