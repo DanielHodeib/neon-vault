@@ -7,6 +7,8 @@ const HOST = process.env.HOST || '0.0.0.0';
 const PORT = Number(process.env.PORT || 5000);
 const CORS_ORIGIN = process.env.CORS_ORIGIN || process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
+const PRODUCTION_APP_ORIGIN = 'https://daniel-hodeib-vault.chickenkiller.com';
+const AWS_FRONTEND_ORIGIN = 'http://63.179.106.186:3000';
 const CLIENT_ORIGINS = (process.env.CLIENT_ORIGINS || '')
   .split(',')
   .map((item) => item.trim())
@@ -18,6 +20,8 @@ const BLACKJACK_ROOM_PREFIX = 'blackjack:';
 const ROULETTE_ROOM_PREFIX = 'roulette:';
 const COINFLIP_ROOM_ID = 'coinflip:global';
 const CRASH_ROUND_WAIT_MS = 4000;
+const CRASH_COUNTDOWN_MS = 10000;
+const CRASH_COUNTDOWN_BROADCAST_MS = 100;
 const CRASH_ROUND_CRASHED_MS = 1500;
 const CRASH_TICK_MS = 75;
 const CRASH_BROADCAST_MS = 120;
@@ -53,6 +57,8 @@ const app = express();
 const allowedOrigins = new Set([
   CORS_ORIGIN,
   CLIENT_ORIGIN,
+  PRODUCTION_APP_ORIGIN,
+  AWS_FRONTEND_ORIGIN,
   ...CLIENT_ORIGINS,
   ...(VERCEL_FRONTEND_ORIGIN ? [VERCEL_FRONTEND_ORIGIN] : []),
   'http://localhost:3000',
@@ -87,6 +93,7 @@ app.use(cors({
   origin(origin, callback) {
     callback(null, isAllowedOrigin(origin));
   },
+  methods: ['GET', 'POST'],
   credentials: true,
 }));
 app.use(express.json());
@@ -94,6 +101,8 @@ app.use(express.json());
 const server = http.createServer(app);
 const io = new Server(server, {
   path: '/socket.io',
+  allowEIO3: true,
+  transports: ['websocket', 'polling'],
   cors: {
     origin(origin, callback) {
       callback(null, isAllowedOrigin(origin));
@@ -880,6 +889,7 @@ function getCrashRoom(roomId) {
     sockets: new Set(),
     roundStartAt: 0,
     lastTickBroadcastAt: 0,
+    lastCountdownBroadcastAt: 0,
   };
 
   crashRooms.set(id, room);
@@ -2286,7 +2296,7 @@ function startPokerRound(roomId) {
 
 function startCrashRound(roomId) {
   const room = getCrashRoom(roomId);
-  if (room.phase !== 'waiting') {
+  if (room.phase !== 'countdown') {
     return;
   }
 
@@ -2301,6 +2311,7 @@ function startCrashRound(roomId) {
   room.crashPoint = generateCrashPoint();
   room.roundStartAt = 0;
   room.lastTickBroadcastAt = 0;
+  room.lastCountdownBroadcastAt = 0;
 
   emitToCrashRoom(room.id, 'crash_round_started', {
     roomId: room.id,
@@ -2349,6 +2360,7 @@ function crashRoundNow(roomId) {
     room.roundId += 1;
     room.resolvingCrash = false;
     room.roundStartAt = 0;
+    room.lastCountdownBroadcastAt = 0;
     room.crashResetTimer = null;
     broadcastCrashState(room.id);
     io.to(roomChannel(room.id)).emit('crash_players', publicCrashPlayers(room));
@@ -2367,8 +2379,10 @@ function detachSocketFromRoom(socket, roomId) {
 
   room.sockets.delete(socket.id);
   room.players.delete(socket.id);
-  if (room.phase === 'waiting' && getActiveCrashBetCount(room) === 0) {
+  if ((room.phase === 'waiting' || room.phase === 'countdown') && getActiveCrashBetCount(room) === 0) {
+    room.phase = 'waiting';
     room.roundStartAt = 0;
+    room.lastCountdownBroadcastAt = 0;
   }
   socket.leave(roomChannel(roomId));
   io.to(roomChannel(roomId)).emit('crash_players', publicCrashPlayers(room));
@@ -2872,12 +2886,45 @@ const crashEngineInterval = setInterval(() => {
       }
 
       if (!room.roundStartAt) {
-        room.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+        room.phase = 'countdown';
+        room.roundStartAt = Date.now() + CRASH_COUNTDOWN_MS;
+        room.lastCountdownBroadcastAt = 0;
         broadcastCrashState(room.id);
         return;
       }
 
-      if (Date.now() >= room.roundStartAt) {
+      return;
+    }
+
+    if (room.phase === 'countdown') {
+      const activeBetCount = getActiveCrashBetCount(room);
+      if (activeBetCount === 0) {
+        room.phase = 'waiting';
+        room.roundStartAt = 0;
+        room.lastCountdownBroadcastAt = 0;
+        broadcastCrashState(room.id);
+        return;
+      }
+
+      if (!room.roundStartAt) {
+        room.roundStartAt = Date.now() + CRASH_COUNTDOWN_MS;
+        room.lastCountdownBroadcastAt = 0;
+        broadcastCrashState(room.id);
+      }
+
+      const now = Date.now();
+      const timeLeftMs = Math.max(0, room.roundStartAt - now);
+
+      if (now - Number(room.lastCountdownBroadcastAt || 0) >= CRASH_COUNTDOWN_BROADCAST_MS) {
+        room.lastCountdownBroadcastAt = now;
+        emitToCrashRoom(room.id, 'crash_countdown_tick', {
+          roomId: room.id,
+          roundId: room.roundId,
+          timeLeft: Number((timeLeftMs / 1000).toFixed(1)),
+        });
+      }
+
+      if (timeLeftMs <= 0) {
         startCrashRound(room.id);
       }
       return;
@@ -4705,8 +4752,8 @@ io.on('connection', (socket) => {
       return;
     }
 
-    if (roomState.phase !== 'waiting' || roomState.resolvingCrash) {
-      console.warn(`[crash_place_bet] rejected not waiting user=${username} room=${roomId} phase=${roomState.phase}`);
+    if (!['waiting', 'countdown'].includes(roomState.phase) || roomState.resolvingCrash) {
+      console.warn(`[crash_place_bet] rejected not bettable user=${username} room=${roomId} phase=${roomState.phase}`);
       callback?.({ ok: false, error: 'Round already running.' });
       return;
     }
@@ -4773,7 +4820,9 @@ io.on('connection', (socket) => {
     emitToCrashRoom(roomState.id, 'crash_players', publicCrashPlayers(roomState));
 
     if (roomState.phase === 'waiting' && !roomState.roundStartAt) {
-      roomState.roundStartAt = Date.now() + CRASH_ROUND_WAIT_MS;
+      roomState.phase = 'countdown';
+      roomState.roundStartAt = Date.now() + CRASH_COUNTDOWN_MS;
+      roomState.lastCountdownBroadcastAt = 0;
       broadcastCrashState(roomState.id);
     }
 
@@ -4784,7 +4833,7 @@ io.on('connection', (socket) => {
     const roomId = socket.data.crashRoomId || GLOBAL_CRASH_ROOM_ID;
     const roomState = getCrashRoom(roomId);
 
-    if (roomState.phase !== 'waiting') {
+    if (!['waiting', 'countdown'].includes(roomState.phase)) {
       callback?.({ ok: false, error: 'Cannot cancel after round start.' });
       return;
     }
@@ -4800,8 +4849,10 @@ io.on('connection', (socket) => {
     }
     console.warn(`[crash_cancel_bet] user=${username} room=${roomId} canceled=${hadBet}`);
 
-    if (roomState.phase === 'waiting' && getActiveCrashBetCount(roomState) === 0) {
+    if ((roomState.phase === 'waiting' || roomState.phase === 'countdown') && getActiveCrashBetCount(roomState) === 0) {
+      roomState.phase = 'waiting';
       roomState.roundStartAt = 0;
+      roomState.lastCountdownBroadcastAt = 0;
       broadcastCrashState(roomState.id);
     }
 

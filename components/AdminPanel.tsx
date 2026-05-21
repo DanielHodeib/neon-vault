@@ -303,7 +303,8 @@ export default function AdminPanel() {
     if (permissions.moderationLogs) {
       tabs.push({ key: 'logs', label: 'Game Logs' });
     }
-    if (permissions.canManageRoles) {
+    // Only the founder can see/manage roles in the UI
+    if (permissions.canManageRoles && currentUsername === FOUNDER_USERNAME) {
       tabs.push({ key: 'roles', label: 'Roles' });
     }
     if (permissions.systemFinance) {
@@ -1166,11 +1167,11 @@ export default function AdminPanel() {
                 const isFounderTarget = user.username === FOUNDER_USERNAME;
                 const isOwnerTarget = userRole === 'OWNER';
                 const canEditRole =
-                  permissions.canManageRoles &&
+                  // Only founder may edit roles in the UI (server enforces this too)
+                  isFounderViewer &&
                   user.id !== currentUserId &&
-                  !(!isFounderViewer && isFounderTarget) &&
-                  !(!isFounderViewer && isOwnerTarget) &&
-                  !(currentRole === 'ADMIN' && roleLabel === 'OWNER');
+                  !isFounderTarget &&
+                  !isOwnerTarget;
                 return (
                   <div key={user.id} className="px-3 py-3 grid gap-3">
                     <button

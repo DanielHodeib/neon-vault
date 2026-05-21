@@ -1,0 +1,74 @@
+# ============================================================================
+# STAGE 1: Dependencies (Sowohl Prod als auch Dev für den Build-Prozess)
+# ============================================================================
+FROM node:20-alpine AS dependencies
+WORKDIR /app
+
+# Kopiere NUR die Paketdateien für perfektes Caching
+COPY package*.json ./
+
+# Installiert alle Dependencies (wird NUR neu ausgeführt, wenn sich package.json ändert!)
+RUN npm ci && npm cache clean --force
+
+# ============================================================================
+# STAGE 2: Build Stage
+# ============================================================================
+FROM node:20-alpine AS builder
+WORKDIR /app
+
+# Hole die installierten node_modules aus Stage 1
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY . .
+
+# HÄRTUNG: Erstelle leeren public-Ordner, falls er im Git gefehlt hat
+RUN mkdir -p public
+
+# Environment-Variablen für den Next.js Build
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_SOCKET_URL=
+ARG NODE_ENV=production
+
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_SOCKET_URL=$NEXT_PUBLIC_SOCKET_URL
+ENV NODE_ENV=$NODE_ENV
+
+# Prisma Client generieren
+RUN npx prisma generate
+
+# Next.js App builden
+RUN npm run build
+
+# ============================================================================
+# STAGE 3: Runtime (Ultra-schlank dank Standalone-Output)
+# ============================================================================
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# System-Tools installieren
+RUN apk add --no-cache dumb-init curl
+
+# Prisma CLI in Version 6 fest pinnen, damit das Entrypoint-Skript kein Prisma 7 nachlädt
+RUN npm install -g prisma@6
+
+# WICHTIG: Next.js generiert im Standalone-Modus einen autarken "server.js" Ordner
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/prisma ./prisma
+
+# HÄRTUNG: Ordner erstellen und nur kopieren, wenn er im Builder existiert
+RUN mkdir -p ./public
+COPY --from=builder /app/public ./public
+
+# Startup-Skript kopieren
+COPY scripts/docker-entrypoint.sh ./docker-entrypoint.sh
+RUN chmod +x ./docker-entrypoint.sh
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/api/public/health || exit 1
+
+ENTRYPOINT ["dumb-init", "--"]
+CMD ["./docker-entrypoint.sh"]

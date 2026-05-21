@@ -27,7 +27,8 @@ export default async function ProfilePage() {
 
   if (!user) redirect('/login');
 
-  const rank = getRankInfo(user.xp, user.balance);
+  const balance = user.balance.toString();
+  const rank = getRankInfo(user.xp, user.balance.toNumber());
   const level = rank.level;
   const rankColor = rank.color;
   const rankTag = rank.tag;
@@ -113,7 +114,7 @@ export default async function ProfilePage() {
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">Realtime Balance</p>
-              <ProfileRealtimeBalance initialBalance={user.balance} />
+              <ProfileRealtimeBalance initialBalance={balance} />
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
               <p className="text-xs uppercase tracking-wide text-slate-500">XP</p>

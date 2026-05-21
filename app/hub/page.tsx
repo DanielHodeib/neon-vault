@@ -58,7 +58,7 @@ export default async function HubPage({
   }
 
   return (
-    <main>
+    <main className="h-dvh overflow-hidden">
       <MainHub initialUsername={session.user.name ?? ''} initialTab={selectedTab} />
     </main>
   );

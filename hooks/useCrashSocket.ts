@@ -51,24 +51,22 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:5000';
   }
 
-  if (fromEnv === 'same-origin') {
-    return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
+  if (fromEnv === 'same-origin' || !fromEnv) {
     return window.location.origin;
   }
 
   try {
-    return new URL(fromEnv).toString().replace(/\/$/, '');
+    const parsed = new URL(fromEnv);
+    const appHost = window.location.hostname;
+
+    if ((parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') && appHost !== 'localhost' && appHost !== '127.0.0.1') {
+      parsed.hostname = appHost;
+      return parsed.toString().replace(/\/$/, '');
+    }
+
+    return parsed.toString().replace(/\/$/, '');
   } catch {
-    return window.location.origin;
+    return fromEnv;
   }
 }
 
@@ -100,6 +98,14 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
   const [error, setError] = useState('');
 
   const socketRef = useRef<Socket | null>(null);
+  const pendingAckTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingAckTimeout = useCallback(() => {
+    if (pendingAckTimeoutRef.current !== null) {
+      window.clearTimeout(pendingAckTimeoutRef.current);
+      pendingAckTimeoutRef.current = null;
+    }
+  }, []);
 
   const normalizedUsername = useMemo(() => String(username ?? '').trim() || 'Guest', [username]);
   const myPlayer = useMemo(
@@ -113,7 +119,9 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
     const forcePolling = shouldForcePolling(socketUrl);
     const socket = io(socketUrl, {
       path: '/socket.io',
-      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
       upgrade: !forcePolling,
       query: {
         username: normalizedUsername,
@@ -184,10 +192,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
     });
 
     return () => {
+      clearPendingAckTimeout();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [defaultRoomId, normalizedUsername]);
+  }, [clearPendingAckTimeout, defaultRoomId, normalizedUsername]);
 
   const placeBet = useCallback(
     (amount: number, autoCashOut: number = 0) =>
@@ -199,9 +208,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         }
 
         let settled = false;
-        const timeout = window.setTimeout(() => {
+        clearPendingAckTimeout();
+        pendingAckTimeoutRef.current = window.setTimeout(() => {
           if (settled) return;
           settled = true;
+          pendingAckTimeoutRef.current = null;
           setError('Bet sync timeout. Please try again.');
           resolve({ ok: false, error: 'Bet sync timeout.' });
         }, ACK_TIMEOUT_MS);
@@ -209,7 +220,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         socket.emit('crash_place_bet', { roomId, amount, autoCashOut }, (response: { ok: boolean; error?: string }) => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(timeout);
+          clearPendingAckTimeout();
           if (!response.ok) {
             setError(response.error ?? 'Bet rejected.');
           } else {
@@ -218,7 +229,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
           resolve(response);
         });
       }),
-    [roomId]
+    [clearPendingAckTimeout, roomId]
   );
 
   const cashOut = useCallback(
@@ -231,9 +242,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         }
 
         let settled = false;
-        const timeout = window.setTimeout(() => {
+        clearPendingAckTimeout();
+        pendingAckTimeoutRef.current = window.setTimeout(() => {
           if (settled) return;
           settled = true;
+          pendingAckTimeoutRef.current = null;
           setError('Cashout sync timeout. Please try again.');
           resolve({ ok: false, error: 'Cashout sync timeout.' });
         }, ACK_TIMEOUT_MS);
@@ -241,7 +254,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         socket.emit('crash_cashout', {}, (response: { ok: boolean; error?: string }) => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(timeout);
+          clearPendingAckTimeout();
           if (!response.ok) {
             setError(response.error ?? 'Cashout failed.');
           } else {
@@ -250,7 +263,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
           resolve(response);
         });
       }),
-    []
+    [clearPendingAckTimeout]
   );
 
   const joinRoom = useCallback((nextRoomId: string) => {

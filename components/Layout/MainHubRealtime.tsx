@@ -50,6 +50,7 @@ import QuestsPanel from '@/components/QuestsPanel';
 import AnnouncementOverlay from '@/components/AnnouncementOverlay';
 import GlobalEventBanner from '@/components/GlobalEventBanner';
 import CorporateFooter from '@/components/CorporateFooter';
+import { isHubGameTab } from '@/lib/gameTabs';
 import NotificationCenter from '@/components/NotificationCenter';
 import { copyToClipboard } from '@/lib/copyToClipboard';
 import { formatCompactNumber, formatMoney, formatUserBalance } from '@/lib/formatMoney';
@@ -251,17 +252,7 @@ function getSocketUrl() {
     return fromEnv ?? 'http://localhost:5000';
   }
 
-  if (fromEnv === 'same-origin') {
-    return window.location.origin;
-  }
-
-  if (!fromEnv) {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
+  if (fromEnv === 'same-origin' || !fromEnv) {
     return window.location.origin;
   }
 
@@ -276,13 +267,7 @@ function getSocketUrl() {
 
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    const host = window.location.hostname;
-    const isLocalHost = host === 'localhost' || host === '127.0.0.1';
-    const isPrivateIp = /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host);
-    if (isLocalHost || isPrivateIp) {
-      return `${window.location.protocol}//${window.location.hostname}:5000`;
-    }
-    return window.location.origin;
+    return fromEnv;
   }
 }
 
@@ -1057,7 +1042,9 @@ export default function MainHubRealtime({
     const forcePolling = shouldForcePolling(socketUrl);
     const socket: Socket = io(socketUrl, {
       path: '/socket.io',
-      transports: forcePolling ? ['polling'] : ['websocket', 'polling'],
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+      secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
       upgrade: !forcePolling,
       query: { 
         userId: currentUserId,
@@ -1546,6 +1533,10 @@ export default function MainHubRealtime({
       socket.off('crash_cashout_result', cashoutHandler);
       socket.disconnect();
       socketRef.current = null;
+      if (crashBetAckTimeoutRef.current !== null) {
+        window.clearTimeout(crashBetAckTimeoutRef.current);
+        crashBetAckTimeoutRef.current = null;
+      }
       if (announcementTimeoutRef.current !== null) {
         window.clearTimeout(announcementTimeoutRef.current);
         announcementTimeoutRef.current = null;
@@ -1567,6 +1558,7 @@ export default function MainHubRealtime({
     refundCommittedCrashBet,
     setAnnouncement,
     syncBalanceFromServer,
+    isKing,
   ]);
 
   useEffect(() => {
@@ -2646,8 +2638,8 @@ export default function MainHubRealtime({
                     </span>
                   ) : null}
                 </div>
-                <p className="font-mono text-[10px] text-slate-400 whitespace-nowrap">Level {level} · XP {xp}</p>
-                <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden xl:block">
+                <p className="font-mono text-[10px] text-slate-400 whitespace-nowrap hidden sm:block">Level {level} · XP {xp}</p>
+                <p className="font-mono text-[10px] text-slate-500 whitespace-nowrap hidden lg:block">
                   {levelProgress}% to L{level + 1} ({nextLevelXp - xp} XP left)
                 </p>
               </div>
@@ -2729,7 +2721,7 @@ export default function MainHubRealtime({
           ) : null}
 
           <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
-            <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-2 sm:p-4 md:p-8 lg:p-12 gap-3 lg:gap-4 xl:gap-2 overflow-y-auto overflow-x-hidden lg:justify-center">
+            <div className="flex-1 min-h-0 min-w-0 flex flex-col xl:flex-row p-2 sm:p-3 md:p-6 lg:p-10 gap-2 sm:gap-3 lg:gap-4 overflow-y-auto overflow-x-hidden lg:justify-center">
           <div className="hub-panel relative flex-1 min-h-0 min-w-0 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
             {activeTab === 'crash' && (
               <div className="flex-1 min-h-0 min-w-0 overflow-y-auto">
@@ -3394,7 +3386,9 @@ export default function MainHubRealtime({
             </div>
           </div>
 
-          <CorporateFooter className="mt-auto shrink-0" />
+          <CorporateFooter
+            className={`mt-auto shrink-0 ${isHubGameTab(activeTab) ? 'hidden md:block' : ''}`}
+          />
         </div>
 
         <ProfilePopup

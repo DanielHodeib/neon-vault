@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  previewFeatures = ["driverAdapters"] 
 }
 
 datasource db {
@@ -62,7 +63,7 @@ model User {
   bannerUrl           String?      @map("banner_url")
   bio                 String?      @map("bio")
   chatColor           String?      @map("chat_color")
-  balance             String       @default("10000.00")
+  balance             Decimal      @default(0)
   xp                  Int          @default(0)
   dailyStatsDate      String       @default("") @map("daily_stats_date")
   dailyBets           Int          @default(0) @map("daily_bets")
@@ -188,7 +189,7 @@ model Transaction {
   id         String   @id @default(cuid())
   senderId   String   @map("sender_id")
   receiverId String   @map("receiver_id")
-  amount     String
+  amount     Decimal
   message    String   @default("")
   createdAt  DateTime @default(now())
 

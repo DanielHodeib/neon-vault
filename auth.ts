@@ -8,7 +8,7 @@ function isBanExpired(date: Date | null) {
   return Boolean(date) && Number(date?.getTime()) <= Date.now();
 }
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth } = NextAuth({
   session: { strategy: 'jwt' },
   trustHost: true,
   providers: [

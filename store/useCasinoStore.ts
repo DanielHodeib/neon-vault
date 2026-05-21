@@ -1,7 +1,5 @@
 import { create } from 'zustand';
 
-export type VipRank = 'Bronze' | 'Silver' | 'Gold' | 'Neon';
-
 const COMPACT_BALANCE_STORAGE_KEY = 'nvc_use_compact_balance';
 
 function normalizeCurrency(value: number | string): string {
@@ -20,6 +18,14 @@ function parseBalanceValue(value: unknown): string | null {
 
   if (typeof value === 'string') {
     const numeric = Number(value);
+    if (Number.isFinite(numeric)) {
+      return normalizeCurrency(numeric);
+    }
+  }
+
+  if (typeof value === 'object' && value && 'toString' in (value as any)) {
+    const s = String((value as any).toString());
+    const numeric = Number(s);
     if (Number.isFinite(numeric)) {
       return normalizeCurrency(numeric);
     }

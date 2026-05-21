@@ -1,28 +1,115 @@
+# ============================================================================
+# Production Docker Compose Configuration for Neon Vault Casino
+# ============================================================================
+version: '3.9'
+
 services:
+  # ========================================================================
+  # Next.js Frontend / API Application
+  # ========================================================================
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.production
+      args:
+        NEXT_PUBLIC_API_URL: https://daniel-hodeib-vault.chickenkiller.com/api
+        NEXT_PUBLIC_SOCKET_URL: wss://daniel-hodeib-vault.chickenkiller.com
+        NODE_ENV: production
+    container_name: neon-vault-app
+    image: neon-vault:latest
+    
     env_file:
       - .env.production
+    
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=file:./prisma/dev.db
+      - NEXT_PUBLIC_API_URL=https://daniel-hodeib-vault.chickenkiller.com/api
+      - NEXT_PUBLIC_SOCKET_URL=wss://daniel-hodeib-vault.chickenkiller.com
+      - GAME_SERVER_INTERNAL_URL=http://game-server:5000
+    
+    restart: unless-stopped
+    
     ports:
       - "3000:3000"
-    depends_on:
-      - game-server
-    restart: unless-stopped
-    command: sh -c "npx prisma migrate deploy && npm run start -- -H 0.0.0.0 -p 3000"
+      - "5555:5555"
+    
     volumes:
-      - prisma_data:/app/prisma
+      - db_data:/app/prisma
+      - app_logs:/app/.next
+    
+    depends_on:
+      game-server:
+        condition: service_healthy
+    
+    networks:
+      - neon-network
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '1'
+          memory: 512M
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # ========================================================================
+  # Game Server (Node.js + Socket.io)
+  # ========================================================================
   game-server:
     build:
       context: ./game-server
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.production
+    container_name: neon-vault-game-server
+    image: neon-vault-game-server:latest
+    
     env_file:
       - ./game-server/.env.production
+    
+    environment:
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=5000
+      - CORS_ORIGIN=https://daniel-hodeib-vault.chickenkiller.com
+    
+    restart: unless-stopped
+    
     ports:
       - "5000:5000"
-    restart: unless-stopped
+    
+    networks:
+      - neon-network
+    
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
-  prisma_data:
+  db_data:
+    driver: local
+  app_logs:
+    driver: local
+
+networks:
+  neon-network:
+    driver: bridge

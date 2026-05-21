@@ -9,8 +9,14 @@ const MIN_PASSWORD_LEN = 8;
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const username = typeof body?.username === 'string' ? body.username.trim() : '';
-    const password = typeof body?.password === 'string' ? body.password : '';
+    console.log('Payload:', body);
+
+    const sanitizedPayload = {
+      username: typeof body?.username === 'string' ? body.username.trim() : '',
+      password: typeof body?.password === 'string' ? body.password : '',
+    };
+
+    const { username, password } = sanitizedPayload;
 
     if (username.length < MIN_USERNAME_LEN) {
       return NextResponse.json(
@@ -39,14 +45,8 @@ export async function POST(request: Request) {
 
     const user = await prisma.user.create({
       data: {
-        username,
+        username: sanitizedPayload.username,
         passwordHash,
-        settings: {
-          create: {
-            soundEnabled: true,
-            theme: 'slate',
-          },
-        },
       },
       select: {
         id: true,

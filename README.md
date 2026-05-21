@@ -1,146 +1,61 @@
 # Neon Vault
 
-Realtime casino app with auth, friends, and multiplayer rooms.
+Realtime casino app (Next.js + Socket.IO game server). **Production target: AWS EC2 with Docker.**
 
-## Local Development
+## Project layout
 
-Install dependencies:
+```
+neon-vault/
+├── app/                 # Next.js routes & API
+├── components/          # UI (hub, games, admin)
+├── game-server/         # Socket.IO backend
+├── hooks/               # Client hooks (e.g. crash socket)
+├── lib/                 # Shared server/client utilities
+├── prisma/              # Database schema
+├── public/              # Static assets (optional)
+├── scripts/             # Deploy, backup, optional dev tunnel
+├── docs/                # Deployment & hosting guides
+├── docker-compose.deploy.yml   # AWS / production stack
+└── Dockerfile.production       # App image for production
+```
+
+## AWS production (recommended)
+
+```bash
+cp .env.production.example .env.production
+# edit .env.production + game-server/.env.production
+
+npm run deploy:up
+npm run deploy:logs
+```
+
+See [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) and [docs/DOCKER_QUICK_START.md](./docs/DOCKER_QUICK_START.md).
+
+## Local development
 
 ```bash
 npm install
 cd game-server && npm install
-```
 
-Run app + socket server:
-
-```bash
 # terminal 1
 npm run dev
 
 # terminal 2
-npm run dev:game-server
+cd game-server && npm run dev
 ```
 
-## Play From Other Laptops (LAN)
+Or both at once: `npm run dev:all`
 
-1. Find your local IP:
+## Optional: Tailscale tunnel (dev only)
+
+Not required for AWS. See [docs/REMOTE_ACCESS.md](./docs/REMOTE_ACCESS.md).
 
 ```bash
-ipconfig getifaddr en0
+npm run tunnel
+npm run tunnel:url
+npm run tunnel:stop
 ```
 
-2. Update root `.env`:
+## Environment
 
-```env
-NEXTAUTH_URL="http://YOUR_IP:3000"
-NEXT_PUBLIC_SOCKET_URL="http://YOUR_IP:5000"
-```
-
-3. Start both services with LAN host binding:
-
-```bash
-# terminal 1
-npm run dev:lan
-
-# terminal 2
-npm run dev:game-server:lan
-```
-
-4. Open firewall for ports `3000` and `5000` if macOS prompts.
-
-5. Friends open `http://YOUR_IP:3000`, register/login, then join your room id (Crash/Poker/Blackjack).
-6. In Poker/Blackjack, friends only need the room id string (for example `bj-ab123`) in the room input, then click `Join Room`.
-
-## Multiplayer Notes
-
-- Crash: room join/create + live room member list.
-- Poker: `Solo + Bots` mode and `Friends Room` mode.
-- Blackjack: `Solo + Bots` mode and `Friends Room` mode with dealer/player table seats.
-
-## Production Deployment (Docker)
-
-This repository includes a full deployment setup for:
-
-- Next.js app (`3000`)
-- Socket game server (`5000`)
-- Persistent Prisma SQLite database volume
-
-### 1) Prepare env files
-
-Create production env files from templates:
-
-```bash
-cp .env.production.example .env.production
-cp game-server/.env.production.example game-server/.env.production
-```
-
-Edit `.env.production`:
-
-```env
-DATABASE_URL="file:/app/prisma/prod.db"
-NEXTAUTH_SECRET="your-long-random-secret"
-NEXTAUTH_URL="https://your-domain.com"
-NEXT_PUBLIC_SOCKET_URL="https://your-domain.com:5000"
-```
-
-Edit `game-server/.env.production`:
-
-```env
-HOST=0.0.0.0
-PORT=5000
-CLIENT_ORIGIN=https://your-domain.com
-CLIENT_ORIGINS=https://your-domain.com
-```
-
-### 2) Build and start
-
-```bash
-npm run deploy:up
-```
-
-### 3) Watch logs
-
-```bash
-npm run deploy:logs
-```
-
-### 4) Stop deployment
-
-```bash
-npm run deploy:down
-```
-
-### Notes
-
-- Open inbound ports `3000` and `5000` on your host/firewall.
-- For public internet deployment, place a reverse proxy in front (for HTTPS and domain routing).
-- Prisma data is persisted in the Docker volume `prisma_data`.
-
-## Vercel Deployment
-
-### Realtime architecture on Vercel
-
-Vercel does not keep long-lived Socket.IO servers inside Next.js serverless functions. Deploy the game server separately (Railway, Render, Fly.io, VPS, etc.) and point the app to it.
-
-### Environment variables
-
-Use `.env.example` as the base for local/prod values.
-
-Required on Vercel:
-
-```env
-NEXTAUTH_URL=https://your-vercel-domain.vercel.app
-NEXTAUTH_SECRET=your-long-random-secret
-DATABASE_URL=your-database-connection
-NEXT_PUBLIC_SOCKET_URL=https://your-game-server-domain.com
-GAME_SERVER_INTERNAL_URL=https://your-game-server-domain.com
-INTERNAL_API_TOKEN=shared-internal-token
-```
-
-### Build behavior
-
-The root build script runs Prisma generation before Next build:
-
-```bash
-npm run build
-```
+Use `.env.example` / `.env.production.example` as templates. On AWS, set `NEXTAUTH_URL` to your public domain and route Socket.IO through nginx or expose port `5000`.

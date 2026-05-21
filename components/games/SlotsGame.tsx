@@ -564,8 +564,8 @@ export default function SlotsGame() {
   };
 
   return (
-    <div className="flex-1 h-full bg-slate-900 min-h-0 p-4">
-      <div className="h-full min-h-0 rounded-xl border border-slate-800 bg-slate-950 p-4 md:p-5 grid grid-cols-1 lg:grid-cols-[1.45fr_0.55fr] gap-4 overflow-hidden">
+    <div className="flex-1 h-full min-h-0 overflow-y-auto overflow-x-hidden bg-slate-900 p-2 sm:p-4">
+      <div className="min-h-0 rounded-xl border border-slate-800 bg-slate-950 p-3 sm:p-5 flex flex-col gap-3 lg:grid lg:grid-cols-[1.45fr_0.55fr] lg:gap-4 lg:overflow-hidden">
           {/* Main Game Area */}
           <div className="min-h-0 flex flex-col">
             {/* Title & Mode Label */}
@@ -577,7 +577,7 @@ export default function SlotsGame() {
             {/* Mode Selector - Improved Layout */}
             <div className="mb-3 p-3 rounded-lg bg-slate-900 border border-slate-800">
               <p className="text-[11px] font-bold text-slate-500 uppercase mb-2 tracking-wide">Game Mode</p>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                 {(Object.keys(MODE_CONFIG) as SlotMode[]).map((slotMode) => (
                   <button
                     key={slotMode}
@@ -600,8 +600,8 @@ export default function SlotsGame() {
             </div>
 
             {/* Reel Display - MUCH LARGER */}
-            <div className="mb-3 flex flex-1 min-h-0 items-stretch justify-center rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-3 md:p-4">
-              <div className={`mx-auto grid h-full min-h-[220px] w-full max-w-sm items-stretch gap-2 md:min-h-[300px] md:max-w-2xl md:gap-6 ${config.reelCount === 3 ? 'grid-cols-3' : config.reelCount === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
+            <div className="mb-3 flex min-h-[180px] flex-1 items-stretch justify-center rounded-lg border-2 border-blue-600/30 bg-gradient-to-b from-slate-900 to-slate-950 p-2 sm:min-h-[220px] sm:p-3 md:p-4">
+              <div className={`mx-auto grid h-full w-full max-w-sm items-stretch gap-1.5 sm:gap-2 md:min-h-[300px] md:max-w-2xl md:gap-6 ${config.reelCount === 3 ? 'grid-cols-3' : config.reelCount === 4 ? 'grid-cols-4' : 'grid-cols-5'}`}>
                 {reels.map((symbol, i) => (
                   <motion.div
                     key={i}
@@ -684,9 +684,9 @@ export default function SlotsGame() {
             {errorMsg && <p className="text-sm font-semibold text-red-500 mb-2">{errorMsg}</p>}
           </div>
 
-          {/* Right Sidebar - Paytable */}
-          <div className="min-h-0 flex flex-col gap-3">
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
+          {/* Controls & paytable */}
+          <div className="flex min-h-0 flex-col gap-3">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 order-1 lg:order-none">
               <p className="text-[11px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Bet & Spin</p>
               <input
                 type="number"
@@ -760,7 +760,7 @@ export default function SlotsGame() {
               </div>
             </div>
 
-            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 flex-1 min-h-0">
+            <div className="rounded-lg border border-slate-800 bg-slate-900 p-3 max-h-[180px] overflow-y-auto sm:max-h-[240px] lg:max-h-none lg:flex-1 lg:min-h-0 order-3">
               <p className="text-[11px] font-bold text-slate-500 uppercase mb-2 tracking-widest">Paytable</p>
               <div className="space-y-1.5">
                 {paytable.map((line, idx) => (
