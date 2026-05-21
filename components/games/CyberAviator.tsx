@@ -101,20 +101,21 @@ export default function CyberAviator() {
     setIsPlacingBet(true);
     setLocalError('');
 
-    const debited = placeBet(betAmount);
-    if (!debited) {
+    try {
+      const debited = placeBet(betAmount);
+      if (!debited) {
+        setLocalError('Balance sync failed');
+        return;
+      }
+
+      const response = await sendPlaceBet(betAmount, 0);
+      if (!response.ok) {
+        addWin(betAmount);
+        setLocalError(response.error ?? 'Bet rejected');
+      }
+    } finally {
       setIsPlacingBet(false);
-      setLocalError('Balance sync failed');
-      return;
     }
-
-    const response = await sendPlaceBet(betAmount, 0);
-    if (!response.ok) {
-      addWin(betAmount);
-      setLocalError(response.error ?? 'Bet rejected');
-    }
-
-    setIsPlacingBet(false);
   };
 
   const handleCashOut = async () => {
@@ -123,11 +124,14 @@ export default function CyberAviator() {
     }
 
     setIsCashingOut(true);
-    const response = await cashOut();
-    if (!response.ok) {
-      setLocalError(response.error ?? 'Cashout failed');
+    try {
+      const response = await cashOut();
+      if (!response.ok) {
+        setLocalError(response.error ?? 'Cashout failed');
+      }
+    } finally {
+      setIsCashingOut(false);
     }
-    setIsCashingOut(false);
   };
 
   return (

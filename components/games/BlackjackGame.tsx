@@ -368,6 +368,7 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
 
   const socketRef = useRef<Socket | null>(null);
   const friendsRoomIdRef = useRef('global');
+  const soloErrorTimeoutRef = useRef<number | null>(null);
 
   const currentUsername = useMemo(() => normalizeIdentity(username), [username]);
   const currentUserId = useMemo(() => '', []);
@@ -500,8 +501,22 @@ export default function BlackjackGame({ username = 'You' }: { username?: string 
   }, [friendsRoundOverlay]);
 
   const clearSoloErrorSoon = () => {
-    window.setTimeout(() => setSoloError(''), 2200);
+    if (soloErrorTimeoutRef.current !== null) {
+      window.clearTimeout(soloErrorTimeoutRef.current);
+    }
+    soloErrorTimeoutRef.current = window.setTimeout(() => {
+      soloErrorTimeoutRef.current = null;
+      setSoloError('');
+    }, 2200);
   };
+
+  useEffect(() => {
+    return () => {
+      if (soloErrorTimeoutRef.current !== null) {
+        window.clearTimeout(soloErrorTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const resolveSoloRound = useCallback(async (seats: SoloSeat[], dealerCards: string[], deck: string[]) => {
     let nextDealer = [...dealerCards];

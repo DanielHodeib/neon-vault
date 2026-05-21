@@ -1,7 +1,18 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 
-import { auth } from '@/auth';
+import {
+  assertAdminManagementAccess,
+  canManageRoles,
+  canManageTarget,
+  canUseAdminPanelModeration,
+  canUseSystemFinance,
+  canUseUserManagement,
+  isValidUserRole,
+  normalizeRole,
+  type UserRole,
+} from '@/lib/adminAccess';
+import { getGameServerUrl, getInternalHeaders } from '@/lib/gameServerInternal';
 import { prisma } from '@/lib/prisma';
 import { isRankTag, type RankTag } from '@/lib/ranks';
 
@@ -17,52 +28,7 @@ type AdminQuickAction =
 
 type AdminAction = 'set-role' | 'edit-balance' | 'toggle-ban' | 'update-user' | 'set-password' | 'quick-action';
 
-type UserRole = 'OWNER' | 'ADMIN' | 'MODERATOR' | 'SUPPORT' | 'USER';
-
-const ROLE_SET = new Set<UserRole>(['OWNER', 'ADMIN', 'MODERATOR', 'SUPPORT', 'USER']);
-const ADMIN_PANEL_ROLES = new Set<UserRole>(['OWNER', 'ADMIN', 'MODERATOR']);
 const FOUNDER_USERNAME = 'Daniel';
-
-function normalizeRole(value: unknown): UserRole {
-  const role = typeof value === 'string' ? value.trim().toUpperCase() : 'USER';
-  return ROLE_SET.has(role as UserRole) ? (role as UserRole) : 'USER';
-}
-
-function canManageTarget(actorRole: UserRole, actorUserId: string, targetUserId: string, targetRole: UserRole) {
-  if (actorRole === 'OWNER') {
-    if (targetRole === 'OWNER') {
-      return false;
-    }
-    return true;
-  }
-
-  if (actorRole === 'ADMIN') {
-    if (targetRole === 'OWNER') {
-      return false;
-    }
-    return true;
-  }
-
-  if (actorRole === 'MODERATOR') {
-    if (targetRole === 'OWNER' || targetRole === 'ADMIN') {
-      return false;
-    }
-    if (targetUserId === actorUserId) {
-      return false;
-    }
-    return true;
-  }
-
-  return false;
-}
-
-function canManageRoles(actorRole: UserRole) {
-  return actorRole === 'OWNER' || actorRole === 'ADMIN';
-}
-
-function canUseSystemFinance(actorRole: UserRole) {
-  return actorRole === 'OWNER' || actorRole === 'ADMIN';
-}
 
 function balanceToNumber(balance: { toNumber(): number } | string | number | null | undefined) {
   if (balance && typeof balance === 'object' && 'toNumber' in balance) {
@@ -81,38 +47,6 @@ function balanceToString(balance: { toString(): string } | string | number | nul
   return String(balance ?? '0');
 }
 
-function canUseUserManagement(actorRole: UserRole) {
-  return actorRole === 'OWNER' || actorRole === 'ADMIN';
-}
-
-function canUseModeration(actorRole: UserRole) {
-  return actorRole === 'OWNER' || actorRole === 'ADMIN' || actorRole === 'MODERATOR';
-}
-
-function getGameServerUrl() {
-  const fromEnv =
-    process.env.GAME_SERVER_INTERNAL_URL ??
-    process.env.NEXT_PUBLIC_SOCKET_URL ??
-    process.env.NEXT_PUBLIC_GAME_SERVER_URL;
-  if (!fromEnv || fromEnv === 'same-origin') {
-    return 'http://localhost:5000';
-  }
-
-  try {
-    return new URL(fromEnv).toString().replace(/\/$/, '');
-  } catch {
-    return 'http://localhost:5000';
-  }
-}
-
-function getInternalHeaders() {
-  const token = (process.env.INTERNAL_API_TOKEN ?? '').trim();
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { 'x-internal-token': token } : {}),
-  };
-}
-
 async function notifyUserWalletRefresh(username: string) {
   const safeUsername = username.trim();
   if (!safeUsername) {
@@ -126,32 +60,6 @@ async function notifyUserWalletRefresh(username: string) {
     body: JSON.stringify({ username: safeUsername }),
     cache: 'no-store',
   }).catch(() => null);
-}
-
-async function assertAdminAccess() {
-  const session = await auth();
-  const userId = session?.user?.id;
-
-  if (!userId) {
-    return { ok: false as const, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
-  }
-
-  const actor = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { username: true, role: true },
-  });
-
-  const actorRole = normalizeRole(actor?.role);
-  if (!ADMIN_PANEL_ROLES.has(actorRole)) {
-    return { ok: false as const, response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) };
-  }
-
-  return {
-    ok: true as const,
-    adminUserId: userId,
-    actorRole,
-    actorUsername: String(actor?.username ?? '').trim(),
-  };
 }
 
 function enforceFounderRoleSecurity(input: {
@@ -182,12 +90,12 @@ function enforceFounderRoleSecurity(input: {
 }
 
 export async function GET(request: Request) {
-  const access = await assertAdminAccess();
+  const access = await assertAdminManagementAccess();
   if (!access.ok) {
     return access.response;
   }
 
-  if (!canUseModeration(access.actorRole)) {
+  if (!canUseAdminPanelModeration(access.actorRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -236,7 +144,7 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await assertAdminAccess();
+  const access = await assertAdminManagementAccess();
   if (!access.ok) {
     return access.response;
   }
@@ -282,7 +190,7 @@ export async function PATCH(request: Request) {
   const targetRole = normalizeRole(exists.role);
 
   if (action === 'toggle-ban') {
-    if (!canUseModeration(access.actorRole)) {
+    if (!canUseAdminPanelModeration(access.actorRole)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
   } else if (!canUseUserManagement(access.actorRole)) {
@@ -307,7 +215,7 @@ export async function PATCH(request: Request) {
     }
 
     const role = payload.role;
-    if (!role || !ROLE_SET.has(role)) {
+    if (!role || !isValidUserRole(role)) {
       return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
     }
 
@@ -391,7 +299,7 @@ export async function PATCH(request: Request) {
     }
 
     if (typeof payload.role === 'string') {
-      if (!ROLE_SET.has(payload.role)) {
+      if (!isValidUserRole(payload.role)) {
         return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
       }
 
@@ -607,7 +515,7 @@ export async function PATCH(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const access = await assertAdminAccess();
+  const access = await assertAdminManagementAccess();
   if (!access.ok) {
     return access.response;
   }

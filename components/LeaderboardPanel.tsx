@@ -83,12 +83,15 @@ export default function LeaderboardPanel() {
       secure: typeof window !== 'undefined' ? window.location.protocol === 'https:' : true,
     });
 
-    socket.on('leaderboard_refresh', () => {
+    const refreshHandler = () => {
       void fetchLeaderboard();
       void fetchDailyLeaderboard();
-    });
+    };
+
+    socket.on('leaderboard_refresh', refreshHandler);
 
     return () => {
+      socket.off('leaderboard_refresh', refreshHandler);
       socket.disconnect();
     };
   }, [fetchDailyLeaderboard, fetchLeaderboard]);
@@ -96,8 +99,8 @@ export default function LeaderboardPanel() {
   const topThree = useMemo(() => entries.slice(0, 3), [entries]);
 
   return (
-    <div className="h-full min-h-0 p-6 overflow-y-auto">
-      <h2 className="text-2xl font-bold text-slate-100">Leaderboard</h2>
+    <div className="h-full min-h-0 p-4 sm:p-6 overflow-y-auto overflow-x-hidden">
+      <h2 className="text-xl sm:text-2xl font-bold text-slate-100">Leaderboard</h2>
       <p className="mt-1 text-sm text-slate-400">Top 50 by balance (live).</p>
 
       <div className="mt-5 grid gap-3 md:grid-cols-3">
@@ -110,22 +113,25 @@ export default function LeaderboardPanel() {
         ))}
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 overflow-hidden">
+      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 overflow-x-auto">
+        <div className="min-w-[300px]">
         <div className="px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
           Daily High Score (Top 5)
         </div>
         {dailyEntries.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">No daily results yet.</p> : null}
         {dailyEntries.map((entry) => (
-          <div key={`${entry.username}-${entry.rank}`} className="grid grid-cols-[56px_1fr_140px] gap-2 px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
+          <div key={`${entry.username}-${entry.rank}`} className="grid grid-cols-[48px_minmax(0,1fr)_minmax(88px,auto)] gap-2 px-3 sm:px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
             <span className="text-slate-400">#{entry.rank}</span>
             <span className="text-slate-200 font-medium">{entry.isKing ? '👑 ' : ''}{entry.username}</span>
             <span className="font-mono text-emerald-300">{entry.netProfit}</span>
           </div>
         ))}
+        </div>
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 overflow-hidden">
-        <div className="grid grid-cols-[70px_1fr_150px_100px] gap-2 px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
+      <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 overflow-x-auto">
+        <div className="min-w-[340px]">
+        <div className="grid grid-cols-[56px_minmax(0,1fr)_minmax(96px,auto)_minmax(64px,auto)] gap-2 px-3 sm:px-4 py-2 text-[11px] uppercase tracking-wide text-slate-500 border-b border-slate-800">
           <span>Rank</span>
           <span>User</span>
           <span>Balance</span>
@@ -133,13 +139,14 @@ export default function LeaderboardPanel() {
         </div>
         {loading && entries.length === 0 ? <p className="px-4 py-3 text-sm text-slate-500">Loading...</p> : null}
         {entries.map((entry, index) => (
-          <div key={`${entry.username}-${index}`} className="grid grid-cols-[70px_1fr_150px_100px] gap-2 px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
+          <div key={`${entry.username}-${index}`} className="grid grid-cols-[56px_minmax(0,1fr)_minmax(96px,auto)_minmax(64px,auto)] gap-2 px-3 sm:px-4 py-2 text-sm border-b border-slate-800/50 last:border-b-0">
             <span className="text-slate-400">#{index + 1}</span>
             <span className="text-slate-200 font-medium">{entry.username}</span>
             <span className="font-mono text-cyan-300">{formatUserBalance(entry.balance, true)}</span>
             <span className="text-slate-400">{entry.xp}</span>
           </div>
         ))}
+        </div>
       </div>
     </div>
   );

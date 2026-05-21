@@ -75,6 +75,8 @@ export default function CrashGame() {
   const targetMultiplierRef = useRef(1);
   const renderedMultiplierRef = useRef(1);
   const crashedAtRef = useRef<number | null>(null);
+  const errorTimeoutRef = useRef<number | null>(null);
+  const phaseSoundTimeoutsRef = useRef<number[]>([]);
 
   // Memoized Values
   const effectiveUsername = useMemo(() => (username ?? '').trim() || 'Guest', [username]);
@@ -164,18 +166,26 @@ export default function CrashGame() {
 
   useEffect(() => {
     const previousPhase = previousPhaseRef.current;
+    const scheduled: number[] = [];
 
     if (phase === 'running' && previousPhase !== 'running') {
       playTone(520, 160, 'triangle', 0.05);
-      window.setTimeout(() => playTone(760, 120, 'triangle', 0.04), 90);
+      scheduled.push(window.setTimeout(() => playTone(760, 120, 'triangle', 0.04), 90));
     }
 
     if (phase === 'crashed' && previousPhase !== 'crashed') {
       playTone(180, 240, 'sawtooth', 0.06);
-      window.setTimeout(() => playTone(120, 260, 'sawtooth', 0.045), 70);
+      scheduled.push(window.setTimeout(() => playTone(120, 260, 'sawtooth', 0.045), 70));
     }
 
+    phaseSoundTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    phaseSoundTimeoutsRef.current = scheduled;
     previousPhaseRef.current = phase;
+
+    return () => {
+      scheduled.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      phaseSoundTimeoutsRef.current = [];
+    };
   }, [phase, playTone]);
 
   useEffect(() => {
@@ -417,7 +427,22 @@ export default function CrashGame() {
 
   const showError = useCallback((msg: string) => {
     setErrorMsg(msg);
-    setTimeout(() => setErrorMsg(''), 4000);
+    if (errorTimeoutRef.current !== null) {
+      window.clearTimeout(errorTimeoutRef.current);
+    }
+    errorTimeoutRef.current = window.setTimeout(() => {
+      errorTimeoutRef.current = null;
+      setErrorMsg('');
+    }, 4000);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (errorTimeoutRef.current !== null) {
+        window.clearTimeout(errorTimeoutRef.current);
+      }
+      phaseSoundTimeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    };
   }, []);
 
   // Socket Connection & Events

@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server';
 
-import { assertAdminAccess } from '@/lib/adminAccess';
+import { assertAdminAccess, canUseSystemFinance } from '@/lib/adminAccess';
 import { getGameServerUrl, getInternalHeaders } from '@/lib/gameServerInternal';
-
-function canManageEvents(actorRole: string) {
-  const role = String(actorRole || '').toUpperCase();
-  return role === 'OWNER' || role === 'ADMIN';
-}
 
 export async function GET() {
   const access = await assertAdminAccess();
@@ -14,7 +9,7 @@ export async function GET() {
     return access.response;
   }
 
-  if (!canManageEvents(access.actorRole)) {
+  if (!canUseSystemFinance(access.actorRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 
@@ -39,7 +34,7 @@ export async function POST(request: Request) {
     return access.response;
   }
 
-  if (!canManageEvents(access.actorRole)) {
+  if (!canUseSystemFinance(access.actorRole)) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
   }
 

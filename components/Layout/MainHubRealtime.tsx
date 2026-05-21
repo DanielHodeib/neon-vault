@@ -1532,6 +1532,10 @@ export default function MainHubRealtime({
       socket.off('crash_cashout_result', cashoutHandler);
       socket.disconnect();
       socketRef.current = null;
+      if (crashBetAckTimeoutRef.current !== null) {
+        window.clearTimeout(crashBetAckTimeoutRef.current);
+        crashBetAckTimeoutRef.current = null;
+      }
       if (announcementTimeoutRef.current !== null) {
         window.clearTimeout(announcementTimeoutRef.current);
         announcementTimeoutRef.current = null;
@@ -1553,6 +1557,7 @@ export default function MainHubRealtime({
     refundCommittedCrashBet,
     setAnnouncement,
     syncBalanceFromServer,
+    isKing,
   ]);
 
   useEffect(() => {

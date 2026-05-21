@@ -24,9 +24,9 @@ export async function GET() {
     return access.response;
   }
 
-  const [totalUsers, users, activeTickets, recentUsers] = await Promise.all([
+  const [totalUsers, balanceAggregate, activeTickets, recentUsers] = await Promise.all([
     prisma.user.count(),
-    prisma.user.findMany({ select: { balance: true } }),
+    prisma.user.aggregate({ _sum: { balance: true } }),
     prisma.ticket.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
     prisma.user.findMany({
       orderBy: { createdAt: 'desc' },
@@ -35,9 +35,7 @@ export async function GET() {
     }),
   ]);
 
-  const totalEconomy = users.reduce((sum, user) => {
-    return sum + balanceToNumber(user.balance);
-  }, 0);
+  const totalEconomy = balanceToNumber(balanceAggregate._sum.balance);
 
   let onlineUsers = 0;
   const gameServerUrl = getGameServerUrl();

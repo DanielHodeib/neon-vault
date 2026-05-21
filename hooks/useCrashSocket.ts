@@ -98,6 +98,14 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
   const [error, setError] = useState('');
 
   const socketRef = useRef<Socket | null>(null);
+  const pendingAckTimeoutRef = useRef<number | null>(null);
+
+  const clearPendingAckTimeout = useCallback(() => {
+    if (pendingAckTimeoutRef.current !== null) {
+      window.clearTimeout(pendingAckTimeoutRef.current);
+      pendingAckTimeoutRef.current = null;
+    }
+  }, []);
 
   const normalizedUsername = useMemo(() => String(username ?? '').trim() || 'Guest', [username]);
   const myPlayer = useMemo(
@@ -184,10 +192,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
     });
 
     return () => {
+      clearPendingAckTimeout();
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [defaultRoomId, normalizedUsername]);
+  }, [clearPendingAckTimeout, defaultRoomId, normalizedUsername]);
 
   const placeBet = useCallback(
     (amount: number, autoCashOut: number = 0) =>
@@ -199,9 +208,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         }
 
         let settled = false;
-        const timeout = window.setTimeout(() => {
+        clearPendingAckTimeout();
+        pendingAckTimeoutRef.current = window.setTimeout(() => {
           if (settled) return;
           settled = true;
+          pendingAckTimeoutRef.current = null;
           setError('Bet sync timeout. Please try again.');
           resolve({ ok: false, error: 'Bet sync timeout.' });
         }, ACK_TIMEOUT_MS);
@@ -209,7 +220,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         socket.emit('crash_place_bet', { roomId, amount, autoCashOut }, (response: { ok: boolean; error?: string }) => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(timeout);
+          clearPendingAckTimeout();
           if (!response.ok) {
             setError(response.error ?? 'Bet rejected.');
           } else {
@@ -218,7 +229,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
           resolve(response);
         });
       }),
-    [roomId]
+    [clearPendingAckTimeout, roomId]
   );
 
   const cashOut = useCallback(
@@ -231,9 +242,11 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         }
 
         let settled = false;
-        const timeout = window.setTimeout(() => {
+        clearPendingAckTimeout();
+        pendingAckTimeoutRef.current = window.setTimeout(() => {
           if (settled) return;
           settled = true;
+          pendingAckTimeoutRef.current = null;
           setError('Cashout sync timeout. Please try again.');
           resolve({ ok: false, error: 'Cashout sync timeout.' });
         }, ACK_TIMEOUT_MS);
@@ -241,7 +254,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
         socket.emit('crash_cashout', {}, (response: { ok: boolean; error?: string }) => {
           if (settled) return;
           settled = true;
-          window.clearTimeout(timeout);
+          clearPendingAckTimeout();
           if (!response.ok) {
             setError(response.error ?? 'Cashout failed.');
           } else {
@@ -250,7 +263,7 @@ export function useCrashSocket(username: string, opts?: { defaultRoomId?: string
           resolve(response);
         });
       }),
-    []
+    [clearPendingAckTimeout]
   );
 
   const joinRoom = useCallback((nextRoomId: string) => {
