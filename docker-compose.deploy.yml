@@ -1,18 +1,6 @@
 # ============================================================================
 # Production Docker Compose Configuration for Neon Vault Casino
 # ============================================================================
-# This configuration is optimized for AWS EC2 / Linux deployments
-# 
-# Usage:
-#   docker-compose -f docker-compose.deploy.yml build
-#   docker-compose -f docker-compose.deploy.yml up -d
-#   docker-compose -f docker-compose.deploy.yml down
-#
-# Environment:
-#   - Create .env.production with NEXT_PUBLIC_* variables
-#   - Create game-server/.env.production with server variables
-# ============================================================================
-
 version: '3.9'
 
 services:
@@ -24,50 +12,39 @@ services:
       context: .
       dockerfile: Dockerfile.production
       args:
-        # Pass build-time arguments for Next.js environment variables
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api}
-        NEXT_PUBLIC_SOCKET_URL: ${NEXT_PUBLIC_SOCKET_URL:-http://localhost:5000}
+        NEXT_PUBLIC_API_URL: https://daniel-hodeib-vault.chickenkiller.com/api
+        NEXT_PUBLIC_SOCKET_URL: wss://daniel-hodeib-vault.chickenkiller.com
         NODE_ENV: production
     container_name: neon-vault-app
     image: neon-vault:latest
     
-    # Load environment variables from file
     env_file:
       - .env.production
     
-    # Runtime environment variables (override or set if not in .env.production)
     environment:
       - NODE_ENV=production
       - DATABASE_URL=file:./prisma/dev.db
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-/api}
-      - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:5000}
+      - NEXT_PUBLIC_API_URL=https://daniel-hodeib-vault.chickenkiller.com/api
+      - NEXT_PUBLIC_SOCKET_URL=wss://daniel-hodeib-vault.chickenkiller.com
       - GAME_SERVER_INTERNAL_URL=http://game-server:5000
     
-    # Restart policy
     restart: unless-stopped
     
-    # Network exposure
     ports:
       - "3000:3000"
       - "5555:5555"
     
-    # Volume mounts (using named volumes for persistence)
     volumes:
-      # Named volume for SQLite database persistence
       - db_data:/app/prisma
-      # Optional: logs volume
       - app_logs:/app/.next
     
-    # Dependencies
     depends_on:
       game-server:
         condition: service_healthy
     
-    # Docker network
     networks:
       - neon-network
     
-    # Resource limits (adjust based on your EC2 instance)
     deploy:
       resources:
         limits:
@@ -77,7 +54,6 @@ services:
           cpus: '1'
           memory: 512M
     
-    # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/public/health"]
       interval: 30s
@@ -95,29 +71,23 @@ services:
     container_name: neon-vault-game-server
     image: neon-vault-game-server:latest
     
-    # Load environment variables from file
     env_file:
       - ./game-server/.env.production
     
-    # Runtime environment variables
     environment:
       - NODE_ENV=production
       - HOST=0.0.0.0
       - PORT=5000
-      - CORS_ORIGIN=${CORS_ORIGIN:-http://localhost:3000}
+      - CORS_ORIGIN=https://daniel-hodeib-vault.chickenkiller.com
     
-    # Restart policy
     restart: unless-stopped
     
-    # Network exposure (internal only, accessed via main app)
     ports:
       - "5000:5000"
     
-    # Docker network
     networks:
       - neon-network
     
-    # Resource limits
     deploy:
       resources:
         limits:
@@ -127,7 +97,6 @@ services:
           cpus: '0.5'
           memory: 256M
     
-    # Health check
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
       interval: 30s
@@ -135,28 +104,12 @@ services:
       retries: 3
       start_period: 10s
 
-# ============================================================================
-# Named Volumes (Persistent Data)
-# ============================================================================
-# These survive container recreation and host the application data
-# 
-# Data locations:
-#   - db_data: SQLite database file (/app/prisma/dev.db)
-#   - app_logs: Next.js build output and logs (optional)
-# ============================================================================
 volumes:
   db_data:
     driver: local
-  
   app_logs:
     driver: local
 
-# ============================================================================
-# Docker Networks
-# ============================================================================
-# Bridge network for inter-container communication
-# All services can reach each other via service names (e.g., http://game-server:5000)
-# ============================================================================
 networks:
   neon-network:
     driver: bridge
