@@ -52,13 +52,6 @@ export function canUseUserManagement(actorRole: UserRole) {
   return actorRole === 'OWNER' || actorRole === 'ADMIN';
 }
 
-export function canUseSystemFinance(actorRole: UserRole) {
-  return actorRole === 'OWNER';
-}
-
-export function canManageRoles(actorRole: UserRole) {
-  return actorRole === 'OWNER' || actorRole === 'ADMIN';
-}
 
 export async function assertAdminAccess() {
   const session = await auth();

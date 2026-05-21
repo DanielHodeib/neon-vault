@@ -10,28 +10,6 @@ export function formatMoney(amount: number, locale: string = 'de-DE'): string {
   }).format(amount);
 }
 
-/**
- * Shorter version for display (still includes decimals)
- */
-export function formatMoneyShort(amount: number): string {
-  if (amount >= 1000000) {
-    return formatMoney(amount);
-  }
-  return formatMoney(amount);
-}
-
-/**
- * Very short, compact format for small spaces (no decimals if > 1000)
- */
-export function formatMoneyCompact(amount: number): string {
-  if (amount >= 1000000) {
-    return (amount / 1000000).toFixed(2) + 'M';
-  }
-  if (amount >= 1000) {
-    return (amount / 1000).toFixed(1) + 'K';
-  }
-  return amount.toFixed(2);
-}
 
 export function formatCompactNumber(number: number): string {
   const safeNumber = Number.isFinite(number) ? number : 0;

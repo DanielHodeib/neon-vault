@@ -16,7 +16,3 @@ function normalizeApiBaseUrl(value?: string) {
 
 export const API_BASE_URL = normalizeApiBaseUrl(process.env.NEXT_PUBLIC_API_URL);
 
-export function buildApiUrl(path: string) {
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${normalizedPath}`;
-}
