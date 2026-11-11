@@ -12,3 +12,7 @@ pnpm-debug.log*
 Dockerfile*
 docker-compose*.yml
 .vscode
+*.db
+*.db-journal
+.omc
+.claude

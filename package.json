@@ -5,12 +5,12 @@
   "scripts": {
     "dev": "tsx watch --clear-screen=false --ignore './app/**' --ignore './components/**' server.ts",
     "build": "prisma generate && next build",
-    "start": "NODE_ENV=production tsx server.ts",
-    "db:push": "prisma db push",
-    "db:studio": "prisma studio",
+    "start": "prisma migrate deploy && NODE_ENV=production tsx server.ts",
+    "test": "tsx --test game/*.test.ts",
     "check": "tsc --noEmit && eslint . && npm test",
-    "set-role": "tsx scripts/set-role.ts",
-    "test": "tsx --test game/*.test.ts"
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "set-role": "tsx scripts/set-role.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

@@ -1,146 +1,56 @@
 # Neon Vault
 
-Realtime casino app with auth, friends, and multiplayer rooms.
+Social Casino mit virtueller Währung (NVC): Crash, Aviator, Slots, Blackjack, Roulette, Poker und Coinflip. Dazu kommen Chat, Freunde, Quests, Ranglisten, Support-Tickets und ein Admin-Bereich.
 
-## Local Development
-
-Install dependencies:
+## Starten
 
 ```bash
 npm install
-cd game-server && npm install
-```
-
-Run app + socket server:
-
-```bash
-# terminal 1
+cp .env.example .env
+npx prisma migrate deploy
 npm run dev
-
-# terminal 2
-npm run dev:game-server
 ```
 
-## Play From Other Laptops (LAN)
-
-1. Find your local IP:
+Die App läuft dann auf http://localhost:3000. Für den ersten Admin registrierst du dich normal und vergibst dir die Rolle per Konsole:
 
 ```bash
-ipconfig getifaddr en0
+npm run set-role -- DeinName OWNER
 ```
 
-2. Update root `.env`:
+## Befehle
 
-```env
-NEXTAUTH_URL="http://YOUR_IP:3000"
-NEXT_PUBLIC_SOCKET_URL="http://YOUR_IP:5000"
-```
+| Befehl | Was er tut |
+|---|---|
+| `npm run dev` | Entwicklungsserver (Next.js + Socket.IO in einem Prozess) |
+| `npm run check` | Typecheck, Lint und Tests |
+| `npm test` | Spiel-Engines testen (Auszahlungsquoten, Poker-Hände, Side-Pots …) |
+| `npm run build && npm start` | Produktion |
+| `npm run db:migrate` | Neue Migration nach Schema-Änderung |
+| `npm run db:studio` | Datenbank im Browser ansehen |
 
-3. Start both services with LAN host binding:
+## Produktion (Docker)
 
 ```bash
-# terminal 1
-npm run dev:lan
-
-# terminal 2
-npm run dev:game-server:lan
+docker compose up -d --build
 ```
 
-4. Open firewall for ports `3000` and `5000` if macOS prompts.
+Die Datenbank liegt im Volume `data`. Für HTTPS setzt du einen Reverse-Proxy davor, z. B. Caddy mit `reverse_proxy localhost:3000`. WebSockets laufen über denselben Port.
 
-5. Friends open `http://YOUR_IP:3000`, register/login, then join your room id (Crash/Poker/Blackjack).
-6. In Poker/Blackjack, friends only need the room id string (for example `bj-ab123`) in the room input, then click `Join Room`.
+## Aufbau
 
-## Multiplayer Notes
-
-- Crash: room join/create + live room member list.
-- Poker: `Solo + Bots` mode and `Friends Room` mode.
-- Blackjack: `Solo + Bots` mode and `Friends Room` mode with dealer/player table seats.
-
-## Production Deployment (Docker)
-
-This repository includes a full deployment setup for:
-
-- Next.js app (`3000`)
-- Socket game server (`5000`)
-- Persistent Prisma SQLite database volume
-
-### 1) Prepare env files
-
-Create production env files from templates:
-
-```bash
-cp .env.production.example .env.production
-cp game-server/.env.production.example game-server/.env.production
+```
+server.ts         startet Next.js und Socket.IO in einem Prozess
+game/             Spiel-Engines (laufen nur auf dem Server) + Socket-Handler
+lib/              Datenbank, Sessions, Wallet-Journal, Quests, Events, Ränge
+app/actions/      Server Actions (Login, Profil, Freunde, Support, Admin)
+app/(app)/        eingeloggte Seiten, app/(auth)/ Login, app/(legal)/ Rechtstexte
+components/       UI, Socket-Provider, Spiel-Oberflächen
 ```
 
-Edit `.env.production`:
+Grundregeln:
 
-```env
-DATABASE_URL="file:/app/prisma/prod.db"
-NEXTAUTH_SECRET="your-long-random-secret"
-NEXTAUTH_URL="https://your-domain.com"
-NEXT_PUBLIC_SOCKET_URL="https://your-domain.com:5000"
-```
-
-Edit `game-server/.env.production`:
-
-```env
-HOST=0.0.0.0
-PORT=5000
-CLIENT_ORIGIN=https://your-domain.com
-CLIENT_ORIGINS=https://your-domain.com
-```
-
-### 2) Build and start
-
-```bash
-npm run deploy:up
-```
-
-### 3) Watch logs
-
-```bash
-npm run deploy:logs
-```
-
-### 4) Stop deployment
-
-```bash
-npm run deploy:down
-```
-
-### Notes
-
-- Open inbound ports `3000` and `5000` on your host/firewall.
-- For public internet deployment, place a reverse proxy in front (for HTTPS and domain routing).
-- Prisma data is persisted in the Docker volume `prisma_data`.
-
-## Vercel Deployment
-
-### Realtime architecture on Vercel
-
-Vercel does not keep long-lived Socket.IO servers inside Next.js serverless functions. Deploy the game server separately (Railway, Render, Fly.io, VPS, etc.) and point the app to it.
-
-### Environment variables
-
-Use `.env.example` as the base for local/prod values.
-
-Required on Vercel:
-
-```env
-NEXTAUTH_URL=https://your-vercel-domain.vercel.app
-NEXTAUTH_SECRET=your-long-random-secret
-DATABASE_URL=your-database-connection
-NEXT_PUBLIC_SOCKET_URL=https://your-game-server-domain.com
-GAME_SERVER_INTERNAL_URL=https://your-game-server-domain.com
-INTERNAL_API_TOKEN=shared-internal-token
-```
-
-### Build behavior
-
-The root build script runs Prisma generation before Next build:
-
-```bash
-npm run build
-```
+- **Der Server entscheidet alles.** Der Browser sendet nur Absichten („setze 100“). Zufall, Auswertung und Auszahlung passieren auf dem Server mit `crypto.randomInt`.
+- **Geld ändert sich nur über `applyLedger()`** in `lib/wallet.ts`. Jede Buchung ist eine Zeile in `LedgerEntry`, atomar mit dem Kontostand. Der Kontostand kann nicht negativ werden.
+- **Quests, Tages-Bestenliste, King-Status und Lieblingsspiel** werden aus dem Journal berechnet. Es gibt keine Zähler, die auseinanderlaufen können.
+- **Identität kommt nur aus dem Session-Cookie**, auch für den Socket. Was der Client sonst schickt, wird nicht geglaubt.
+- Zustand, den Next.js und Socket.IO teilen (DB-Client, Online-Liste, Events), liegt auf `globalThis` (`lib/hub.ts`).
