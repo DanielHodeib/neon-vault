@@ -3,6 +3,7 @@ import { test } from 'node:test';
 
 import { bestHand, bjTotal, handName } from './cards';
 import { crashPointFrom } from './crash';
+import { splitPots } from './poker';
 import { rouletteMultiplier } from './roulette';
 import { MACHINES, spin } from './slots';
 
@@ -51,10 +52,23 @@ test('crash point has a 1 % house edge', () => {
 });
 
 test('roulette payouts', () => {
-  assert.equal(rouletteMultiplier({ type: 'number', value: 17, amount: 1 }, 17), 36);
-  assert.equal(rouletteMultiplier({ type: 'red', amount: 1 }, 1), 2);
-  assert.equal(rouletteMultiplier({ type: 'red', amount: 1 }, 0), 0);
-  assert.equal(rouletteMultiplier({ type: 'dozen', value: 3, amount: 1 }, 36), 3);
-  assert.equal(rouletteMultiplier({ type: 'column', value: 1, amount: 1 }, 34), 3);
-  assert.equal(rouletteMultiplier({ type: 'even', amount: 1 }, 0), 0);
+  assert.equal(rouletteMultiplier({ type: 'number', value: 17 }, 17), 36);
+  assert.equal(rouletteMultiplier({ type: 'red' }, 1), 2);
+  assert.equal(rouletteMultiplier({ type: 'red' }, 0), 0);
+  assert.equal(rouletteMultiplier({ type: 'dozen', value: 3 }, 36), 3);
+  assert.equal(rouletteMultiplier({ type: 'column', value: 1 }, 34), 3);
+  assert.equal(rouletteMultiplier({ type: 'even' }, 0), 0);
+});
+
+test('poker side pots', () => {
+  // A all-in for 100 with the best hand, B and C play on to 500, B beats C.
+  const won = splitPots([
+    { total: 100, folded: false, score: 3 },
+    { total: 500, folded: false, score: 2 },
+    { total: 500, folded: false, score: 1 },
+    { total: 50, folded: true, score: -1 },
+  ]);
+  assert.deepEqual(won, [350, 800, 0, 0]);
+  // split pot with an odd chip
+  assert.deepEqual(splitPots([{ total: 51, folded: false, score: 5 }, { total: 50, folded: false, score: 5 }]), [51, 50]);
 });

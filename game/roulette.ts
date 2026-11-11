@@ -108,7 +108,7 @@ export const registerRoulette: Register = (io, socket) => {
         await payout(user.id, total, 'roulette', 'REFUND');
         throw new UserError('Einsätze sind geschlossen.');
       }
-      const player = table.players.get(user.id) ?? { username: user.username, bets: [] };
+      const player: Player = table.players.get(user.id) ?? { username: user.username, bets: [] };
       player.bets.push(...bets);
       table.players.set(user.id, player);
       io.to('roulette').emit('roulette:state', rouletteState());
