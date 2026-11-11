@@ -7,8 +7,10 @@ import { z } from 'zod';
 
 import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
 import { requireRole } from '@/lib/auth';
-import { announce, cancelCountdown, EVENT_TYPES, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
-import { db, disconnectUser, notify, UserError } from '@/lib/hub';
+import { announce, cancelCountdown, systemMessage, EVENT_TYPES, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
+import { backupNow } from '@/lib/backup';
+import { FX } from '@/lib/fx';
+import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } from '@/lib/hub';
 import { canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { applyLedger } from '@/lib/wallet';
 
@@ -171,5 +173,65 @@ export async function restartAction(seconds: number) {
     if (![30, 60, 120, 300].includes(seconds)) throw new UserError('Ungültige Zeit.');
     startCountdown('restart', seconds, { onDone: () => process.kill(process.pid, 'SIGINT') });
     return `Neustart in ${seconds} Sekunden angekündigt.`;
+  });
+}
+
+/** Quick gift from the player panel (fixed amounts only: bound arguments come from the browser). */
+export async function giftUser(userId: string, amount: number) {
+  return run(async () => {
+    if (![1_000, 10_000, 100_000].includes(amount)) throw new UserError('Ungültiger Betrag.');
+    const { actor, user } = await target('ADMIN', userId, { self: true });
+    await applyLedger([{ userId: user.id, amount, kind: 'ADMIN', note: `Geschenk von ${actor.username}` }]);
+    if (user.id !== actor.id) await notify(user.id, 'Geschenk', `${actor.username} schenkt dir ${amount.toLocaleString('de-DE')} NVC.`);
+    refresh();
+    return `+${amount.toLocaleString('de-DE')} NVC an ${user.username}.`;
+  });
+}
+
+/** Chat mute for 0 (lift), 5, 30 or 120 minutes. */
+export async function muteUser(userId: string, minutes: number) {
+  return run(async () => {
+    if (![0, 5, 30, 120].includes(minutes)) throw new UserError('Ungültige Dauer.');
+    const { user } = await target('MODERATOR', userId);
+    if (minutes === 0) hub.muted.delete(user.id);
+    else hub.muted.set(user.id, Date.now() + minutes * 60_000);
+    emitToUser(user.id, 'toast', minutes ? `Du bist ${minutes} Minuten im Chat stummgeschaltet.` : 'Du darfst wieder im Chat schreiben.');
+    refresh();
+    return minutes ? `${user.username} ist ${minutes} Min. stumm.` : `${user.username} darf wieder schreiben.`;
+  });
+}
+
+export async function clearChatAction() {
+  return run(async () => {
+    const actor = await requireRole('MODERATOR');
+    hub.chat = [];
+    broadcast('chatClear', null);
+    systemMessage(`Chat wurde von ${actor.username} geleert.`);
+    return 'Chat geleert.';
+  });
+}
+
+export async function backupAction() {
+  return run(async () => {
+    await requireRole('ADMIN');
+    await backupNow({ force: true });
+    return 'Backup gespeichert.';
+  });
+}
+
+/** Harmless screen effects for fun – everyone (`userId` null) or one player. */
+export async function trollAction(effect: string, userId: string | null) {
+  return run(async () => {
+    const actor = await requireRole('ADMIN');
+    if (!Object.hasOwn(FX, effect)) throw new UserError('Unbekannter Effekt.');
+    const payload = { effect, by: actor.username };
+    if (userId) {
+      const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
+      if (!user) throw new UserError('Spieler nicht gefunden.');
+      emitToUser(user.id, 'fx', payload);
+      return `Effekt an ${user.username} geschickt.`;
+    }
+    broadcast('fx', payload);
+    return 'Effekt an alle geschickt.';
   });
 }

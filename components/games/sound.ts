@@ -47,6 +47,7 @@ export const sound = {
   gem: () => arpeggio([880, 1320], 0.05, { type: 'sine', gain: 0.05 }),
   bomb: () => arpeggio([160, 110, 70], 0.09, { type: 'sawtooth', gain: 0.07 }),
   start: () => arpeggio([392, 523], 0.07, { type: 'sine', gain: 0.04 }),
+  airhorn: () => [0, 0.32, 0.64].forEach((at) => [415, 440, 466].forEach((f) => tone(f, 0.28, { type: 'sawtooth', gain: 0.05, at }))),
   turn: () => arpeggio([660, 880], 0.08, { type: 'sine', gain: 0.05 }),
 };
 

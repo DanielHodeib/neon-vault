@@ -39,6 +39,7 @@ type Hub = {
   online: Map<string, OnlineUser>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
+  muted: Map<string, number>; // userId -> chat muted until (ms)
   timers: Record<string, NodeJS.Timeout | undefined>;
   rainActive: boolean;
   bountyPaid: boolean; // Bounty event pays out once
@@ -55,12 +56,16 @@ export const hub: Hub = (g.__neonHub ??= {
   online: new Map(),
   chat: [],
   chatActive: new Map(),
+  muted: new Map(),
   timers: {},
   rainActive: false,
   bountyPaid: false,
 });
 
 export const db = hub.db;
+
+/** True while a chat mute is running. */
+export const isMuted = (userId: string) => (hub.muted.get(userId) ?? 0) > Date.now();
 
 export function emitToUser(userId: string, event: string, data: unknown) {
   hub.io?.to(`user:${userId}`).emit(event, data);

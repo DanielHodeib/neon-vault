@@ -16,12 +16,14 @@ export const backupName = (d = new Date()) => `neon-vault-${d.toISOString().slic
 export const outdated = (files: string[], keep = KEEP) =>
   files.filter((f) => /^neon-vault-\d{4}-\d{2}-\d{2}\.db$/.test(f)).sort().reverse().slice(keep);
 
-export async function backupNow() {
+/** `force` replaces today's snapshot (manual backup from the admin page). */
+export async function backupNow({ force = false } = {}) {
   const dir = backupDir();
   await mkdir(dir, { recursive: true });
   const files = await readdir(dir);
   const name = backupName();
-  if (!files.includes(name)) {
+  if (force && files.includes(name)) await rm(path.join(dir, name), { force: true });
+  if (force || !files.includes(name)) {
     await db.$executeRawUnsafe(`VACUUM INTO '${path.join(dir, name).replaceAll("'", "''")}'`);
     console.log(`> Backup gespeichert: ${path.join(dir, name)}`);
   }

@@ -98,3 +98,17 @@ body {
     animation-iteration-count: 1 !important;
   }
 }
+
+/* Admin fun effects (components/fx.ts). */
+@keyframes fx-fall { to { transform: translateY(110vh) rotate(720deg); } }
+@keyframes fx-shake { 0%, 100% { transform: translate(0); } 20% { transform: translate(-8px, 4px); } 40% { transform: translate(8px, -6px); } 60% { transform: translate(-6px, -4px); } 80% { transform: translate(6px, 6px); } }
+@keyframes fx-disco { to { filter: hue-rotate(360deg) saturate(1.6); } }
+.fx-confetti { position: fixed; inset: 0; z-index: 100; pointer-events: none; overflow: hidden; }
+.fx-confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation-name: fx-fall; animation-timing-function: linear; animation-fill-mode: forwards; }
+.fx-shake { animation: fx-shake .15s linear 8; }
+.fx-flip { transform: rotate(180deg); transition: transform .6s; }
+.fx-disco { animation: fx-disco 1.2s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .fx-shake, .fx-disco { animation: none; }
+  .fx-confetti { display: none; }
+}

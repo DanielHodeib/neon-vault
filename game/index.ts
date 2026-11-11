@@ -2,7 +2,7 @@ import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
-import { db, hub, notify, UserError, type ChatMessage } from '@/lib/hub';
+import { db, hub, isMuted, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { shopItem } from '@/lib/shop';
 import { atLeast } from '@/lib/roles';
@@ -62,6 +62,7 @@ export function setupRealtime(io: Server) {
     });
 
     handle(socket, 'chat:send', z.object({ text: z.string().trim().min(1).max(300) }), async ({ text }) => {
+      if (isMuted(user.id)) throw new UserError(`Du bist im Chat stummgeschaltet bis ${new Date(hub.muted.get(user.id)!).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.`);
       if (text.startsWith('/tip')) return tip(user.id, user.username, text);
       const u = await db.user.findUniqueOrThrow({ where: { id: user.id } });
       const ownerFriend = (await db.friendship.count({
