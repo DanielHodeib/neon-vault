@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 
 import { closeAndRefund, setupRealtime } from './game';
 import { startBackups } from './lib/backup';
+import { startTournaments } from './lib/tournament';
 import { loadMaintenance, startEventScheduler } from './lib/events';
 import { db } from './lib/hub';
 
@@ -37,6 +38,7 @@ async function main() {
   setupRealtime(io);
   startEventScheduler();
   startBackups();
+  startTournaments();
   httpServer.listen(port, () => console.log(`> Neon Vault läuft auf http://localhost:${port}`));
 }
 

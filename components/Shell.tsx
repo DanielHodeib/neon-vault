@@ -24,6 +24,7 @@ import {
   House,
   LogOut,
   Mail,
+  Medal,
   Menu,
   MessageSquare,
   Rocket,
@@ -91,6 +92,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
   const community: NavItem[] = [
     { href: '/friends', label: 'Freunde', icon: Users },
     { href: '/messages', label: dmUnread ? `Nachrichten (${dmUnread})` : 'Nachrichten', icon: Mail },
+    { href: '/tournament', label: 'Turnier', icon: Medal },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
     { href: '/quests', label: 'Quests', icon: Target },
     { href: '/stats', label: 'Statistik', icon: ChartColumn },
