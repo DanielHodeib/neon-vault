@@ -36,6 +36,8 @@ const shutdown = async () => {
   await db.$disconnect();
   process.exit(0);
 };
+// One process serves everyone: a failed timer callback must not take the whole casino down.
+process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 

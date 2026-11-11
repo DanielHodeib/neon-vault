@@ -31,7 +31,7 @@ const round = {
   history: [] as number[],
 };
 
-export const crashState = () => ({
+const crashState = () => ({
   id: round.id,
   phase: round.phase,
   startsAt: round.startsAt,

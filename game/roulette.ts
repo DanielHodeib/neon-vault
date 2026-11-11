@@ -48,7 +48,7 @@ const table = {
   history: [] as number[],
 };
 
-export const rouletteState = () => ({
+const rouletteState = () => ({
   phase: table.phase,
   endsAt: table.endsAt,
   result: table.phase === 'betting' ? null : table.result,

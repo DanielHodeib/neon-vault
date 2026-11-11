@@ -78,5 +78,3 @@ export async function netProfitSince(since: Date, take = 10) {
   const users = await db.user.findMany({ where: { id: { in: top.map((t) => t.userId) } }, select: { id: true, username: true } });
   return top.map((t) => ({ ...t, username: users.find((u) => u.id === t.userId)?.username ?? '?' }));
 }
-
-export const kingOfToday = async () => (await netProfitSince(startOfDay(), 1)).find((k) => k.profit > 0) ?? null;

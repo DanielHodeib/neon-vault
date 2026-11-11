@@ -41,7 +41,7 @@ const publicView = (t: Table) => ({
   dealerTotal: t.phase === 'playing' ? null : bjTotal(t.dealer),
 });
 
-export const blackjackLobby = () =>
+const blackjackLobby = () =>
   [...tables.values()].filter((t) => !t.isPrivate).map((t) => ({ id: t.id, players: t.seats.filter((s) => s.userId).length, seats: t.seats.length }));
 
 export function registerBlackjack(io: Server): Register {

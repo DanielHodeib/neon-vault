@@ -40,7 +40,7 @@ import { Avatar, Logo } from './ui';
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
-export const GAMES: NavItem[] = [
+const GAMES: NavItem[] = [
   { href: '/play/crash', label: 'Crash', icon: Rocket },
   { href: '/play/aviator', label: 'Aviator', icon: Plane },
   { href: '/play/slots', label: 'Slots', icon: Cherry },
