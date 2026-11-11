@@ -7,6 +7,9 @@ export const atLeast = (role: Role, min: Role) => ROLES.indexOf(role) >= ROLES.i
 /** Staff can only act on people strictly below them. */
 export const canManage = (actor: Role, target: Role) => ROLES.indexOf(actor) > ROLES.indexOf(target);
 
+/** Only the owner may give themselves money/XP; nobody may ban, demote or delete themselves. */
+export const canEditSelf = (role: Role) => role === 'OWNER';
+
 export const ROLE_STYLE: Record<Role, string> = {
   OWNER: 'border-gold/40 text-gold',
   ADMIN: 'border-loss/40 text-loss',

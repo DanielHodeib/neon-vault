@@ -9,17 +9,18 @@ import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
 import { requireRole } from '@/lib/auth';
 import { announce, EVENT_TYPES, setMaintenance, startEvent, startRain, stopEvent } from '@/lib/events';
 import { db, disconnectUser, notify, UserError } from '@/lib/hub';
-import { canManage, ROLES } from '@/lib/roles';
+import { canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { applyLedger } from '@/lib/wallet';
 
 const PERMANENT = new Date('9999-12-31');
 
-/** Loads the target and checks the actor may touch them at all. */
-async function target(min: Role, userId: string) {
+/** Loads the target and checks the actor may touch them; `self` also allows the owner's own account. */
+async function target(min: Role, userId: string, { self = false } = {}) {
   const actor = await requireRole(min);
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) throw new UserError('Spieler nicht gefunden.');
-  if (!canManage(actor.role, user.role)) throw new UserError('Keine Berechtigung für diesen Spieler.');
+  const ownAccount = self && user.id === actor.id && canEditSelf(actor.role);
+  if (!ownAccount && !canManage(actor.role, user.role)) throw new UserError('Keine Berechtigung für diesen Spieler.');
   return { actor, user };
 }
 
@@ -70,7 +71,8 @@ export async function adjustUser(_: ActionState, form: FormData) {
       }),
       form,
     );
-    const { actor, user } = await target('ADMIN', userId);
+    const { actor, user } = await target('ADMIN', userId, { self: true });
+    if (password && user.id === actor.id) throw new UserError('Dein eigenes Passwort änderst du in den Einstellungen.');
     if (balance) await applyLedger([{ userId: user.id, amount: balance, kind: 'ADMIN', note: `von ${actor.username}` }]);
     if (xp) await db.user.update({ where: { id: user.id }, data: { xp: Math.max(0, user.xp + xp) } });
     if (password) {
@@ -84,7 +86,7 @@ export async function adjustUser(_: ActionState, form: FormData) {
 }
 
 export async function resetUser(userId: string, what: 'quests' | 'social') {
-  const { user } = await target('ADMIN', userId);
+  const { user } = await target('ADMIN', userId, { self: what === 'quests' });
   if (what === 'quests') await db.questClaim.deleteMany({ where: { userId: user.id } });
   else await db.$transaction([db.friendship.deleteMany({ where: { OR: [{ fromId: user.id }, { toId: user.id }] } }), db.block.deleteMany({ where: { OR: [{ fromId: user.id }, { toId: user.id }] } })]);
   refresh();

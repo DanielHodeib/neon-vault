@@ -8,7 +8,7 @@ import { requireRole } from '@/lib/auth';
 import { coins, compact } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
-import { atLeast, canManage, ROLES } from '@/lib/roles';
+import { atLeast, canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { isBanned } from '@/lib/session';
 import { startOfDay } from '@/lib/wallet';
 
@@ -27,7 +27,8 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
     db.user.findMany({ where: q ? { username: { contains: q } } : {}, orderBy: { createdAt: 'desc' }, take: 30 }),
     selectedId ? db.user.findUnique({ where: { id: selectedId } }) : null,
   ]);
-  const manageable = selected && canManage(actor.role, selected.role);
+  const manageable = !!selected && canManage(actor.role, selected.role);
+  const selfEdit = selected?.id === actor.id && canEditSelf(actor.role);
 
   return (
     <>
@@ -54,37 +55,40 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
                   {selected.banReason && ` – ${selected.banReason}`}
                 </p>
               )}
-              {!manageable ? (
+              {!manageable && !selfEdit ? (
                 <p className="text-sm text-faint">Keine Berechtigung für diesen Spieler.</p>
               ) : (
                 <>
-                  {isBanned(selected) ? (
-                    <FormButton action={unbanUser.bind(null, selected.id)} className="btn-secondary w-full">Entsperren</FormButton>
-                  ) : (
-                    <ActionForm action={banUser} className="space-y-2">
-                      <input type="hidden" name="userId" value={selected.id} />
-                      <div className="flex gap-2">
-                        <select className="input" name="hours" defaultValue="24">
-                          <option value="1">1 Stunde</option>
-                          <option value="24">1 Tag</option>
-                          <option value="168">7 Tage</option>
-                          <option value="0">Dauerhaft</option>
-                        </select>
-                        <SubmitButton className="btn-danger">Sperren</SubmitButton>
-                      </div>
-                      <input className="input" name="reason" placeholder="Grund (optional)" />
-                    </ActionForm>
-                  )}
+                  {manageable &&
+                    (isBanned(selected) ? (
+                      <FormButton action={unbanUser.bind(null, selected.id)} className="btn-secondary w-full">Entsperren</FormButton>
+                    ) : (
+                      <ActionForm action={banUser} className="space-y-2">
+                        <input type="hidden" name="userId" value={selected.id} />
+                        <div className="flex gap-2">
+                          <select className="input" name="hours" defaultValue="24">
+                            <option value="1">1 Stunde</option>
+                            <option value="24">1 Tag</option>
+                            <option value="168">7 Tage</option>
+                            <option value="0">Dauerhaft</option>
+                          </select>
+                          <SubmitButton className="btn-danger">Sperren</SubmitButton>
+                        </div>
+                        <input className="input" name="reason" placeholder="Grund (optional)" />
+                      </ActionForm>
+                    ))}
                   {isAdmin && (
                     <>
-                      <div>
-                        <p className="label">Rolle ändern</p>
-                        <div className="flex flex-wrap gap-1.5">
-                          {ROLES.filter((r) => r !== selected.role && canManage(actor.role, r)).map((r) => (
-                            <FormButton key={r} action={setRole.bind(null, selected.id, r)} className="chip">{r}</FormButton>
-                          ))}
+                      {manageable && (
+                        <div>
+                          <p className="label">Rolle ändern</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {ROLES.filter((r) => r !== selected.role && canManage(actor.role, r)).map((r) => (
+                              <FormButton key={r} action={setRole.bind(null, selected.id, r)} className="chip">{r}</FormButton>
+                            ))}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <ActionForm action={adjustUser} className="space-y-2">
                         <input type="hidden" name="userId" value={selected.id} />
                         <p className="label">Guthaben / XP anpassen (±)</p>
@@ -92,16 +96,25 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
                           <input className="input num" name="balance" type="number" placeholder="± NVC" defaultValue={0} />
                           <input className="input num" name="xp" type="number" placeholder="± XP" defaultValue={0} />
                         </div>
-                        <input className="input" name="password" type="password" placeholder="Neues Passwort (optional)" autoComplete="new-password" />
+                        {selfEdit ? (
+                          <input type="hidden" name="password" value="" />
+                        ) : (
+                          <input className="input" name="password" type="password" placeholder="Neues Passwort (optional)" autoComplete="new-password" />
+                        )}
                         <SubmitButton className="btn-secondary w-full">Übernehmen</SubmitButton>
                       </ActionForm>
                       <div className="flex flex-wrap gap-2 border-t border-line pt-4">
                         <FormButton action={resetUser.bind(null, selected.id, 'quests')} className="btn-ghost h-8 text-xs">Quests zurücksetzen</FormButton>
-                        <FormButton action={resetUser.bind(null, selected.id, 'social')} confirm="Alle Freunde und Blocks löschen?" className="btn-ghost h-8 text-xs">Freunde zurücksetzen</FormButton>
-                        <FormButton action={deleteUser.bind(null, selected.id)} className="btn-danger h-8 text-xs" confirm={`${selected.username} endgültig löschen?`}>Konto löschen</FormButton>
+                        {manageable && (
+                          <>
+                            <FormButton action={resetUser.bind(null, selected.id, 'social')} confirm="Alle Freunde und Blocks löschen?" className="btn-ghost h-8 text-xs">Freunde zurücksetzen</FormButton>
+                            <FormButton action={deleteUser.bind(null, selected.id)} className="btn-danger h-8 text-xs" confirm={`${selected.username} endgültig löschen?`}>Konto löschen</FormButton>
+                          </>
+                        )}
                       </div>
                     </>
                   )}
+                  {selfEdit && <p className="text-xs text-faint">Das bist du. Sperren, Rolle und Löschen sind für das eigene Konto gesperrt.</p>}
                 </>
               )}
             </div>
