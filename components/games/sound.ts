@@ -2,6 +2,7 @@
 const KEY = 'nv-game-sound';
 let ctx: AudioContext | null = null;
 let muted = (() => {
+  if (typeof window === 'undefined') return false; // server render: Node's localStorage only warns
   try {
     return localStorage.getItem(KEY) === 'off';
   } catch {
