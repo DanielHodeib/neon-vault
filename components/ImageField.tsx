@@ -63,12 +63,12 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
             <ImageUp size={18} />
           </div>
         )}
-        <div className="flex min-w-0 flex-1 gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap gap-2">
           <button type="button" className="btn-secondary" onClick={() => fileInput.current?.click()} disabled={busy}>
             {busy ? 'Lädt …' : 'Datei wählen'}
           </button>
           <input
-            className="input min-w-0"
+            className="input min-w-40 flex-1"
             name={name}
             value={url}
             onChange={(e) => {

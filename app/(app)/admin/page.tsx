@@ -41,7 +41,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
         <Stat label="Online"><span className="num">{hub.online.size}</span></Stat>
         <Stat label="Offene Tickets"><span className="num">{openTickets}</span></Stat>
         <Stat label="Einsätze heute"><span className="num">{betsToday}</span></Stat>
-        <Stat label="NVC im Umlauf"><span className="num text-gold">{compact(totals._sum.balance ?? 0)}</span></Stat>
+        <div className="col-span-2 sm:col-span-1"><Stat label="NVC im Umlauf"><span className="num text-gold">{compact(totals._sum.balance ?? 0)}</span></Stat></div>
       </div>
 
       <Section title="Letzte 7 Tage" className="mb-4">
@@ -53,7 +53,7 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
             ['Eingesetzt', compact(week.staked)],
             ['Hausergebnis', `${week.house >= 0 ? '+' : ''}${compact(week.house)}`],
           ].map(([label, value]) => (
-            <div key={label} className="bg-surface px-4 py-3">
+            <div key={label} className="bg-surface px-4 py-3 last:col-span-2 sm:last:col-span-1">
               <p className="text-[11px] text-muted">{label}</p>
               <p className={`num font-semibold ${label === 'Hausergebnis' ? (week.house >= 0 ? 'text-win' : 'text-loss') : ''}`}>{value}</p>
             </div>
@@ -66,19 +66,19 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted">
                 <tr>
-                  <th className="px-4 py-2 font-medium">Spiel</th>
-                  <th className="px-4 py-2 text-right font-medium">Runden</th>
-                  <th className="px-4 py-2 text-right font-medium">Eingesetzt</th>
-                  <th className="px-4 py-2 text-right font-medium">Haus</th>
+                  <th className="px-3 sm:px-4 py-2 font-medium">Spiel</th>
+                  <th className="px-3 sm:px-4 py-2 text-right font-medium">Runden</th>
+                  <th className="px-3 sm:px-4 py-2 text-right font-medium">Eingesetzt</th>
+                  <th className="px-3 sm:px-4 py-2 text-right font-medium">Haus</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-line">
                 {week.games.map((g) => (
                   <tr key={g.game}>
-                    <td className="px-4 py-2">{GAME_NAMES[g.game] ?? g.game}</td>
-                    <td className="num px-4 py-2 text-right">{coins(g.rounds)}</td>
-                    <td className="num px-4 py-2 text-right">{compact(g.staked)}</td>
-                    <td className={`num px-4 py-2 text-right ${g.house >= 0 ? 'text-win' : 'text-loss'}`}>{compact(g.house)}</td>
+                    <td className="px-3 py-2 sm:px-4">{GAME_NAMES[g.game] ?? g.game}</td>
+                    <td className="num px-3 py-2 text-right sm:px-4">{coins(g.rounds)}</td>
+                    <td className="num px-3 py-2 text-right sm:px-4">{compact(g.staked)}</td>
+                    <td className={`num px-3 py-2 text-right sm:px-4 ${g.house >= 0 ? 'text-win' : 'text-loss'}`}>{compact(g.house)}</td>
                   </tr>
                 ))}
               </tbody>
