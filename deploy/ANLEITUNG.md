@@ -88,11 +88,15 @@ Ab jetzt läuft alles auf dem Server. Den Mac-Server und Tailscale Funnel brauch
 
 ## Später: Updates einspielen
 
-Wenn es eine neue Version gibt: am Mac `git push origin main`, dann:
+Passiert automatisch: Der Server schaut alle 2 Minuten auf GitHub nach. Nach einem `git push origin main` ist die neue Version also spätestens nach etwa 5 Minuten live. Vorher laufen die Tests; schlagen sie fehl, bleibt die alte Version online.
+
+Sofort von Hand aktualisieren:
 
 ```bash
 ssh -i ~/Downloads/ssh-key.key ubuntu@141.147.12.34 "cd neon-vault && bash deploy/update.sh"
 ```
+
+Was die automatischen Updates gemacht haben: `journalctl -u neon-vault-update -n 50` (auf dem Server).
 
 ## Nützliche Befehle (auf dem Server)
 

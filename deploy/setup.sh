@@ -75,6 +75,31 @@ UNIT
 sudo systemctl daemon-reload
 sudo systemctl enable --now neon-vault
 
+echo "==> Automatische Updates (alle 2 Minuten von GitHub)"
+sudo tee /etc/systemd/system/neon-vault-update.service >/dev/null <<UNIT
+[Unit]
+Description=Neon Vault: neue Version von GitHub holen
+
+[Service]
+Type=oneshot
+User=$APP_USER
+WorkingDirectory=$APP_DIR
+ExecStart=/usr/bin/bash $APP_DIR/deploy/auto-update.sh
+UNIT
+sudo tee /etc/systemd/system/neon-vault-update.timer >/dev/null <<UNIT
+[Unit]
+Description=Neon Vault: alle 2 Minuten nach Updates schauen
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=2min
+
+[Install]
+WantedBy=timers.target
+UNIT
+sudo systemctl daemon-reload
+sudo systemctl enable --now neon-vault-update.timer
+
 echo "==> HTTPS für $DOMAIN einrichten"
 sudo tee /etc/caddy/Caddyfile >/dev/null <<CADDY
 $DOMAIN {
