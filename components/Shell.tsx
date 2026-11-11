@@ -46,9 +46,9 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { clearNotifications, readNotifications } from '@/app/actions/account';
+import { clearNotifications, readNotifications, setTheme } from '@/app/actions/account';
 import { logout } from '@/app/actions/auth';
-import { coins, timeAgo } from '@/lib/format';
+import { coins, THEME_INFO, THEMES, timeAgo } from '@/lib/format';
 import { atLeast } from '@/lib/roles';
 import { Chat } from './Chat';
 import { useLive } from './SocketProvider';
@@ -74,7 +74,7 @@ const GAMES: NavItem[] = [
 ];
 
 type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };
-type User = { username: string; avatarUrl: string | null; frame: string | null; level: number; role: Role };
+type User = { username: string; avatarUrl: string | null; frame: string | null; level: number; role: Role; theme: string };
 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
   const pathname = usePathname();
@@ -361,7 +361,13 @@ function Notifications({ items }: { items: Notification[] }) {
 /** Avatar button with the account menu: profile, stats, settings, support, admin, logout. */
 function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
   const [open, setOpen] = useState(false);
+  const [theme, pickTheme] = useState(user.theme);
   const close = () => setOpen(false);
+  const changeTheme = (t: string) => {
+    document.documentElement.setAttribute('data-theme', t); // instant, no reload
+    pickTheme(t);
+    void setTheme(t);
+  };
   return (
     <div className="relative">
       <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex items-center gap-2.5 rounded-lg p-1 hover:bg-raised sm:pr-2">
@@ -384,6 +390,22 @@ function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
                 <Icon size={16} className="text-muted" /> {label}
               </Link>
             ))}
+            <div className="my-1 border-t border-line" />
+            <p className="px-3 pt-1.5 pb-1 text-[11px] text-faint">Theme</p>
+            <div className="grid grid-cols-8 gap-1 px-2 pb-2">
+              {THEMES.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => changeTheme(t)}
+                  title={THEME_INFO[t].name}
+                  aria-label={`Theme ${THEME_INFO[t].name}`}
+                  aria-pressed={theme === t}
+                  className={`grid aspect-square place-items-center rounded-full ring-offset-2 ring-offset-surface ${theme === t ? 'ring-2 ring-fg' : 'hover:ring-1 hover:ring-faint'}`}
+                >
+                  <span className="h-full w-full rounded-full" style={{ background: THEME_INFO[t].color }} />
+                </button>
+              ))}
+            </div>
             <div className="my-1 border-t border-line" />
             <button onClick={() => logout()} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg">
               <LogOut size={16} /> Abmelden

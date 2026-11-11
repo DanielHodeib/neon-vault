@@ -4,11 +4,11 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-mono-face), ui-monospace, monospace;
 
-  --color-bg: #0a0b0d;
-  --color-surface: #111317;
-  --color-raised: #171a1f;
-  --color-line: #23272e;
-  --color-line-strong: #2f343c;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-fg: #e8eaed;
   --color-muted: #8a909a;
   --color-faint: #5b616b;
@@ -21,13 +21,16 @@
   --breakpoint-xs: 26rem;
 }
 
-/* Accent colour per user theme (stored keys kept for existing accounts). */
+/* Themes: accent colour plus a tinted background (stored keys kept for existing accounts). */
 :root,
-[data-theme='neon'] { --accent: #3ddc97; --accent-fg: #04140c; }
-[data-theme='steel'] { --accent: #a5b4c8; --accent-fg: #0b0f14; }
-[data-theme='sunset'] { --accent: #ff8a4c; --accent-fg: #1a0b02; }
-[data-theme='ocean'] { --accent: #4cc2ff; --accent-fg: #021220; }
-[data-theme='matrix'] { --accent: #b4f04a; --accent-fg: #101802; }
+[data-theme='neon'] { --accent: #3ddc97; --accent-fg: #04140c; --bg: #0a0b0d; --surface: #111317; --raised: #171a1f; --line: #23272e; --line-strong: #2f343c; }
+[data-theme='steel'] { --accent: #a5b4c8; --accent-fg: #0b0f14; --bg: #0b0c0e; --surface: #121417; --raised: #191c20; --line: #262a30; --line-strong: #32373e; }
+[data-theme='ocean'] { --accent: #4cc2ff; --accent-fg: #021220; --bg: #070b12; --surface: #0d1420; --raised: #121b2a; --line: #1c2738; --line-strong: #26344a; }
+[data-theme='violet'] { --accent: #a78bfa; --accent-fg: #120a24; --bg: #0b0912; --surface: #120f1c; --raised: #181425; --line: #241e36; --line-strong: #2f2846; }
+[data-theme='rose'] { --accent: #fb7185; --accent-fg: #22050b; --bg: #0d080a; --surface: #160d11; --raised: #1d1217; --line: #2c1b22; --line-strong: #3a242d; }
+[data-theme='sunset'] { --accent: #ff8a4c; --accent-fg: #1a0b02; --bg: #0d0a08; --surface: #15100c; --raised: #1c1611; --line: #2a2119; --line-strong: #382c21; }
+[data-theme='gold'] { --accent: #e4c06a; --accent-fg: #1a1404; --bg: #0c0b08; --surface: #14120d; --raised: #1b1812; --line: #29251b; --line-strong: #363023; }
+[data-theme='matrix'] { --accent: #b4f04a; --accent-fg: #101802; --bg: #060a06; --surface: #0b120b; --raised: #101910; --line: #1a261a; --line-strong: #233323; }
 
 html {
   color-scheme: dark;

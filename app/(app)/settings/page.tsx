@@ -2,20 +2,12 @@ import { changePassword, deleteAccount, updateProfile, updateSettings } from '@/
 import { ImageField } from '@/components/ImageField';
 import { ActionForm, PageHeader, Section, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
-import { coins, THEMES } from '@/lib/format';
+import { coins, THEME_INFO, THEMES } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { effectiveLimit, limitPending } from '@/lib/limits';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 
 export const metadata = { title: 'Einstellungen' };
-
-const THEME_NAMES: Record<string, [string, string]> = {
-  neon: ['Mint', '#3ddc97'],
-  steel: ['Stahl', '#a5b4c8'],
-  sunset: ['Sunset', '#ff8a4c'],
-  ocean: ['Ozean', '#4cc2ff'],
-  matrix: ['Lime', '#b4f04a'],
-};
 
 function Toggle({ name, label, hint, checked }: { name: string; label: string; hint?: string; checked: boolean }) {
   return (
@@ -74,14 +66,14 @@ export default async function SettingsPage() {
           <Section title="Darstellung & Privatsphäre" pad>
             <ActionForm action={updateSettings} className="space-y-4">
               <div>
-                <label className="label">Akzentfarbe</label>
+                <label className="label">Theme</label>
                 <div className="flex flex-wrap gap-2">
                   {THEMES.map((t) => (
                     <label key={t} className="cursor-pointer">
                       <input type="radio" name="theme" value={t} defaultChecked={user.theme === t} className="peer sr-only" />
                       <span className="chip gap-2 peer-checked:border-accent peer-checked:text-fg">
-                        <span className="h-3 w-3 rounded-full" style={{ background: THEME_NAMES[t][1] }} />
-                        {THEME_NAMES[t][0]}
+                        <span className="h-3 w-3 rounded-full" style={{ background: THEME_INFO[t].color }} />
+                        {THEME_INFO[t].name}
                       </span>
                     </label>
                   ))}

@@ -28,6 +28,18 @@ export const GAME_NAMES: Record<string, string> = {
   race: 'Pferderennen',
 };
 
-export const THEMES = ['neon', 'steel', 'sunset', 'ocean', 'matrix'] as const;
+export const THEMES = ['neon', 'ocean', 'violet', 'rose', 'sunset', 'gold', 'matrix', 'steel'] as const;
+export type Theme = (typeof THEMES)[number];
+/** Display name and swatch colour per theme (colours themselves live in app/globals.css). */
+export const THEME_INFO: Record<Theme, { name: string; color: string }> = {
+  neon: { name: 'Mint', color: '#3ddc97' },
+  ocean: { name: 'Ozean', color: '#4cc2ff' },
+  violet: { name: 'Violett', color: '#a78bfa' },
+  rose: { name: 'Rosé', color: '#fb7185' },
+  sunset: { name: 'Sunset', color: '#ff8a4c' },
+  gold: { name: 'Gold', color: '#e4c06a' },
+  matrix: { name: 'Matrix', color: '#b4f04a' },
+  steel: { name: 'Stahl', color: '#a5b4c8' },
+};
 export const TICKET_CATEGORIES = ['Allgemein', 'Konto', 'Zahlungen', 'Bug', 'Bann-Einspruch'];
 export const TICKET_STATUS: Record<string, string> = { OPEN: 'Offen', IN_PROGRESS: 'In Bearbeitung', ANSWERED: 'Beantwortet', CLOSED: 'Geschlossen' };

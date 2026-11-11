@@ -30,7 +30,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <SocketProvider me={{ id: user.id, username: user.username, soundEnabled: user.soundEnabled }} initialBalance={Number(user.balance)}>
       <Shell
-        user={{ username: user.username, avatarUrl: user.avatarUrl, frame: user.frame, level: levelOf(user.xp), role: user.role }}
+        user={{ username: user.username, avatarUrl: user.avatarUrl, frame: user.frame, level: levelOf(user.xp), role: user.role, theme: user.theme }}
         notifications={notifications.map((n) => ({ ...n, createdAt: n.createdAt.toISOString() }))}
         maintenance={hub.maintenance.on}
       >

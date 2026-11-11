@@ -128,3 +128,10 @@ export async function clearNotifications() {
   await db.notification.deleteMany({ where: { userId: user.id } });
   refresh();
 }
+
+/** Quick theme switch from the account menu (the page already shows it; this only saves it). */
+export async function setTheme(theme: string) {
+  const user = await requireUser();
+  if (!(THEMES as readonly string[]).includes(theme)) return;
+  await db.user.update({ where: { id: user.id }, data: { theme } });
+}
