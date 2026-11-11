@@ -68,7 +68,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
 
       {tab === 'chat' && (
         <form onSubmit={send} className="flex shrink-0 gap-2 border-t border-line p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <input className="input" value={text} maxLength={300} onChange={(e) => setText(e.target.value)} placeholder="Nachricht schreiben …" enterKeyHint="send" />
+          <input className="input" value={text} maxLength={300} onChange={(e) => setText(e.target.value)} placeholder="Nachricht … (/tip Name 100)" enterKeyHint="send" />
           <button className="btn-primary w-10 px-0" aria-label="Senden" disabled={!text.trim()}>
             <Send size={16} />
           </button>

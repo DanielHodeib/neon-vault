@@ -1,9 +1,11 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { db, hub, type ChatMessage } from '@/lib/hub';
+import { systemMessage } from '@/lib/events';
+import { db, hub, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { atLeast } from '@/lib/roles';
+import { applyLedger, assertAmount } from '@/lib/wallet';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
 import { refundBlackjack, registerBlackjack } from './blackjack';
 import { refundCoinflip, registerCoinflip } from './coinflip';
@@ -55,6 +57,7 @@ export function setupRealtime(io: Server) {
     });
 
     handle(socket, 'chat:send', z.object({ text: z.string().trim().min(1).max(300) }), async ({ text }) => {
+      if (text.startsWith('/tip')) return tip(user.id, user.username, text);
       const u = await db.user.findUniqueOrThrow({ where: { id: user.id } });
       const ownerFriend = (await db.friendship.count({
         where: { accepted: true, OR: [{ fromId: u.id, to: { role: 'OWNER' } }, { toId: u.id, from: { role: 'OWNER' } }] },
@@ -89,4 +92,21 @@ export function setupRealtime(io: Server) {
 export async function closeAndRefund() {
   await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
   for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundWheel, refundJackpot, refundBlackjack, refundPoker]) await refund();
+}
+
+/** Chat command `/tip Name 100`: gives NVC to another player and announces it. */
+async function tip(fromId: string, fromName: string, text: string) {
+  const [, name, raw] = text.split(/\s+/);
+  const amount = Number(raw);
+  if (!name || !raw) throw new UserError('So geht’s: /tip Name Betrag');
+  assertAmount(amount);
+  const to = await db.user.findUnique({ where: { username: name.replace(/^@/, '') }, select: { id: true, username: true } });
+  if (!to) throw new UserError('Spieler nicht gefunden.');
+  if (to.id === fromId) throw new UserError('Du kannst dir nicht selbst Trinkgeld geben.');
+  await applyLedger([
+    { userId: fromId, amount: -amount, kind: 'TRANSFER', counterpartyId: to.id, note: 'Trinkgeld' },
+    { userId: to.id, amount, kind: 'TRANSFER', counterpartyId: fromId, note: 'Trinkgeld' },
+  ]);
+  systemMessage(`${fromName} gibt ${to.username} ${amount.toLocaleString('de-DE')} NVC Trinkgeld.`);
+  await notify(to.id, 'Trinkgeld', `${fromName} hat dir ${amount.toLocaleString('de-DE')} NVC gegeben.`);
 }
