@@ -6,7 +6,8 @@ export { MACHINES };
 export type SpinResult = { reels: string[]; multiplier: number; features: string[]; freeSpins: number };
 
 /** Outcome first (fixed odds), then reels drawn to show it. */
-export function spin(m: Machine): SpinResult {
+/** `rush` (Jackpot-Rush event) triples the chance of the top tier. */
+export function spin(m: Machine, rush = false): SpinResult {
   const features: string[] = [];
   const top = m.symbols.at(-1)!;
   let multiplier = 0;
@@ -25,7 +26,7 @@ export function spin(m: Machine): SpinResult {
     return { reels: [...Array(m.reels - 1).fill('💎'), '🎁'], multiplier: 0, features, freeSpins };
   }
   for (const [i, tier] of m.tiers.entries()) {
-    if ((roll -= tier.p) < 0) {
+    if ((roll -= rush && i === m.tiers.length - 1 ? tier.p * 3 : tier.p) < 0) {
       multiplier = tier.mult;
       count = tier.count;
       // The last tier of fruit machines is the jackpot; it shows the top symbol.

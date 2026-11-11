@@ -2,16 +2,27 @@ import { randomInt } from 'node:crypto';
 
 import { shuffle } from '../game/rng';
 import { broadcast, db, hub, notify, type ChatMessage, type GlobalEvent } from './hub';
-import { applyLedger, payout } from './wallet';
+import { applyLedger, netProfitSince, payout, startOfDay } from './wallet';
 
 // Global events, rain, maintenance and announcements. Called from game code
 // and from admin server actions; all state lives on `hub`.
 
-export const EVENT_TYPES: Record<GlobalEvent['type'], Omit<GlobalEvent, 'endsAt' | 'type'>> = {
-  CASHBACK: { label: 'Cashback-Mania', description: '10 % Cashback auf verlorene Crash- und Coinflip-Einsätze.' },
-  BOOST: { label: 'Multiplier-Boost', description: '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.' },
-  RAIN: { label: 'Rain-Event', description: 'Alle Online-Spieler bekommen regelmäßig NVC-Drops.' },
+export const KING_BONUS = 25_000;
+export const BOUNTY_BONUS = 10_000;
+
+type EventType = GlobalEvent['type'];
+export const EVENT_TYPES: Record<EventType, Omit<GlobalEvent, 'endsAt' | 'type'> & { minutes: number }> = {
+  CASHBACK: { label: 'Cashback-Mania', description: '10 % Cashback auf verlorene Crash- und Coinflip-Einsätze.', minutes: 10 },
+  BOOST: { label: 'Multiplier-Boost', description: '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.', minutes: 10 },
+  RAIN: { label: 'Rain-Event', description: 'Alle Online-Spieler bekommen regelmäßig NVC-Drops.', minutes: 10 },
+  HAPPY_HOUR: { label: 'Happy Hour', description: 'Doppelte XP auf alle Einsätze.', minutes: 60 },
+  JACKPOT_RUSH: { label: 'Jackpot-Rush', description: 'Dreifache Jackpot-Chance an allen Slots.', minutes: 10 },
+  DUEL: { label: 'Duell-Woche', description: 'Coinflip ohne 5 % Gebühr.', minutes: 30 },
+  KING: { label: 'King of the Hill', description: `Der höchste Einzelgewinn bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC Bonus.`, minutes: 30 },
+  BOUNTY: { label: 'Bounty', description: `Wer den King of Today im Coinflip schlägt, bekommt ${BOUNTY_BONUS.toLocaleString('de-DE')} NVC.`, minutes: 30 },
 };
+
+export const eventActive = (type: EventType) => hub.event?.type === type;
 
 const BOOSTED_GAMES = new Set(['crash', 'coinflip']);
 const timers = hub.timers;
@@ -28,9 +39,11 @@ export function systemMessage(text: string) {
   broadcast('chat', msg);
 }
 
-export function startEvent(type: GlobalEvent['type'], minutes = 5 + randomInt(6)) {
+export function startEvent(type: EventType, minutes = EVENT_TYPES[type].minutes) {
   if (hub.event) return false;
-  hub.event = { type, ...EVENT_TYPES[type], endsAt: Date.now() + minutes * 60_000 };
+  const { label, description } = EVENT_TYPES[type];
+  hub.event = { type, label, description, endsAt: Date.now() + minutes * 60_000 };
+  if (type === 'KING') hub.king = null;
   broadcast('event', hub.event);
   systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
   timers.eventEnd = setTimeout(stopEvent, minutes * 60_000);
@@ -41,6 +54,7 @@ export function startEvent(type: GlobalEvent['type'], minutes = 5 + randomInt(6)
 export function stopEvent() {
   if (!hub.event) return false;
   systemMessage(`${hub.event.label} ist vorbei.`);
+  if (hub.event.type === 'KING' && hub.king) void crownKing(hub.king.userId, hub.king.win).catch(console.error);
   hub.event = null;
   clearTimeout(timers.eventEnd);
   clearInterval(timers.rainDrops);
@@ -52,11 +66,30 @@ export function stopEvent() {
 export function startEventScheduler() {
   const next = () => {
     timers.scheduler = setTimeout(() => {
-      startEvent((['CASHBACK', 'BOOST', 'RAIN'] as const)[randomInt(3)]);
+      const types = Object.keys(EVENT_TYPES) as EventType[];
+      startEvent(types[randomInt(types.length)]);
       next();
     }, (60 + randomInt(61)) * 60_000);
   };
   next();
+}
+
+async function crownKing(userId: string, win: number) {
+  hub.king = null;
+  const user = await db.user.findUnique({ where: { id: userId }, select: { username: true } });
+  if (!user) return;
+  await applyLedger([{ userId, amount: KING_BONUS, kind: 'BONUS', note: 'King of the Hill' }]);
+  systemMessage(`${user.username} ist King of the Hill (${win.toLocaleString('de-DE')} NVC Einzelgewinn) und bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC!`);
+  await notify(userId, 'King of the Hill', `+${KING_BONUS.toLocaleString('de-DE')} NVC für den höchsten Einzelgewinn.`);
+}
+
+/** Bounty event: beating today's top player in a coinflip pays a bonus. */
+export async function bounty(winnerId: string, loserId: string, winnerName: string) {
+  if (!eventActive('BOUNTY')) return;
+  const [king] = await netProfitSince(startOfDay(), 1);
+  if (king?.userId !== loserId || king.profit <= 0) return;
+  await applyLedger([{ userId: winnerId, amount: BOUNTY_BONUS, kind: 'BONUS', note: `Bounty auf ${king.username}` }]);
+  systemMessage(`${winnerName} hat den King of Today ${king.username} geschlagen: +${BOUNTY_BONUS.toLocaleString('de-DE')} NVC Bounty!`);
 }
 
 async function rainDrop() {

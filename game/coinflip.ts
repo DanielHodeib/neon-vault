@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { cashback, systemMessage, winBoost } from '@/lib/events';
+import { bounty, cashback, eventActive, systemMessage, winBoost } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { id as newId, randInt } from './rng';
@@ -65,9 +65,11 @@ export const registerCoinflip: Register = (io, socket) => {
       const creatorWins = result === lobby.side;
       const [winner, loser] = creatorWins ? [lobby.userId, user.id] : [user.id, lobby.userId];
       const winnerName = creatorWins ? lobby.username : user.username;
-      const prize = Math.floor(lobby.amount * 2 * (1 - HOUSE_FEE) * winBoost('coinflip'));
+      const fee = eventActive('DUEL') ? 0 : HOUSE_FEE;
+      const prize = Math.floor(lobby.amount * 2 * (1 - fee) * winBoost('coinflip'));
       await payout(winner, prize, 'coinflip');
       await cashback(loser, lobby.amount, 'coinflip');
+      await bounty(winner, loser, winnerName).catch(console.error);
       emit();
       io.to('coinflip').emit('coinflip:result', { lobby, opponent: user.username, result, winner: winnerName, prize });
       if (prize >= 50_000) systemMessage(`${winnerName} gewinnt ${prize.toLocaleString('de-DE')} NVC im Coinflip!`);

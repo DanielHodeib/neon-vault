@@ -4,7 +4,7 @@ import type { Server } from 'socket.io';
 // server.ts (tsx) and Next's bundled code load separate copies of this module,
 // so anything shared between them lives on globalThis.
 export type GlobalEvent = {
-  type: 'CASHBACK' | 'BOOST' | 'RAIN';
+  type: 'CASHBACK' | 'BOOST' | 'RAIN' | 'HAPPY_HOUR' | 'JACKPOT_RUSH' | 'DUEL' | 'KING' | 'BOUNTY';
   label: string;
   description: string;
   endsAt: number;
@@ -34,6 +34,7 @@ type Hub = {
   chatActive: Map<string, number>; // userId -> last message time
   timers: Record<string, NodeJS.Timeout | undefined>;
   rainActive: boolean;
+  king: { userId: string; win: number } | null; // King of the Hill leader
 };
 
 const g = globalThis as unknown as { __neonHub?: Hub };
@@ -48,6 +49,7 @@ export const hub: Hub = (g.__neonHub ??= {
   chatActive: new Map(),
   timers: {},
   rainActive: false,
+  king: null,
 });
 
 export const db = hub.db;

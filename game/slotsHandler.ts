@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
-import { db, UserError } from '@/lib/hub';
+import { db, hub, UserError } from '@/lib/hub';
 import { payout, placeBet } from '@/lib/wallet';
 import { MACHINES, spin } from './slots';
 import { amount, empty, handle, type Register } from './socket';
@@ -33,7 +33,7 @@ export const registerSlots: Register = (_io, socket) => {
         await placeBet(user.id, bet, 'slots', machine.minBet);
       }
 
-      const result = spin(machine);
+      const result = spin(machine, hub.event?.type === 'JACKPOT_RUSH');
       const win = Math.floor(bet * result.multiplier);
       if (result.freeSpins) {
         await db.freeSpins.upsert({

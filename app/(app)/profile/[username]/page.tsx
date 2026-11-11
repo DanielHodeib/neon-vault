@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 
 import { sendFriendRequest } from '@/app/actions/social';
 import { ActionForm, Avatar, Coins, RankTag, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
+import { ZoomImage } from '@/components/ZoomImage';
 import { requireUser } from '@/lib/auth';
 import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
@@ -39,14 +40,16 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
   return (
     <div className="mx-auto max-w-3xl space-y-4">
       <div className="panel overflow-hidden">
-        <div
-          className="h-28 bg-raised bg-cover bg-center sm:h-40"
-          style={user.bannerUrl ? { backgroundImage: `url(${JSON.stringify(user.bannerUrl)})` } : { backgroundImage: `linear-gradient(120deg, ${rank.color}33, transparent 70%)` }}
-        />
+        <ZoomImage src={user.bannerUrl} label="Banner" className="block w-full">
+          <div
+            className="h-28 bg-raised bg-cover bg-center sm:h-40"
+            style={user.bannerUrl ? { backgroundImage: `url(${JSON.stringify(user.bannerUrl)})` } : { backgroundImage: `linear-gradient(120deg, ${rank.color}33, transparent 70%)` }}
+          />
+        </ZoomImage>
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-6">
-          <div className="-mt-10 w-fit rounded-full border-4 border-surface sm:-mt-12">
+          <ZoomImage src={user.avatarUrl} label="Avatar" className="relative -mt-10 block w-fit rounded-full border-4 border-surface sm:-mt-12">
             <Avatar url={user.avatarUrl} name={user.username} size={84} />
-          </div>
+          </ZoomImage>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">

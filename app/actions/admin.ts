@@ -122,7 +122,7 @@ export async function eventAction(_: ActionState, form: FormData) {
   return run(async () => {
     await requireRole('ADMIN');
     const { type, minutes } = parse(
-      z.object({ type: z.enum(['STOP', ...(Object.keys(EVENT_TYPES) as ['CASHBACK', 'BOOST', 'RAIN'])]), minutes: z.coerce.number().int().min(1).max(180) }),
+      z.object({ type: z.enum(['STOP', ...(Object.keys(EVENT_TYPES) as [keyof typeof EVENT_TYPES])]), minutes: z.coerce.number().int().min(1).max(180) }),
       form,
     );
     if (type === 'STOP') return stopEvent() ? 'Event gestoppt.' : 'Kein Event aktiv.';

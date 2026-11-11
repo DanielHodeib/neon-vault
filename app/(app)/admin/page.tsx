@@ -5,6 +5,7 @@ import { adjustUser, announceAction, banUser, deleteUser, eventAction, rainActio
 import { FormButton } from '@/components/FormButton';
 import { ActionForm, Coins, Empty, PageHeader, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
 import { requireRole } from '@/lib/auth';
+import { EVENT_TYPES } from '@/lib/events';
 import { coins, compact } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
@@ -163,9 +164,9 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
                 <ActionForm action={eventAction} className="space-y-3">
                   <div className="grid grid-cols-[1fr_6rem] gap-2">
                     <select className="input" name="type">
-                      <option value="CASHBACK">Cashback-Mania</option>
-                      <option value="BOOST">Multiplier-Boost</option>
-                      <option value="RAIN">Rain-Event</option>
+                      {Object.entries(EVENT_TYPES).map(([type, e]) => (
+                        <option key={type} value={type}>{e.label}</option>
+                      ))}
                       <option value="STOP">Event stoppen</option>
                     </select>
                     <input className="input num" name="minutes" type="number" defaultValue={10} min={1} max={180} aria-label="Minuten" />
