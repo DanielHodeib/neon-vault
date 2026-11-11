@@ -10,7 +10,7 @@ import { requireRole } from '@/lib/auth';
 import { announce, cancelCountdown, systemMessage, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
 import { EVENT_INFO, EVENT_KEYS, type EventType } from '@/lib/eventTypes';
 import { backupNow } from '@/lib/backup';
-import { FX, IMAGE_STYLES, type FxAssetPayload } from '@/lib/fx';
+import { FX, IMAGE_STYLES, MOODS, type FxAssetPayload, type Mood, type MoodName } from '@/lib/fx';
 import { sniffAudio, sniffImage } from '@/lib/media';
 import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } from '@/lib/hub';
 import { canEditSelf, canManage, ROLES } from '@/lib/roles';
@@ -301,5 +301,46 @@ export async function playFxAsset(id: string, style: string, userId: string | nu
     }
     broadcast('fx', payload);
     return `„${asset.name}“ an alle.`;
+  });
+}
+
+/** Starts an atmosphere preset for everyone (kept for players who join later) or one player. */
+export async function moodAction(_: ActionState, form: FormData) {
+  return run(async () => {
+    const actor = await requireRole('ADMIN');
+    const { name, level, minutes, user } = parse(
+      z.object({
+        name: z.enum(Object.keys(MOODS) as [MoodName, ...MoodName[]]),
+        level: z.coerce.number().int().min(1).max(3),
+        minutes: z.coerce.number().int().min(1, 'Mindestens 1 Minute.').max(120, 'Höchstens 120 Minuten.'),
+        user: z.string().optional(),
+      }),
+      form,
+    );
+    const mood: Mood = { name, level, endsAt: Date.now() + minutes * 60_000, by: actor.username };
+    if (user) {
+      const target = await db.user.findUnique({ where: { id: user }, select: { id: true, username: true } });
+      if (!target) throw new UserError('Spieler nicht gefunden.');
+      emitToUser(target.id, 'mood', mood);
+      return `${MOODS[name].label} bei ${target.username}.`;
+    }
+    hub.mood = mood;
+    broadcast('mood', mood);
+    refresh();
+    return `${MOODS[name].label} für alle (${minutes} Min.).`;
+  });
+}
+
+export async function stopMoodAction(userId: string | null) {
+  return run(async () => {
+    await requireRole('ADMIN');
+    if (userId) {
+      emitToUser(userId, 'mood', null);
+      return 'Stimmung beim Spieler beendet.';
+    }
+    hub.mood = null;
+    broadcast('mood', null);
+    refresh();
+    return 'Stimmung beendet.';
   });
 }

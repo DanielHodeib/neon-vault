@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 
 import type { EventParams, EventType } from './eventTypes';
+import type { Mood } from './fx';
 
 // server.ts (tsx) and Next's bundled code load separate copies of this module,
 // so anything shared between them lives on globalThis.
@@ -39,6 +40,7 @@ type Hub = {
   event: GlobalEvent | null;
   maintenance: { on: boolean; endsAt: number | null };
   countdown: Countdown | null;
+  mood: Mood | null; // atmosphere preset for everyone
   online: Map<string, OnlineUser>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
@@ -58,6 +60,7 @@ export const hub: Hub = (g.__neonHub ??= {
   event: null,
   maintenance: { on: false, endsAt: null },
   countdown: null,
+  mood: null,
   online: new Map(),
   chat: [],
   chatActive: new Map(),
@@ -94,3 +97,6 @@ export async function notify(userId: string, title: string, message: string) {
 
 /** Message shown to the user; anything else is logged and hidden. */
 export class UserError extends Error {}
+
+/** The atmosphere preset for everyone, unless it already ran out. */
+export const currentMood = () => (hub.mood && hub.mood.endsAt > Date.now() ? hub.mood : null);

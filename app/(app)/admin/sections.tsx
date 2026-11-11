@@ -25,11 +25,12 @@ import {
 } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
 import { EventForm } from './EventForm';
+import { MoodForm } from './MoodForm';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
 import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
 import { FX, IMAGE_STYLES } from '@/lib/fx';
-import { db, hub, isMuted } from '@/lib/hub';
+import { currentMood, db, hub, isMuted } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast, canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { secondsUntil, serverInfo } from '@/lib/serverInfo';
@@ -470,6 +471,11 @@ export async function FunTab({ q, selectedId }: { q: string; selectedId?: string
               </FormButton>
             ))}
           </div>
+        </Section>
+
+        <Section title={target ? `Stimmung für ${target.username}` : 'Stimmung'} pad>
+          <p className="mb-4 text-sm text-muted">Bleibt so lange, wie du einstellst – auch für Spieler, die später dazukommen.</p>
+          <MoodForm to={to} toName={target?.username} current={currentMood()} />
         </Section>
 
         <Section title="Eigene Sounds" pad>

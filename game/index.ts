@@ -2,7 +2,7 @@ import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
-import { db, hub, isMuted, notify, UserError, type ChatMessage } from '@/lib/hub';
+import { currentMood, db, hub, isMuted, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { shopItem } from '@/lib/shop';
 import { atLeast } from '@/lib/roles';
@@ -54,7 +54,7 @@ export function setupRealtime(io: Server) {
     hub.online.set(user.id, entry);
     io.emit('online', onlineList());
 
-    socket.emit('hello', { chat: hub.chat, online: onlineList(), event: hub.event, maintenance: hub.maintenance, countdown: hub.countdown });
+    socket.emit('hello', { chat: hub.chat, online: onlineList(), event: hub.event, maintenance: hub.maintenance, countdown: hub.countdown, mood: currentMood() });
 
     handle(socket, 'presence', z.object({ activity: z.string().max(40) }), ({ activity }) => {
       entry.activity = activity;

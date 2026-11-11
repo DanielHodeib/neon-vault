@@ -6,7 +6,8 @@ import toast from 'react-hot-toast';
 import { io, type Socket } from 'socket.io-client';
 
 import { GAME_NAMES } from '@/lib/format';
-import type { FxAssetPayload, FxName } from '@/lib/fx';
+import type { FxAssetPayload, FxName, Mood } from '@/lib/fx';
+import { MoodLayer } from './Mood';
 import { tPage } from '@/lib/i18n';
 import type { ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
 import { runAsset, runFx } from './fx';
@@ -78,6 +79,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [event, setEvent] = useState<GlobalEvent | null>(null);
   const [countdown, setCountdown] = useState<Countdown | null>(null);
+  const [mood, setMood] = useState<Mood | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
   const [dmUnread, setDmUnread] = useState(0);
   const held = useRef(0);
@@ -87,11 +89,12 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     if (!socket) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- socket.io listener signature
     const handlers: Record<string, (...args: any[]) => void> = {
-      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null; countdown: Countdown | null }) => {
+      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null; countdown: Countdown | null; mood?: Mood | null }) => {
         setChat(d.chat);
         setOnline(d.online);
         setEvent(d.event);
         setCountdown(d.countdown);
+        setMood(d.mood ?? null);
       },
       balance: (b: number) => {
         if (held.current > 0) pending.current = b;
@@ -104,6 +107,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       },
       event: setEvent,
       countdown: setCountdown,
+      mood: setMood,
       fx: (d: { effect: FxName | 'asset'; by: string }) => (d.effect === 'asset' ? runAsset(d as FxAssetPayload) : runFx(d.effect, d.by)),
       chatClear: () => setChat([]),
       rain: setRain,
@@ -172,5 +176,10 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     () => ({ socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread, setDmUnread }),
     [socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread],
   );
-  return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
+  return (
+    <SocketContext.Provider value={value}>
+      {children}
+      <MoodLayer mood={mood} />
+    </SocketContext.Provider>
+  );
 }
