@@ -15,7 +15,8 @@ const INSURANCE_MS = 6_000;
 const BOT_NAMES = ['Nova', 'Vex', 'Rook', 'Juno'];
 
 type Hand = { cards: string[]; bet: number; done: boolean; result?: 'blackjack' | 'win' | 'push' | 'lose'; won?: number };
-type Seat = { userId: string | null; name: string; bet: number; hands: Hand[]; insurance: number; net: number | null };
+// `pending`: a stake is being debited right now; it is not dealt, refunded or settled until it lands.
+type Seat = { userId: string | null; name: string; bet: number; hands: Hand[]; insurance: number; net: number | null; pending?: boolean };
 type Table = {
   id: string;
   isPrivate: boolean;
@@ -71,7 +72,7 @@ export function registerBlackjack(io: Server): Register {
 
   const deal = (t: Table) => {
     for (const s of t.seats) if (!s.userId) s.bet = 50 * (1 + randInt(10)); // bots always play
-    const playing = t.seats.filter((s) => s.bet > 0);
+    const playing = t.seats.filter((s) => s.bet > 0 && !s.pending);
     if (!playing.some((s) => s.userId)) return resetRound(t);
     t.phase = 'playing';
     for (const s of playing) s.hands = [{ cards: [draw(t), draw(t)], bet: s.bet, done: false }];
@@ -183,7 +184,7 @@ export function registerBlackjack(io: Server): Register {
       for (const h of seat.hands) h.done = true; // dealt hands stand and still get paid
       if (t.phase === 'betting') {
         t.seats.splice(t.seats.indexOf(seat), 1);
-        if (seat.bet) void cancelBet(userId, seat.bet, 'blackjack').catch(console.error);
+        if (seat.bet && !seat.pending) void cancelBet(userId, seat.bet, 'blackjack').catch(console.error);
       }
     }
     if (!seated(t).length) {
@@ -238,16 +239,21 @@ export function registerBlackjack(io: Server): Register {
         const t = myTable();
         const seat = t.seats.find((s) => s.userId === user.id)!;
         if (t.phase !== 'betting' || seat.bet) throw new UserError('Einsatz gerade nicht möglich.');
-        seat.bet = amount; // reserve before the await so a second bet is rejected
+        Object.assign(seat, { bet: amount, pending: true }); // reserve so a second bet is rejected
         try {
           await placeBet(user.id, amount, 'blackjack');
         } catch (err) {
-          // If the deal already happened, sit the hand out at zero stake instead of removing it.
           seat.bet = 0;
-          for (const h of seat.hands) Object.assign(h, { bet: 0, done: true });
           throw err;
+        } finally {
+          seat.pending = false;
         }
-        if (t.phase !== 'betting') return; // the deal already ran while we were debiting
+        // Left the table or missed the deal while the debit ran: hand the stake back.
+        if (t.phase !== 'betting' || !t.seats.includes(seat)) {
+          seat.bet = 0;
+          await cancelBet(user.id, amount, 'blackjack');
+          throw new UserError('Die Runde hat schon begonnen – Einsatz zurückgebucht.');
+        }
         if (seated(t).every((s) => s.bet)) deal(t);
         else {
           if (!t.deadline) schedule(t, BET_WINDOW_MS, () => deal(t));
@@ -265,15 +271,20 @@ export function registerBlackjack(io: Server): Register {
     handle(socket, 'bj:insurance', empty, async () => {
       const t = myTable();
       const seat = t.seats.find((s) => s.userId === user.id);
-      if (t.phase !== 'insurance' || !seat?.hands.length || seat.insurance) throw new UserError('Versicherung gerade nicht möglich.');
+      if (t.phase !== 'insurance' || !seat?.hands.length || seat.insurance || seat.pending) throw new UserError('Versicherung gerade nicht möglich.');
       const cost = Math.floor(seat.hands[0].bet / 2);
-      seat.insurance = cost; // reserve before the await
+      seat.pending = true;
       try {
         await placeBet(user.id, cost, 'blackjack');
-      } catch (err) {
-        seat.insurance = 0;
-        throw err;
+      } finally {
+        seat.pending = false;
       }
+      // Only count the insurance once it is paid and the window is still open.
+      if (t.phase !== 'insurance') {
+        await cancelBet(user.id, cost, 'blackjack');
+        throw new UserError('Zu spät – Versicherung zurückgebucht.');
+      }
+      seat.insurance = cost;
       emit(t);
     });
 

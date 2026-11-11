@@ -15,7 +15,7 @@ export const EVENT_TYPES: Record<EventType, Omit<GlobalEvent, 'endsAt' | 'type'>
   CASHBACK: { label: 'Cashback-Mania', description: '10 % Cashback auf verlorene Crash- und Coinflip-Einsätze.', minutes: 10 },
   BOOST: { label: 'Multiplier-Boost', description: '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.', minutes: 10 },
   RAIN: { label: 'Rain-Event', description: 'Alle Online-Spieler bekommen regelmäßig NVC-Drops.', minutes: 10 },
-  HAPPY_HOUR: { label: 'Happy Hour', description: 'Doppelte XP auf alle Einsätze.', minutes: 60 },
+  HAPPY_HOUR: { label: 'Happy Hour', description: 'Extra-XP für jeden Gewinn.', minutes: 60 },
   JACKPOT_RUSH: { label: 'Jackpot-Rush', description: 'Dreifache Jackpot-Chance an allen Slots.', minutes: 10 },
   DUEL: { label: 'Duell-Woche', description: 'Coinflip ohne 5 % Gebühr.', minutes: 30 },
   KING: { label: 'King of the Hill', description: `Der höchste Einzelgewinn bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC Bonus.`, minutes: 30 },
@@ -44,6 +44,7 @@ export function startEvent(type: EventType, minutes = EVENT_TYPES[type].minutes)
   const { label, description } = EVENT_TYPES[type];
   hub.event = { type, label, description, endsAt: Date.now() + minutes * 60_000 };
   if (type === 'KING') hub.king = null;
+  if (type === 'BOUNTY') hub.bountyPaid = false;
   broadcast('event', hub.event);
   systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
   timers.eventEnd = setTimeout(stopEvent, minutes * 60_000);
@@ -85,9 +86,10 @@ async function crownKing(userId: string, win: number) {
 
 /** Bounty event: beating today's top player in a coinflip pays a bonus. */
 export async function bounty(winnerId: string, loserId: string, winnerName: string) {
-  if (!eventActive('BOUNTY')) return;
+  if (!eventActive('BOUNTY') || hub.bountyPaid) return;
   const [king] = await netProfitSince(startOfDay(), 1);
-  if (king?.userId !== loserId || king.profit <= 0) return;
+  if (king?.userId !== loserId || king.profit <= 0 || hub.bountyPaid) return;
+  hub.bountyPaid = true; // one bounty per event, otherwise a second account could farm it
   await applyLedger([{ userId: winnerId, amount: BOUNTY_BONUS, kind: 'BONUS', note: `Bounty auf ${king.username}` }]);
   systemMessage(`${winnerName} hat den King of Today ${king.username} geschlagen: +${BOUNTY_BONUS.toLocaleString('de-DE')} NVC Bounty!`);
 }

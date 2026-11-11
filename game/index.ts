@@ -103,6 +103,11 @@ async function tip(fromId: string, fromName: string, text: string) {
   const to = await db.user.findUnique({ where: { username: name.replace(/^@/, '') }, select: { id: true, username: true } });
   if (!to) throw new UserError('Spieler nicht gefunden.');
   if (to.id === fromId) throw new UserError('Du kannst dir nicht selbst Trinkgeld geben.');
+  if (hub.maintenance.on) throw new UserError('Wartungsmodus aktiv.');
+  // Same rules as sending money: friends only, and never past a block.
+  const pair = [{ fromId, toId: to.id }, { fromId: to.id, toId: fromId }];
+  if (await db.block.count({ where: { OR: pair } })) throw new UserError('Nicht möglich – einer von euch hat den anderen blockiert.');
+  if (!(await db.friendship.count({ where: { accepted: true, OR: pair } }))) throw new UserError('Trinkgeld geht nur an Freunde.');
   await applyLedger([
     { userId: fromId, amount: -amount, kind: 'TRANSFER', counterpartyId: to.id, note: 'Trinkgeld' },
     { userId: to.id, amount, kind: 'TRANSFER', counterpartyId: fromId, note: 'Trinkgeld' },

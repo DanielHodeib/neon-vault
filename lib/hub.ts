@@ -35,6 +35,7 @@ type Hub = {
   timers: Record<string, NodeJS.Timeout | undefined>;
   rainActive: boolean;
   king: { userId: string; win: number } | null; // King of the Hill leader
+  bountyPaid: boolean; // Bounty event pays out once
 };
 
 const g = globalThis as unknown as { __neonHub?: Hub };
@@ -50,6 +51,7 @@ export const hub: Hub = (g.__neonHub ??= {
   timers: {},
   rainActive: false,
   king: null,
+  bountyPaid: false,
 });
 
 export const db = hub.db;

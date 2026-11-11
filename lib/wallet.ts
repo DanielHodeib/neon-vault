@@ -30,14 +30,16 @@ export function assertAmount(amount: number, min = 1) {
  */
 export async function applyLedger(entries: Entry[]) {
   const touched = [...new Set(entries.map((e) => e.userId))];
-  const xpPerBet = XP_PER_BET * (hub.event?.type === 'HAPPY_HOUR' ? 2 : 1);
+  // Happy Hour adds XP on wins (not bets), so bet-and-cancel can't keep the bonus.
+  const happyHour = hub.event?.type === 'HAPPY_HOUR';
   const xpGained = new Map<string, number>();
   const levelUps: { userId: string; level: number; reward: number }[] = [];
   const balances = await db.$transaction(async (tx) => {
     for (const e of entries) {
       if (!Number.isSafeInteger(e.amount)) throw new Error(`non-integer ledger amount ${e.amount}`);
       const amount = BigInt(e.amount);
-      const xp = e.kind === 'BET' ? xpPerBet : e.kind === 'CANCEL' ? -xpPerBet : 0;
+      const xp = e.kind === 'BET' ? XP_PER_BET : e.kind === 'CANCEL' ? -XP_PER_BET : e.kind === 'WIN' && happyHour ? XP_PER_BET : 0;
+      if (amount < 0n && (e.kind === 'BET' || e.kind === 'BUYIN')) await checkLimit(tx, e.userId, -amount);
       xpGained.set(e.userId, (xpGained.get(e.userId) ?? 0) + xp);
       const { count } = await tx.user.updateMany({
         where: { id: e.userId, ...(amount < 0n ? { balance: { gte: -amount } } : {}) },
@@ -51,6 +53,8 @@ export async function applyLedger(entries: Entry[]) {
     for (const r of rows) {
       const gained = xpGained.get(r.id) ?? 0;
       for (let level = levelOf(r.xp - gained) + 1; gained > 0 && level <= levelOf(r.xp); level++) {
+        // Each level pays once, even if cancelled bets push the XP back below it.
+        if (await tx.ledgerEntry.findFirst({ where: { userId: r.id, kind: 'BONUS', note: `Level ${level}` }, select: { id: true } })) continue;
         const reward = level * LEVEL_REWARD;
         await tx.user.update({ where: { id: r.id }, data: { balance: { increment: reward } } });
         await tx.ledgerEntry.create({ data: { userId: r.id, amount: BigInt(reward), kind: 'BONUS', note: `Level ${level}` } });
@@ -67,20 +71,24 @@ export async function applyLedger(entries: Entry[]) {
 
 export async function placeBet(userId: string, amount: number, game: string, min = 1) {
   assertAmount(amount, min);
-  await assertWithinLimit(userId, amount);
   await applyLedger([{ userId, amount: -amount, kind: 'BET', game }]);
 }
 
-/** Enforces the player's own daily stake limit (bets and poker buy-ins, minus cancelled stakes). */
-export async function assertWithinLimit(userId: string, amount: number) {
-  const user = await db.user.findUnique({ where: { id: userId }, select: { dailyLimit: true } });
+type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
+
+/**
+ * The player's own daily stake limit (bets and poker buy-ins, minus cancelled stakes). Runs inside
+ * the debit transaction, so parallel bets can't all slip under it.
+ */
+async function checkLimit(tx: Tx, userId: string, amount: bigint) {
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { dailyLimit: true } });
   if (user?.dailyLimit == null) return;
-  const { _sum } = await db.ledgerEntry.aggregate({
+  const { _sum } = await tx.ledgerEntry.aggregate({
     where: { userId, createdAt: { gte: startOfDay() }, kind: { in: ['BET', 'CANCEL', 'BUYIN'] } },
     _sum: { amount: true },
   });
-  const left = Number(user.dailyLimit) + Number(_sum.amount ?? 0);
-  if (amount > left) throw new UserError(`Dein Tageslimit ist erreicht – heute noch ${Math.max(0, left).toLocaleString('de-DE')} NVC möglich.`);
+  const left = user.dailyLimit + (_sum.amount ?? 0n);
+  if (amount > left) throw new UserError(`Dein Tageslimit ist erreicht – heute noch ${(left > 0n ? left : 0n).toLocaleString('de-DE')} NVC möglich.`);
 }
 
 /** Credits a payout; 0 is a no-op so callers don't need to branch. */

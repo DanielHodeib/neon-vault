@@ -3,7 +3,7 @@ import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
-import { applyLedger, assertAmount, assertWithinLimit } from '@/lib/wallet';
+import { applyLedger, assertAmount } from '@/lib/wallet';
 import { bestHand, describeHand, handName, newDeck, rankValue } from './cards';
 import { id as newId, rand } from './rng';
 import { empty, handle, type Register } from './socket';
@@ -322,7 +322,6 @@ export function registerPoker(io: Server): Register {
         if (t.seats.some((s) => s.userId === user.id)) throw new UserError('Du sitzt schon hier.');
         if (t.seats.length >= MAX_SEATS) throw new UserError('Tisch ist voll.');
         assertAmount(buyIn, BIG_BLIND * 10);
-        await assertWithinLimit(user.id, buyIn);
         await applyLedger([{ userId: user.id, amount: -buyIn, kind: 'BUYIN', game: 'poker' }]);
         t.seats.push({ userId: user.id, name: user.username, stack: buyIn, cards: [], bet: 0, total: 0, folded: true, allIn: false, acted: false, away: false, lastAction: '' });
         tableOf.set(user.id, t.id);
@@ -402,8 +401,12 @@ export function registerPoker(io: Server): Register {
         seating.add(user.id);
         try {
           assertAmount(buyIn, BIG_BLIND * 10);
-          await assertWithinLimit(user.id, buyIn);
-          await applyLedger([{ userId: user.id, amount: -buyIn, kind: 'BUYIN', game: 'poker' }]);
+            await applyLedger([{ userId: user.id, amount: -buyIn, kind: 'BUYIN', game: 'poker' }]);
+          if (!t.seats.includes(seat) || seat.away) {
+            // Left the table while the buy-in was being debited.
+            await applyLedger([{ userId: user.id, amount: buyIn, kind: 'CASHOUT', game: 'poker' }]);
+            throw new UserError('Du sitzt nicht mehr am Tisch – Nachkauf zurückgebucht.');
+          }
           seat.stack += buyIn;
           say(t, seat, `kauft ${buyIn.toLocaleString('de-DE')} nach`);
         } finally {
