@@ -3,6 +3,7 @@
 import type { Role } from '@prisma/client';
 import {
   Bell,
+  ChartColumn,
   Bomb,
   Dices,
   FerrisWheel,
@@ -72,6 +73,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
     { href: '/friends', label: 'Freunde', icon: Users },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
     { href: '/quests', label: 'Quests', icon: Target },
+    { href: '/stats', label: 'Statistik', icon: ChartColumn },
   ];
   const account: NavItem[] = [
     { href: '/support', label: 'Support', icon: Headphones },

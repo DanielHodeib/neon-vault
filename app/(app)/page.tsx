@@ -4,9 +4,12 @@ import Link from 'next/link';
 import { DailySpin } from '@/components/DailySpin';
 import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
-import { coins } from '@/lib/format';
+import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
+import { db } from '@/lib/hub';
 import { dailyStatus } from '@/lib/daily';
 import { netProfitSince, startOfDay } from '@/lib/wallet';
+
+const BIG_WIN = 5_000;
 
 const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint: string }[] = [
   { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97' },
@@ -24,7 +27,16 @@ const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint:
 
 export default async function Lobby() {
   const user = await requireUser();
-  const [today, daily] = await Promise.all([netProfitSince(startOfDay(), 5), dailyStatus(user.id)]);
+  const [today, daily, bigWins] = await Promise.all([
+    netProfitSince(startOfDay(), 5),
+    dailyStatus(user.id),
+    db.ledgerEntry.findMany({
+      where: { kind: 'WIN', amount: { gte: BIG_WIN } },
+      orderBy: { createdAt: 'desc' },
+      take: 8,
+      select: { id: true, amount: true, game: true, createdAt: true, user: { select: { username: true } } },
+    }),
+  ]);
   const king = today.find((t) => t.profit > 0);
 
   return (
@@ -50,31 +62,52 @@ export default async function Lobby() {
         </div>
       </section>
 
+      <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="panel">
-        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-          <h2 className="text-sm font-semibold">Heute vorne</h2>
-          {king && (
-            <span className="flex items-center gap-1.5 text-xs text-gold">
-              <Crown size={14} /> {king.username}
-            </span>
+          <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+            <h2 className="text-sm font-semibold">Heute vorne</h2>
+            {king && (
+              <span className="flex items-center gap-1.5 text-xs text-gold">
+                <Crown size={14} /> {king.username}
+              </span>
+            )}
+          </div>
+          {today.length === 0 ? (
+            <Empty>Heute hat noch niemand gespielt.</Empty>
+          ) : (
+            <ol className="divide-y divide-line">
+              {today.map((t, i) => (
+                <li key={t.userId} className="flex items-center justify-between px-5 py-3 text-sm">
+                  <span className="flex items-center gap-3">
+                    <span className="num w-4 text-faint">{i + 1}</span>
+                    <Link href={`/profile/${t.username}`} className="hover:text-accent">{t.username}</Link>
+                  </span>
+                  <span className={`num ${t.profit >= 0 ? 'text-win' : 'text-loss'}`}>{t.profit >= 0 ? '+' : ''}{coins(t.profit)}</span>
+                </li>
+              ))}
+            </ol>
           )}
-        </div>
-        {today.length === 0 ? (
-          <Empty>Heute hat noch niemand gespielt.</Empty>
-        ) : (
-          <ol className="divide-y divide-line">
-            {today.map((t, i) => (
-              <li key={t.userId} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="flex items-center gap-3">
-                  <span className="num w-4 text-faint">{i + 1}</span>
-                  <Link href={`/profile/${t.username}`} className="hover:text-accent">{t.username}</Link>
-                </span>
-                <span className={`num ${t.profit >= 0 ? 'text-win' : 'text-loss'}`}>{t.profit >= 0 ? '+' : ''}{coins(t.profit)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
-      </section>
+        </section>
+
+        <section className="panel">
+          <h2 className="border-b border-line px-5 py-3.5 text-sm font-semibold">Große Gewinne</h2>
+          {bigWins.length === 0 ? (
+            <Empty>Noch keine großen Gewinne – sei der Erste.</Empty>
+          ) : (
+            <ul className="divide-y divide-line">
+              {bigWins.map((w) => (
+                <li key={w.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                  <span className="min-w-0 truncate">
+                    <Link href={`/profile/${w.user.username}`} className="hover:text-accent">{w.user.username}</Link>
+                    <span className="text-faint"> · {GAME_NAMES[w.game ?? ''] ?? w.game} · {timeAgo(w.createdAt)}</span>
+                  </span>
+                  <span className="num shrink-0 text-gold">+{coins(w.amount)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </div>
   );
 }

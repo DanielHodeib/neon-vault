@@ -91,6 +91,11 @@ export default async function SettingsPage() {
                 <Toggle name="showBalance" label="Guthaben im Profil zeigen" checked={user.showBalance} />
                 <Toggle name="showHistory" label="Letzte Spiele im Profil zeigen" checked={user.showHistory} />
               </div>
+              <div>
+                <label className="label" htmlFor="dailyLimit">Tageslimit für Einsätze (Selbstschutz)</label>
+                <input id="dailyLimit" className="input num" name="dailyLimit" type="number" inputMode="numeric" min={100} placeholder="leer = kein Limit" defaultValue={user.dailyLimit?.toString() ?? ''} />
+                <p className="mt-1 text-xs text-faint">Zählt alle Einsätze und Poker-Buy-ins ab Mitternacht (UTC).</p>
+              </div>
               <SubmitButton>Speichern</SubmitButton>
             </ActionForm>
           </Section>

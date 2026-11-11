@@ -4,7 +4,9 @@ import { notFound } from 'next/navigation';
 import { sendFriendRequest } from '@/app/actions/social';
 import { ActionForm, Avatar, Coins, RankTag, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
 import { ZoomImage } from '@/components/ZoomImage';
+import { achievements } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
+import { playerStats } from '@/lib/stats';
 import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { displayRank, levelOf } from '@/lib/ranks';
@@ -34,6 +36,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
     db.friendship.count({ where: { accepted: true, OR: [{ fromId: user.id }, { toId: user.id }] } }),
     db.friendship.count({ where: { accepted: true, OR: [{ fromId: user.id, to: { role: 'OWNER' } }, { toId: user.id, from: { role: 'OWNER' } }] } }),
   ]);
+  const badges = achievements((await playerStats(user.id)).stats).filter((a) => a.done);
   const rank = displayRank(user.rankTag, user.xp, Number(user.balance), ownerFriend > 0);
   const online = hub.online.get(user.id);
 
@@ -80,6 +83,16 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
         <Stat label="Lieblingsspiel">{GAME_NAMES[favorite[0]?.game ?? ''] ?? '–'}</Stat>
         <Stat label="Guthaben">{user.showBalance || isMe ? <Coins value={Number(user.balance)} /> : <span className="text-faint">privat</span>}</Stat>
       </div>
+
+      {badges.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {badges.map((a) => (
+            <span key={a.key} title={a.description} className="rounded-full border border-gold/30 bg-gold/10 px-3 py-1 text-xs font-medium text-gold">
+              {a.title}
+            </span>
+          ))}
+        </div>
+      )}
 
       {history.length > 0 && (
         <Section title="Letzte Spiele">

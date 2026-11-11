@@ -67,7 +67,20 @@ export async function applyLedger(entries: Entry[]) {
 
 export async function placeBet(userId: string, amount: number, game: string, min = 1) {
   assertAmount(amount, min);
+  await assertWithinLimit(userId, amount);
   await applyLedger([{ userId, amount: -amount, kind: 'BET', game }]);
+}
+
+/** Enforces the player's own daily stake limit (bets and poker buy-ins, minus cancelled stakes). */
+export async function assertWithinLimit(userId: string, amount: number) {
+  const user = await db.user.findUnique({ where: { id: userId }, select: { dailyLimit: true } });
+  if (user?.dailyLimit == null) return;
+  const { _sum } = await db.ledgerEntry.aggregate({
+    where: { userId, createdAt: { gte: startOfDay() }, kind: { in: ['BET', 'CANCEL', 'BUYIN'] } },
+    _sum: { amount: true },
+  });
+  const left = Number(user.dailyLimit) + Number(_sum.amount ?? 0);
+  if (amount > left) throw new UserError(`Dein Tageslimit ist erreicht – heute noch ${Math.max(0, left).toLocaleString('de-DE')} NVC möglich.`);
 }
 
 /** Credits a payout; 0 is a no-op so callers don't need to branch. */

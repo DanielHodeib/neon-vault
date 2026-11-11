@@ -49,6 +49,7 @@ model User {
   publicProfile Boolean  @default(true)
   showBalance   Boolean  @default(false)
   showHistory   Boolean  @default(false)
+  dailyLimit    BigInt?  // self-set cap on stakes per day; null = none
 
   sessions      Session[]
   ledger        LedgerEntry[]    @relation("LedgerOwner")

@@ -52,10 +52,17 @@ export async function updateSettings(_: ActionState, form: FormData) {
   return run(async () => {
     const user = await requireUser();
     const data = parse(
-      z.object({ theme: z.enum(THEMES), soundEnabled: checkbox, publicProfile: checkbox, showBalance: checkbox, showHistory: checkbox }),
+      z.object({
+        theme: z.enum(THEMES),
+        soundEnabled: checkbox,
+        publicProfile: checkbox,
+        showBalance: checkbox,
+        showHistory: checkbox,
+        dailyLimit: z.union([z.literal(''), z.coerce.number().int('Nur ganze NVC.').min(100, 'Limit: mindestens 100 NVC.').max(1e12)]),
+      }),
       form,
     );
-    await db.user.update({ where: { id: user.id }, data });
+    await db.user.update({ where: { id: user.id }, data: { ...data, dailyLimit: data.dailyLimit === '' ? null : BigInt(data.dailyLimit) } });
     refresh();
     return 'Einstellungen gespeichert.';
   });
