@@ -15,6 +15,7 @@ import { id } from './rng';
 import { refundRoulette, registerRoulette, startRoulette } from './roulette';
 import { registerSlots } from './slotsHandler';
 import { registerDice } from './dice';
+import { refundHilo, registerHilo } from './hilo';
 import { refundJackpot, registerJackpot } from './jackpot';
 import { refundMines, registerMines } from './mines';
 import { registerPlinko } from './plinko';
@@ -28,7 +29,7 @@ export function setupRealtime(io: Server) {
   startCrash(io);
   startRoulette(io);
   startWheel(io);
-  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerWheel, registerJackpot, registerBlackjack(io), registerPoker(io)];
+  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerHilo, registerWheel, registerJackpot, registerBlackjack(io), registerPoker(io)];
 
   // The session cookie is the only source of identity; nothing from the client is trusted.
   io.use(async (socket, next) => {
@@ -100,7 +101,7 @@ export function setupRealtime(io: Server) {
 /** Shutdown: closes all sockets first (no new actions), then returns every open stake once. */
 export async function closeAndRefund() {
   await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
-  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundWheel, refundJackpot, refundBlackjack, refundPoker]) await refund();
+  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundHilo, refundWheel, refundJackpot, refundBlackjack, refundPoker]) await refund();
 }
 
 /** Chat command `/tip Name 100`: gives NVC to another player and announces it. */

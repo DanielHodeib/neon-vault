@@ -33,3 +33,12 @@ export const PLINKO: Record<PlinkoRisk, number[]> = {
 };
 
 export const PLINKO_RISK_LABEL: Record<PlinkoRisk, string> = { low: 'Niedrig', medium: 'Mittel', high: 'Hoch' };
+
+// Hi-Lo: cards are drawn with replacement, ties count for the player ("higher or same").
+export const HILO_MAX = 5000; // × stake
+export const HILO_SKIPS = 3; // free card swaps per round
+export type HiloGuess = 'higher' | 'lower';
+/** Chance that the next card (value 2..14) is higher-or-same / lower-or-same. */
+export const hiloChance = (value: number, guess: HiloGuess) => (guess === 'higher' ? 15 - value : value - 1) / 13;
+/** Step multiplier for a guess, 2 % house edge, floored to 2 decimals. */
+export const hiloStep = (chance: number) => Math.floor(98 / chance) / 100;

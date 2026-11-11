@@ -2,6 +2,7 @@
 
 import type { Role } from '@prisma/client';
 import {
+  ArrowUpDown,
   Bell,
   ChevronDown,
   PanelLeftClose,
@@ -59,6 +60,7 @@ const GAMES: NavItem[] = [
   { href: '/play/mines', label: 'Mines', icon: Bomb },
   { href: '/play/dice', label: 'Dice', icon: Dices },
   { href: '/play/plinko', label: 'Plinko', icon: Triangle },
+  { href: '/play/hilo', label: 'Hi-Lo', icon: ArrowUpDown },
   { href: '/play/wheel', label: 'Glücksrad', icon: FerrisWheel },
   { href: '/play/jackpot', label: 'Jackpot', icon: PiggyBank },
 ];

@@ -1,4 +1,4 @@
-import { Bomb, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, PiggyBank, Rocket, Spade, Triangle, type LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Bomb, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, PiggyBank, Rocket, Spade, Triangle, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
 import { DailySpin } from '@/components/DailySpin';
@@ -17,10 +17,11 @@ const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint:
   { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff' },
   { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c' },
   { slug: 'poker', name: 'Poker', text: "Texas Hold'em", icon: Club, tint: '#c084fc' },
-  { slug: 'coinflip', name: 'Coinflip', text: 'Spieler gegen Spieler', icon: Coins, tint: '#4cc2ff' },
+  { slug: 'coinflip', name: 'Coinflip', text: 'Solo oder im Duell', icon: Coins, tint: '#4cc2ff' },
   { slug: 'mines', name: 'Mines', text: 'Felder aufdecken, Bomben meiden', icon: Bomb, tint: '#f87171' },
   { slug: 'dice', name: 'Dice', text: 'Drüber oder drunter', icon: Dices, tint: '#a5b4c8' },
   { slug: 'plinko', name: 'Plinko', text: 'Kugel fallen lassen', icon: Triangle, tint: '#f472b6' },
+  { slug: 'hilo', name: 'Hi-Lo', text: 'Höher oder tiefer?', icon: ArrowUpDown, tint: '#22d3ee' },
   { slug: 'wheel', name: 'Glücksrad', text: 'Alle drehen gemeinsam', icon: FerrisWheel, tint: '#34d399' },
   { slug: 'jackpot', name: 'Jackpot', text: 'Ein Topf, ein Gewinner', icon: PiggyBank, tint: '#fbbf24' },
 ];

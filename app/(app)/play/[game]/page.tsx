@@ -4,6 +4,7 @@ import { Blackjack } from '@/components/games/Blackjack';
 import { Coinflip } from '@/components/games/Coinflip';
 import { Crash } from '@/components/games/Crash';
 import { Dice } from '@/components/games/Dice';
+import { HiLo } from '@/components/games/HiLo';
 import { Jackpot } from '@/components/games/Jackpot';
 import { Mines } from '@/components/games/Mines';
 import { Plinko } from '@/components/games/Plinko';
@@ -22,6 +23,7 @@ const GAMES = {
   mines: <Mines />,
   dice: <Dice />,
   plinko: <Plinko />,
+  hilo: <HiLo />,
   wheel: <Wheel />,
   jackpot: <Jackpot />,
 };

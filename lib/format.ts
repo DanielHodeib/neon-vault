@@ -22,6 +22,7 @@ export const GAME_NAMES: Record<string, string> = {
   mines: 'Mines',
   dice: 'Dice',
   plinko: 'Plinko',
+  hilo: 'Hi-Lo',
   wheel: 'Glücksrad',
   jackpot: 'Jackpot',
 };

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { diceChance, diceMultiplier, minesMultiplier, PLINKO, PLINKO_ROWS } from '../lib/solo';
+import { diceChance, diceMultiplier, hiloChance, hiloStep, minesMultiplier, PLINKO, PLINKO_ROWS } from '../lib/solo';
+import { judge } from './hilo';
 import { randInt } from './rng';
 
 const choose = (n: number, k: number) => {
@@ -36,5 +37,19 @@ test('mines multiplier matches the formula and grows with each reveal', () => {
   assert.equal(minesMultiplier(3, 5), Math.floor((0.99 / p) * 100) / 100);
   for (let mines = 1; mines <= 24; mines++) {
     for (let r = 1; r <= 25 - mines; r++) assert.ok(minesMultiplier(mines, r) > minesMultiplier(mines, r - 1), `${mines}/${r}`);
+  }
+});
+
+test('hi-lo: chances, ties count for the player, every guess returns at most 98 %', () => {
+  assert.equal(hiloChance(2, 'higher'), 1);
+  assert.equal(hiloChance(14, 'higher'), 1 / 13);
+  assert.equal(hiloChance(2, 'lower'), 1 / 13);
+  assert.ok(judge('7S', '7H', 'higher') && judge('7S', '7H', 'lower'));
+  assert.ok(!judge('7S', '6H', 'higher') && !judge('7S', '8H', 'lower'));
+  for (let v = 2; v <= 14; v++) {
+    for (const g of ['higher', 'lower'] as const) {
+      const p = hiloChance(v, g);
+      if (p < 1) assert.ok(p * hiloStep(p) <= 0.98 + 1e-9 && p * hiloStep(p) > 0.95, `${v} ${g}`);
+    }
   }
 });
