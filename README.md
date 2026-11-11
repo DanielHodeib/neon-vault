@@ -26,6 +26,10 @@ Admin wirst du, indem du dich normal registrierst und dann in einem zweiten Term
 npm run set-role -- DeinName OWNER
 ```
 
+## Online stellen (24/7, gratis)
+
+Schritt-für-Schritt-Anleitung für einen eigenen Server bei Oracle Cloud mit gratis Adresse: [deploy/ANLEITUNG.md](deploy/ANLEITUNG.md).
+
 ## Mit Freunden spielen (Tailscale Funnel)
 
 Gratis, mit HTTPS und einer festen Adresse (`https://dein-mac.….ts.net`). Deine Freunde brauchen nichts zu installieren. Es funktioniert, solange dein Mac an ist und `npm start` läuft.

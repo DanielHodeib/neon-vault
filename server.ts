@@ -39,7 +39,8 @@ async function main() {
   startEventScheduler();
   startBackups();
   startTournaments();
-  httpServer.listen(port, () => console.log(`> Neon Vault läuft auf http://localhost:${port}`));
+  // HOST=127.0.0.1 on a server behind Caddy keeps the port private; unset listens everywhere.
+  httpServer.listen(port, process.env.HOST, () => console.log(`> Neon Vault läuft auf http://localhost:${port}`));
 }
 
 let shuttingDown = false;
