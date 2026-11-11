@@ -19,3 +19,6 @@ npm-debug.log*
 
 # iCloud sync conflict copies ("file 2.ts")
 * [0-9].*
+
+# project memory (Obsidian vault), local only
+/.vault/
