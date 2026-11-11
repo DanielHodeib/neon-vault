@@ -24,44 +24,44 @@ enum TicketStatus {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
+  id           String   @id @default(cuid())
+  username     String   @unique
   passwordHash String
-  role         Role      @default(USER)
-  balance      BigInt    @default(10000)
-  xp           Int       @default(0)
-  createdAt    DateTime  @default(now())
+  role         Role     @default(USER)
+  balance      BigInt   @default(10000)
+  xp           Int      @default(0)
+  createdAt    DateTime @default(now())
 
-  bannedUntil  DateTime?
-  banReason    String?
+  bannedUntil DateTime?
+  banReason   String?
 
   // profile
-  avatarUrl    String?
-  bannerUrl    String?
-  bio          String    @default("")
-  clanTag      String?
-  chatColor    String?
-  rankTag      String    @default("BRONZE")
+  avatarUrl String?
+  bannerUrl String?
+  bio       String  @default("")
+  clanTag   String?
+  chatColor String?
+  rankTag   String  @default("BRONZE")
 
   // settings
-  soundEnabled  Boolean  @default(true)
-  theme         String   @default("neon")
-  publicProfile Boolean  @default(true)
-  showBalance   Boolean  @default(false)
-  showHistory   Boolean  @default(false)
-  dailyLimit    BigInt?  // self-set cap on stakes per day; null = none
+  soundEnabled  Boolean @default(true)
+  theme         String  @default("neon")
+  publicProfile Boolean @default(true)
+  showBalance   Boolean @default(false)
+  showHistory   Boolean @default(false)
+  dailyLimit    BigInt? // self-set cap on stakes per day; null = none
 
-  sessions      Session[]
-  ledger        LedgerEntry[]    @relation("LedgerOwner")
-  questClaims   QuestClaim[]
-  freeSpins     FreeSpins?
-  media         Media[]
-  notifications Notification[]
-  friendsOut    Friendship[]     @relation("FriendshipFrom")
-  friendsIn     Friendship[]     @relation("FriendshipTo")
-  blocksOut     Block[]          @relation("BlockFrom")
-  blocksIn      Block[]          @relation("BlockTo")
-  tickets       Ticket[]
+  sessions       Session[]
+  ledger         LedgerEntry[]   @relation("LedgerOwner")
+  questClaims    QuestClaim[]
+  freeSpins      FreeSpins?
+  media          Media[]
+  notifications  Notification[]
+  friendsOut     Friendship[]    @relation("FriendshipFrom")
+  friendsIn      Friendship[]    @relation("FriendshipTo")
+  blocksOut      Block[]         @relation("BlockFrom")
+  blocksIn       Block[]         @relation("BlockTo")
+  tickets        Ticket[]
   ticketMessages TicketMessage[]
 }
 
@@ -78,8 +78,8 @@ model Session {
 model LedgerEntry {
   id             String   @id @default(cuid())
   userId         String
-  amount         BigInt   // signed
-  kind           String   // BET | WIN | REFUND | FAUCET | QUEST | TRANSFER | RAIN | ADMIN
+  amount         BigInt // signed
+  kind           String // BET | WIN | REFUND | FAUCET | QUEST | TRANSFER | RAIN | ADMIN
   game           String?
   note           String?
   counterpartyId String?
@@ -101,18 +101,19 @@ model QuestClaim {
 
 // Won free spins, playable on the machine they were won on at the winning stake.
 model FreeSpins {
-  userId  String @id
+  userId  String  @id
   machine String
   bet     BigInt
   spins   Int
-  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  special String? // expanding symbol of the running round
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // Uploaded avatar/banner images. A new upload gets a new id, so /media/<id> can be cached forever.
 model Media {
   id        String   @id @default(cuid())
   userId    String
-  kind      String   // avatar | banner
+  kind      String // avatar | banner
   mime      String
   data      Bytes
   createdAt DateTime @default(now())
@@ -174,7 +175,7 @@ model Ticket {
 model TicketMessage {
   id        String   @id @default(cuid())
   ticketId  String
-  senderId  String?  // null = guest
+  senderId  String? // null = guest
   isStaff   Boolean  @default(false)
   content   String
   createdAt DateTime @default(now())
@@ -185,7 +186,7 @@ model TicketMessage {
 }
 
 model SystemSettings {
-  id                 Int       @id @default(1)
-  maintenance        Boolean   @default(false)
-  maintenanceEndsAt  DateTime?
+  id                Int       @id @default(1)
+  maintenance       Boolean   @default(false)
+  maintenanceEndsAt DateTime?
 }

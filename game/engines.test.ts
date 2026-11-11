@@ -25,21 +25,46 @@ test('poker hands rank correctly', () => {
   assert.ok(bestHand(['AS', 'AH', 'KD', '2C', '7S', '9D', '4C']) > bestHand(['AS', 'AH', 'QD', '2C', '7S', '9D', '4C']));
 });
 
-test('every slot machine pays back 85–99 %', () => {
+test('every slot machine pays back 88–100 %, free spin rounds included', () => {
   for (const [key, machine] of Object.entries(MACHINES)) {
     let paid = 0;
     let bets = 0;
     let freeLeft = 0;
+    let special: string | undefined;
     for (let i = 0; i < 300_000 || freeLeft > 0; i++) {
-      if (freeLeft > 0) freeLeft--;
+      const free = freeLeft > 0;
+      if (free) freeLeft--;
       else bets++;
-      const r = spin(machine);
+      const r = spin(machine, { free, special: free ? special : undefined });
+      if (r.special) special = r.special;
       paid += r.multiplier;
       freeLeft += r.freeSpins;
-      assert.equal(r.reels.length, machine.reels);
+      assert.equal(r.steps[0].grid.length, machine.cols);
+      assert.ok(r.steps[0].grid.every((col) => col.length === machine.rows));
     }
     const rtp = paid / bets;
-    assert.ok(rtp > 0.85 && rtp < 0.99, `${key} RTP ${rtp.toFixed(3)}`);
+    assert.ok(rtp > 0.88 && rtp < 1, `${key} RTP ${rtp.toFixed(3)}`);
+  }
+});
+
+test('slot wins follow the machine rules', () => {
+  for (const [key, m] of Object.entries(MACHINES)) {
+    for (let i = 0; i < 2000; i++) {
+      const r = spin(m);
+      for (const step of r.steps) {
+        for (const w of step.wins) {
+          // Every winning cell shows the symbol or a wild, and lines start on the first reel.
+          for (const [c, row] of w.cells) {
+            const icon = step.grid[c][row];
+            assert.ok(icon === w.symbol || m.symbols.find((s) => s.icon === icon)?.wild, `${key}: ${icon} in a ${w.symbol} win`);
+          }
+          assert.ok(w.cells.some(([c]) => c === 0));
+          assert.ok(w.count >= 2 && w.amount > 0);
+        }
+      }
+      if (!m.tumble) assert.equal(r.steps.length, 1);
+      if (r.multiplier > 0 && !r.freeSpins) assert.ok(r.steps[0].wins.length > 0 || r.expand);
+    }
   }
 });
 

@@ -70,3 +70,31 @@ body {
   height: clamp(3rem, 10vw, 4.6rem);
   font-size: clamp(0.8rem, 2.4vw, 1.05rem);
 }
+
+/* Slots and coinflip motion. Reduced motion keeps the end states without the movement. */
+@keyframes slot-spin { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+@keyframes slot-land { 0% { transform: translateY(-35%); opacity: .4; } 65% { transform: translateY(5%); opacity: 1; } 100% { transform: translateY(0); } }
+@keyframes slot-win { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.1); } }
+@keyframes slot-pop { to { transform: scale(0); opacity: 0; } }
+@keyframes slot-flip { from { transform: rotateY(90deg); } to { transform: rotateY(0); } }
+@keyframes slot-glow { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
+@keyframes pop-in { from { transform: scale(.6); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes coin-heads { from { transform: rotateY(0); } to { transform: rotateY(1800deg); } }
+@keyframes coin-tails { from { transform: rotateY(0); } to { transform: rotateY(1980deg); } }
+.slot-strip { animation: slot-spin .18s linear infinite; filter: blur(1.5px); }
+.slot-land { animation: slot-land .38s cubic-bezier(.3, 1.5, .5, 1) both; }
+.slot-win { animation: slot-win .9s ease-in-out infinite; }
+.slot-pop { animation: slot-pop .3s ease-in forwards; }
+.slot-flip { animation: slot-flip .5s ease-out both; }
+.slot-glow { animation: slot-glow 1.2s ease-in-out infinite; }
+.pop-in { animation: pop-in .35s cubic-bezier(.3, 1.5, .5, 1) both; }
+.coin { transform-style: preserve-3d; }
+.coin-face { backface-visibility: hidden; }
+.coin-heads { animation: coin-heads 1.4s cubic-bezier(.2, .7, .25, 1) forwards; }
+.coin-tails { animation: coin-tails 1.4s cubic-bezier(.2, .7, .25, 1) forwards; }
+@media (prefers-reduced-motion: reduce) {
+  .slot-strip, .slot-land, .slot-win, .slot-pop, .slot-flip, .slot-glow, .pop-in, .coin-heads, .coin-tails {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
