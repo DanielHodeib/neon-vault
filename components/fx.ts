@@ -3,7 +3,7 @@
 import toast from 'react-hot-toast';
 
 import type { FxAssetPayload, FxName, ImageStyle } from '@/lib/fx';
-import { sound, soundPref } from './games/sound';
+import { sound } from './games/sound';
 
 // Admin fun effects. All are temporary and only change how the page looks or sounds.
 function bodyClass(name: string, ms: number) {
@@ -74,24 +74,16 @@ function disco() {
 
 /** Uploaded image flying in, staying a moment and leaving again. */
 function showImage(url: string, style: ImageStyle) {
-  const el = layer('fx-image-stage', 4200);
-  const img = document.createElement('img');
-  img.src = url;
+  const img = new Image();
   img.alt = '';
   img.className = `fx-image fx-image-${style}`;
-  el.appendChild(img);
-}
-
-/** Uploaded sound, unless the player muted game sounds. */
-function playSound(url: string) {
-  if (soundPref.muted()) return;
-  const audio = new Audio(url);
-  audio.volume = 0.8;
-  void audio.play().catch(() => {}); // blocked until the page was clicked once
+  // Only insert once loaded: otherwise the entrance runs while the image is still downloading.
+  img.onload = () => layer('fx-image-stage', 4200).appendChild(img);
+  img.src = url;
 }
 
 export function runAsset(p: FxAssetPayload) {
-  if (p.kind === 'sound') playSound(p.url);
+  if (p.kind === 'sound') void sound.file(p.url);
   else showImage(p.url, p.style ?? 'zoom');
 }
 

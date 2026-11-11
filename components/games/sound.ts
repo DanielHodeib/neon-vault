@@ -76,6 +76,43 @@ function audio(): AudioContext | null {
   }
 }
 
+// Browsers keep audio locked until the page gets a click or key press; unlock on the first one,
+// so sounds sent later by the server (admin fun, uploaded files) can play.
+if (typeof window !== 'undefined') {
+  const unlock = () => {
+    const c = audio();
+    if (c?.state === 'running') ['pointerdown', 'keydown'].forEach((e) => window.removeEventListener(e, unlock, true));
+  };
+  ['pointerdown', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
+}
+
+const files = new Map<string, Promise<AudioBuffer>>();
+
+/** Uploaded sound file (Admin → Spaß), played through the unlocked audio context. */
+async function file(url: string, volume = 0.8) {
+  const c = audio();
+  if (!c) return;
+  let buffer = files.get(url);
+  if (!buffer) {
+    buffer = fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
+      .then((b) => c.decodeAudioData(b));
+    files.set(url, buffer);
+    buffer.catch(() => files.delete(url));
+  }
+  try {
+    const src = c.createBufferSource();
+    src.buffer = await buffer;
+    if (c.state !== 'running') return; // page never clicked: stay silent rather than play late
+    const g = c.createGain();
+    g.gain.value = volume;
+    src.connect(g).connect(c.destination);
+    src.start();
+  } catch {
+    // broken or deleted file
+  }
+}
+
 let noiseBuffer: AudioBuffer | null = null;
 const noise = (c: AudioContext) => {
   if (!noiseBuffer) {
@@ -228,6 +265,7 @@ export const sound = {
   reelLoop,
   ambience,
   thunder,
+  file,
   /** Reel `i` locks in: a thunk plus a click that climbs reel by reel. */
   reelStop: (i: number) => {
     tone(120, 0.09, { type: 'sine', gain: 0.12 });

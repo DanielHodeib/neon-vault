@@ -148,16 +148,18 @@ body {
 @keyframes fx-image-shoot { 0% { transform: translateX(-120vw) rotate(-25deg) scale(.6); } 18% { transform: translateX(4vw) rotate(6deg) scale(1.08); } 26%, 82% { transform: none; } 100% { transform: translateX(120vw) rotate(25deg) scale(.6); } }
 @keyframes fx-image-zoom { 0% { transform: scale(0); opacity: 0; } 16% { transform: scale(1.25); opacity: 1; } 24%, 82% { transform: scale(1); } 100% { transform: scale(3); opacity: 0; } }
 @keyframes fx-image-drop { 0% { transform: translateY(-120vh); } 14% { transform: translateY(4vh); } 20% { transform: translateY(-2vh); } 26%, 82% { transform: none; } 100% { transform: translateY(120vh) rotate(15deg); } }
+@keyframes fx-image-fade { 0%, 100% { opacity: 0; } 12%, 85% { opacity: 1; } }
 @keyframes fx-image-spin { 0% { transform: rotate(-720deg) scale(0); } 22%, 82% { transform: none; } 100% { transform: rotate(720deg) scale(0); } }
 .fx-image-stage { display: grid; place-items: center; background: radial-gradient(circle, #0005, transparent 70%); }
-.fx-image { max-width: min(70vw, 560px); max-height: 60vh; border-radius: 16px; box-shadow: 0 20px 60px #000a; animation: 4.2s cubic-bezier(.3, 1.2, .5, 1) both; }
+.fx-image { max-width: min(70vw, 560px); max-height: 60vh; border-radius: 16px; box-shadow: 0 20px 60px #000a; animation-duration: 4.2s; animation-timing-function: cubic-bezier(.3, 1.2, .5, 1); animation-fill-mode: both; }
 .fx-image-shoot { animation-name: fx-image-shoot; }
 .fx-image-zoom { animation-name: fx-image-zoom; }
 .fx-image-drop { animation-name: fx-image-drop; }
 .fx-image-spin { animation-name: fx-image-spin; }
 
 @media (prefers-reduced-motion: reduce) {
-  .fx-shake, .fx-disco main, .fx-laser, .fx-spot, .fx-ball, .fx-image { animation: none; }
+  .fx-shake, .fx-disco main, .fx-laser, .fx-spot, .fx-ball { animation: none; }
+  .fx-image { animation-name: fx-image-fade !important; }
   .fx-confetti { display: none; }
 }
 
