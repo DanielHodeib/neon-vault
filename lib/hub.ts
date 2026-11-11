@@ -21,6 +21,8 @@ export type ChatMessage = {
   rank?: { tag: string; color: string };
   clanTag?: string | null;
   color?: string | null;
+  title?: string | null; // bought chat title
+  effect?: string | null; // bought name effect (lib/shop.ts id)
   at: number;
 };
 

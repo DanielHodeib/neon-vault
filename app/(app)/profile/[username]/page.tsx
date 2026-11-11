@@ -6,6 +6,7 @@ import { ActionForm, Avatar, Coins, RankTag, RoleBadge, Section, Stat, SubmitBut
 import { ZoomImage } from '@/components/ZoomImage';
 import { achievements } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
+import { shopItem } from '@/lib/shop';
 import { playerStats } from '@/lib/stats';
 import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
@@ -51,14 +52,15 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
         </ZoomImage>
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-6">
           <ZoomImage src={user.avatarUrl} label="Avatar" className="relative -mt-10 block w-fit rounded-full border-4 border-surface sm:-mt-12">
-            <Avatar url={user.avatarUrl} name={user.username} size={84} />
+            <Avatar url={user.avatarUrl} name={user.username} size={84} frame={user.frame} />
           </ZoomImage>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
                 {user.clanTag && <span className="text-faint">[{user.clanTag}] </span>}
-                {user.username}
+                <span className={shopItem(user.nameEffect)?.className}>{user.username}</span>
               </h1>
+              {shopItem(user.title) && <span className="rounded bg-raised px-2 py-0.5 text-xs font-semibold text-gold">{shopItem(user.title)!.name}</span>}
               <RoleBadge role={user.role} />
               <RankTag rank={rank} />
             </div>

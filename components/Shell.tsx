@@ -30,6 +30,7 @@ import {
   Rocket,
   Settings,
   Shield,
+  ShoppingBag,
   Spade,
   Target,
   Trophy,
@@ -70,7 +71,7 @@ const GAMES: NavItem[] = [
 ];
 
 type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };
-type User = { username: string; avatarUrl: string | null; level: number; role: Role };
+type User = { username: string; avatarUrl: string | null; frame: string | null; level: number; role: Role };
 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
   const pathname = usePathname();
@@ -95,6 +96,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
     { href: '/tournament', label: 'Turnier', icon: Medal },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
     { href: '/quests', label: 'Quests', icon: Target },
+    { href: '/shop', label: 'Shop', icon: ShoppingBag },
     { href: '/stats', label: 'Statistik', icon: ChartColumn },
   ];
   const account: NavItem[] = [
@@ -172,7 +174,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
               <MessageSquare size={18} />
             </button>
             <Link href={`/profile/${user.username}`} className="flex items-center gap-2.5 rounded-lg p-1 hover:bg-raised sm:pr-3">
-              <Avatar url={user.avatarUrl} name={user.username} size={30} />
+              <Avatar url={user.avatarUrl} name={user.username} size={30} frame={user.frame} />
               <span className="hidden text-left leading-tight sm:block">
                 <span className="block text-sm font-medium">{user.username}</span>
                 <span className="block text-[11px] text-faint">Level {user.level}</span>

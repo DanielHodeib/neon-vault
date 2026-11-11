@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { suggest } from '@/lib/chatSuggest';
+import { shopItem } from '@/lib/shop';
 import { useJoin, useLive } from './SocketProvider';
 import { RankTag, RoleBadge } from './ui';
 
@@ -97,9 +98,10 @@ export function Chat({ onClose }: { onClose: () => void }) {
                 <div key={m.id}>
                   <div className="flex flex-wrap items-center gap-1.5">
                     {m.clanTag && <span className="text-xs text-faint">[{m.clanTag}]</span>}
-                    <Link href={`/profile/${m.username}`} className="text-[13px] font-semibold hover:underline" style={{ color: m.color ?? undefined }}>
+                    <Link href={`/profile/${m.username}`} className={`text-[13px] font-semibold hover:underline ${shopItem(m.effect)?.className ?? ''}`} style={{ color: m.color ?? undefined }}>
                       {m.username}
                     </Link>
+                    {m.title && <span className="rounded bg-raised px-1.5 text-[10px] font-semibold text-gold">{m.title}</span>}
                     <RoleBadge role={m.role} />
                     <RankTag rank={m.rank} />
                   </div>

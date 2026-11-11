@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { systemMessage } from '@/lib/events';
 import { db, hub, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
+import { shopItem } from '@/lib/shop';
 import { atLeast } from '@/lib/roles';
 import { applyLedger, assertAmount } from '@/lib/wallet';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
@@ -76,6 +77,8 @@ export function setupRealtime(io: Server) {
         rank: { tag: rank.tag, color: rank.color },
         clanTag: u.clanTag,
         color: u.chatColor,
+        title: shopItem(u.title)?.name ?? null,
+        effect: u.nameEffect,
         at: Date.now(),
       };
       hub.chat = [...hub.chat.slice(-49), msg];

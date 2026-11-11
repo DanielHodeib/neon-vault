@@ -2,8 +2,8 @@ import { db, emitToUser, hub, notify, UserError } from './hub';
 import { levelOf } from './ranks';
 
 // BET/WIN: a played round. CANCEL: a stake handed back unplayed (undoes the bet's XP and quest
-// credit). REFUND: cashback. BUYIN/CASHOUT: poker chips, which are not bets themselves.
-export type LedgerKind = 'BET' | 'WIN' | 'CANCEL' | 'REFUND' | 'BUYIN' | 'CASHOUT' | 'FAUCET' | 'QUEST' | 'TRANSFER' | 'RAIN' | 'ADMIN' | 'BONUS';
+// credit). REFUND: cashback. BUYIN/CASHOUT: poker chips, which are not bets themselves. SHOP: cosmetics.
+export type LedgerKind = 'BET' | 'WIN' | 'CANCEL' | 'REFUND' | 'BUYIN' | 'CASHOUT' | 'FAUCET' | 'QUEST' | 'TRANSFER' | 'RAIN' | 'ADMIN' | 'BONUS' | 'SHOP';
 
 export type Entry = {
   userId: string;

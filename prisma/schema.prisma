@@ -51,6 +51,11 @@ model User {
   showHistory   Boolean @default(false)
   dailyLimit    BigInt? // self-set cap on stakes per day; null = none
 
+  // equipped cosmetics (ids from lib/shop.ts)
+  frame      String?
+  title      String?
+  nameEffect String?
+
   sessions       Session[]
   ledger         LedgerEntry[]   @relation("LedgerOwner")
   questClaims    QuestClaim[]
@@ -62,6 +67,7 @@ model User {
   blocksOut      Block[]         @relation("BlockFrom")
   blocksIn       Block[]         @relation("BlockTo")
   tickets        Ticket[]
+  purchases      ShopPurchase[]
   dmsOut         DirectMessage[] @relation("DmFrom")
   dmsIn          DirectMessage[] @relation("DmTo")
   ticketMessages TicketMessage[]
@@ -155,6 +161,16 @@ model Block {
   to     User   @relation("BlockTo", fields: [toId], references: [id], onDelete: Cascade)
 
   @@id([fromId, toId])
+}
+
+// Cosmetics a user owns.
+model ShopPurchase {
+  userId    String
+  item      String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, item])
 }
 
 // Private messages between friends.

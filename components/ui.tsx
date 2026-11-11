@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import type { ActionState } from '@/lib/action';
 import { coins } from '@/lib/format';
 import { ROLE_STYLE } from '@/lib/roles';
+import { shopItem } from '@/lib/shop';
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -93,7 +94,16 @@ export function UserLink({ name }: { name: string }) {
   );
 }
 
-export function Avatar({ url, name, size = 36 }: { url?: string | null; name: string; size?: number }) {
+export function Avatar({ url, name, size = 36, frame }: { url?: string | null; name: string; size?: number; frame?: string | null }) {
+  const ring = shopItem(frame)?.frame;
+  // A bought frame wraps the picture in a gradient ring.
+  if (ring) {
+    return (
+      <span className="grid shrink-0 place-items-center rounded-full p-[2px]" style={{ background: ring, width: size + 4, height: size + 4 }}>
+        <Avatar url={url} name={name} size={size - 2} />
+      </span>
+    );
+  }
   return url ? (
     // eslint-disable-next-line @next/next/no-img-element -- arbitrary user URLs, not optimizable
     <img src={url} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
