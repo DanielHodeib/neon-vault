@@ -5,6 +5,7 @@ import { achievements, ALL_GAMES } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
 import { coins, GAME_NAMES } from '@/lib/format';
 import { dailyNet, playerStats } from '@/lib/stats';
+import { DailyChart } from '@/components/DailyChart';
 import { getT } from '@/lib/i18nServer';
 
 export async function generateMetadata() {
@@ -20,7 +21,6 @@ export default async function StatsPage() {
   const rows = [...games].filter(([, g]) => g.staked > 0).sort((a, b) => b[1].staked - a[1].staked);
   const staked = rows.reduce((s, [, g]) => s + g.staked, 0);
   const net = rows.reduce((s, [, g]) => s + g.net, 0);
-  const peak = Math.max(1, ...days.map((d) => Math.abs(d.net)));
 
   return (
     <>
@@ -34,23 +34,7 @@ export default async function StatsPage() {
         </div>
 
         <Section title="Letzte 14 Tage" pad>
-          <div className="flex h-40 items-center gap-1">
-            {days.map((d) => (
-              <div key={d.day} className="flex h-full flex-1 flex-col justify-center" title={`${new Date(d.day).toLocaleDateString('de-DE')}: ${signed(d.net)} NVC`}>
-                <div className="flex h-1/2 items-end">
-                  {d.net > 0 && <div className="w-full rounded-t bg-win/70" style={{ height: `${(d.net / peak) * 100}%` }} />}
-                </div>
-                <div className="h-px bg-line" />
-                <div className="flex h-1/2 items-start">
-                  {d.net < 0 && <div className="w-full rounded-b bg-loss/70" style={{ height: `${(-d.net / peak) * 100}%` }} />}
-                </div>
-              </div>
-            ))}
-          </div>
-          <div className="mt-2 flex justify-between text-[11px] text-faint">
-            <span>{new Date(days[0].day).toLocaleDateString('de-DE')}</span>
-            <span>{t('heute')}</span>
-          </div>
+          <DailyChart days={days} />
         </Section>
 
         <div className="grid items-start gap-4 lg:grid-cols-2">

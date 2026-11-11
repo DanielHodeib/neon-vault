@@ -33,15 +33,30 @@ export async function playerStats(userId: string) {
   return { games, stats };
 }
 
-/** Net game result per day for the last `days` days (oldest first). */
+/** Per day for the last `days` days (oldest first): net result, rounds, stakes, payouts, most played game. */
 export async function dailyNet(userId: string, days = 14) {
   const since = new Date(Date.now() - days * 86_400_000);
-  const rows = await db.ledgerEntry.findMany({ where: { userId, createdAt: { gte: since }, kind: { in: GAME_KINDS } }, select: { amount: true, createdAt: true } });
-  const byDay = new Map<string, number>();
-  for (let i = days - 1; i >= 0; i--) byDay.set(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10), 0);
-  for (const r of rows) {
-    const day = r.createdAt.toISOString().slice(0, 10);
-    if (byDay.has(day)) byDay.set(day, byDay.get(day)! + Number(r.amount));
+  const rows = await db.ledgerEntry.findMany({
+    where: { userId, createdAt: { gte: since }, kind: { in: GAME_KINDS } },
+    select: { amount: true, createdAt: true, kind: true, game: true },
+  });
+  type Day = { day: string; net: number; rounds: number; staked: number; won: number; games: Map<string, number> };
+  const byDay = new Map<string, Day>();
+  for (let i = days - 1; i >= 0; i--) {
+    const day = new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10);
+    byDay.set(day, { day, net: 0, rounds: 0, staked: 0, won: 0, games: new Map() });
   }
-  return [...byDay].map(([day, net]) => ({ day, net }));
+  for (const r of rows) {
+    const d = byDay.get(r.createdAt.toISOString().slice(0, 10));
+    if (!d) continue;
+    const amount = Number(r.amount);
+    d.net += amount;
+    if (r.kind === 'BET' || r.kind === 'BUYIN') {
+      d.rounds += r.kind === 'BET' ? 1 : 0;
+      d.staked -= amount;
+      if (r.game) d.games.set(r.game, (d.games.get(r.game) ?? 0) + 1);
+    } else if (r.kind === 'CANCEL') d.staked -= amount;
+    else d.won += amount; // WIN, REFUND, CASHOUT
+  }
+  return [...byDay.values()].map(({ games, ...d }) => ({ ...d, topGame: [...games].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null }));
 }
