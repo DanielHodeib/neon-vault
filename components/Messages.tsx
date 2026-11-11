@@ -39,7 +39,9 @@ export function Messages({ initial }: { initial: string | null }) {
     });
   }, [open, call, loadThreads]);
 
-  useEffect(() => bottom.current?.scrollIntoView({ block: 'end' }), [messages]);
+  useEffect(() => {
+    bottom.current?.scrollIntoView({ block: 'end' }); // newer browsers return a Promise here; an effect must not
+  }, [messages]);
 
   useSocketEvent(
     'dm',

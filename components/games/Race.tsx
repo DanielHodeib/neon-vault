@@ -80,18 +80,19 @@ export function Race() {
         {HORSES.map((h, i) => {
           const won = state.phase === 'result' && state.winner === i;
           return (
-            <div key={h.name} className={`relative h-10 rounded-lg border sm:h-11 ${won ? 'border-gold bg-gold/10' : 'border-line bg-bg/60'}`}>
-              <span className="absolute inset-y-0 right-3 w-px border-r-2 border-dashed border-white/25" />
-              <span
-                className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5"
-                style={{ left: `calc(${position(i) * 100}% * 0.88)` }}
-              >
-                <span className="grid h-7 w-7 place-items-center rounded-full text-base shadow" style={{ background: h.color }}>
+            <div key={h.name} className="flex items-center gap-2">
+              <span className={`w-16 shrink-0 truncate text-xs font-semibold ${leader === i && racing ? 'text-gold' : won ? 'text-gold' : 'text-fg/70'}`}>{h.name}</span>
+              <div className={`relative h-10 flex-1 rounded-lg border sm:h-11 ${won ? 'border-gold bg-gold/10' : 'border-line bg-bg/60'}`}>
+                <span className="absolute inset-y-0 right-3 w-px border-r-2 border-dashed border-white/25" />
+                {/* The token runs from the start (left) to the finish line (right). */}
+                <span
+                  className="absolute top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-base shadow"
+                  style={{ background: h.color, left: `calc((100% - 2.75rem) * ${position(i)} + 0.25rem)` }}
+                >
                   🏇
                 </span>
-                <span className={`text-xs font-semibold ${leader === i && racing ? 'text-gold' : 'text-fg/80'}`}>{h.name}</span>
-              </span>
-              {won && <Flag size={16} className="absolute top-1/2 right-5 -translate-y-1/2 text-gold" />}
+                {won && <Flag size={14} className="absolute top-1 right-4 text-gold" />}
+              </div>
             </div>
           );
         })}
