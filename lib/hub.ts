@@ -7,6 +7,7 @@ export type GlobalEvent = {
   type: 'CASHBACK' | 'BOOST' | 'RAIN' | 'HAPPY_HOUR' | 'JACKPOT_RUSH' | 'DUEL' | 'KING' | 'BOUNTY';
   label: string;
   description: string;
+  startedAt: number;
   endsAt: number;
 };
 
@@ -36,7 +37,6 @@ type Hub = {
   chatActive: Map<string, number>; // userId -> last message time
   timers: Record<string, NodeJS.Timeout | undefined>;
   rainActive: boolean;
-  king: { userId: string; win: number } | null; // King of the Hill leader
   bountyPaid: boolean; // Bounty event pays out once
 };
 
@@ -52,7 +52,6 @@ export const hub: Hub = (g.__neonHub ??= {
   chatActive: new Map(),
   timers: {},
   rainActive: false,
-  king: null,
   bountyPaid: false,
 });
 

@@ -11,14 +11,14 @@ export const KING_BONUS = 25_000;
 export const BOUNTY_BONUS = 10_000;
 
 type EventType = GlobalEvent['type'];
-export const EVENT_TYPES: Record<EventType, Omit<GlobalEvent, 'endsAt' | 'type'> & { minutes: number }> = {
+export const EVENT_TYPES: Record<EventType, Omit<GlobalEvent, 'startedAt' | 'endsAt' | 'type'> & { minutes: number }> = {
   CASHBACK: { label: 'Cashback-Mania', description: '10 % Cashback auf verlorene Crash- und Coinflip-Einsätze.', minutes: 10 },
   BOOST: { label: 'Multiplier-Boost', description: '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.', minutes: 10 },
   RAIN: { label: 'Rain-Event', description: 'Alle Online-Spieler bekommen regelmäßig NVC-Drops.', minutes: 10 },
   HAPPY_HOUR: { label: 'Happy Hour', description: 'Extra-XP für jeden Gewinn.', minutes: 60 },
   JACKPOT_RUSH: { label: 'Jackpot-Rush', description: 'Dreifache Jackpot-Chance an allen Slots.', minutes: 10 },
   DUEL: { label: 'Duell-Woche', description: 'Coinflip ohne 5 % Gebühr.', minutes: 30 },
-  KING: { label: 'King of the Hill', description: `Der höchste Einzelgewinn bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC Bonus.`, minutes: 30 },
+  KING: { label: 'King of the Hill', description: `Wer während des Events den höchsten Netto-Gewinn macht, bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC Bonus.`, minutes: 30 },
   BOUNTY: { label: 'Bounty', description: `Wer den King of Today im Coinflip schlägt, bekommt ${BOUNTY_BONUS.toLocaleString('de-DE')} NVC.`, minutes: 30 },
 };
 
@@ -42,8 +42,7 @@ export function systemMessage(text: string) {
 export function startEvent(type: EventType, minutes = EVENT_TYPES[type].minutes) {
   if (hub.event) return false;
   const { label, description } = EVENT_TYPES[type];
-  hub.event = { type, label, description, endsAt: Date.now() + minutes * 60_000 };
-  if (type === 'KING') hub.king = null;
+  hub.event = { type, label, description, startedAt: Date.now(), endsAt: Date.now() + minutes * 60_000 };
   if (type === 'BOUNTY') hub.bountyPaid = false;
   broadcast('event', hub.event);
   systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
@@ -55,7 +54,7 @@ export function startEvent(type: EventType, minutes = EVENT_TYPES[type].minutes)
 export function stopEvent() {
   if (!hub.event) return false;
   systemMessage(`${hub.event.label} ist vorbei.`);
-  if (hub.event.type === 'KING' && hub.king) void crownKing(hub.king.userId, hub.king.win).catch(console.error);
+  if (hub.event.type === 'KING') void crownKing(new Date(hub.event.startedAt)).catch(console.error);
   hub.event = null;
   clearTimeout(timers.eventEnd);
   clearInterval(timers.rainDrops);
@@ -75,13 +74,13 @@ export function startEventScheduler() {
   next();
 }
 
-async function crownKing(userId: string, win: number) {
-  hub.king = null;
-  const user = await db.user.findUnique({ where: { id: userId }, select: { username: true } });
-  if (!user) return;
-  await applyLedger([{ userId, amount: KING_BONUS, kind: 'BONUS', note: 'King of the Hill' }]);
-  systemMessage(`${user.username} ist King of the Hill (${win.toLocaleString('de-DE')} NVC Einzelgewinn) und bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC!`);
-  await notify(userId, 'King of the Hill', `+${KING_BONUS.toLocaleString('de-DE')} NVC für den höchsten Einzelgewinn.`);
+/** Net profit (wins minus stakes) during the event decides, so a near-certain huge bet can't buy the crown. */
+async function crownKing(since: Date) {
+  const [king] = await netProfitSince(since, 1);
+  if (!king || king.profit <= 0) return systemMessage('King of the Hill vorbei – niemand hat Gewinn gemacht.');
+  await applyLedger([{ userId: king.userId, amount: KING_BONUS, kind: 'BONUS', note: 'King of the Hill' }]);
+  systemMessage(`${king.username} ist King of the Hill (+${king.profit.toLocaleString('de-DE')} NVC Netto-Gewinn) und bekommt ${KING_BONUS.toLocaleString('de-DE')} NVC!`);
+  await notify(king.userId, 'King of the Hill', `+${KING_BONUS.toLocaleString('de-DE')} NVC für den höchsten Netto-Gewinn.`);
 }
 
 /** Bounty event: beating today's top player in a coinflip pays a bonus. */

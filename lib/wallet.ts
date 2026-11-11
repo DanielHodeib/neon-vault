@@ -112,8 +112,6 @@ export async function payout(userId: string, amount: number, game: string, kind:
   const coins = Math.floor(amount);
   if (coins <= 0) return;
   await applyLedger([{ userId, amount: coins, kind, game }]);
-  // King of the Hill: remember the biggest single win while the event runs.
-  if (kind === 'WIN' && hub.event?.type === 'KING' && coins > (hub.king?.win ?? 0)) hub.king = { userId, win: coins };
 }
 
 /** Gives back a stake that was never played (cancelled bet, closed table, shutdown). */
