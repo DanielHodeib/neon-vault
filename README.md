@@ -27,14 +27,11 @@ npm run set-role -- DeinName OWNER
 | `npm run build && npm start` | Produktion |
 | `npm run db:migrate` | Neue Migration nach Schema-Änderung |
 | `npm run db:studio` | Datenbank im Browser ansehen |
+| `npm run share` | Öffentliche Adresse per Cloudflare-Tunnel |
 
-## Produktion (Docker)
+## Mit Freunden spielen
 
-```bash
-docker compose up -d --build
-```
-
-Die Datenbank liegt im Volume `data`. Für HTTPS setzt du einen Reverse-Proxy davor, z. B. Caddy mit `reverse_proxy localhost:3000`. WebSockets laufen über denselben Port.
+Sofort vom Laptop per Cloudflare-Tunnel (`npm run share`) oder dauerhaft auf einem Server mit Gratis-Domain und automatischem HTTPS (`docker compose up -d --build`). Die Schritte stehen in [docs/HOSTING.md](docs/HOSTING.md).
 
 ## Aufbau
 

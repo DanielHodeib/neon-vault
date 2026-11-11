@@ -2,9 +2,24 @@ services:
   app:
     build: .
     restart: unless-stopped
-    ports:
-      - "3000:3000"
     volumes:
       - data:/data
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN in .env setzen}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+    depends_on:
+      - app
+
 volumes:
   data:
+  caddy:
