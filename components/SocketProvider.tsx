@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import toast from 'react-hot-toast';
 import { io, type Socket } from 'socket.io-client';
 
+import { GAME_NAMES } from '@/lib/format';
 import type { ChatMessage, GlobalEvent } from '@/lib/hub';
 
 type Online = { id: string; username: string; activity: string };
@@ -58,7 +59,6 @@ export function useJoin<T>(event: string, onResult: (r: T) => void) {
   }, [socket, call, event, onResult]);
 }
 
-const ACTIVITY: Record<string, string> = { crash: 'Crash', slots: 'Slots', blackjack: 'Blackjack', roulette: 'Roulette', poker: 'Poker', coinflip: 'Coinflip' };
 
 export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']; initialBalance: number; children: ReactNode }) {
   const router = useRouter();
@@ -108,7 +108,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
 
   useEffect(() => {
     const game = pathname.split('/')[2];
-    socket?.emit('presence', { activity: pathname.startsWith('/play/') ? (ACTIVITY[game] ?? 'Spielt') : 'Lobby' });
+    socket?.emit('presence', { activity: pathname.startsWith('/play/') ? (GAME_NAMES[game] ?? 'Spielt') : 'Lobby' });
   }, [socket, pathname]);
 
   const call = useCallback(

@@ -12,6 +12,11 @@ import { refundPoker, registerPoker } from './poker';
 import { id } from './rng';
 import { refundRoulette, registerRoulette, startRoulette } from './roulette';
 import { registerSlots } from './slotsHandler';
+import { registerDice } from './dice';
+import { refundJackpot, registerJackpot } from './jackpot';
+import { refundMines, registerMines } from './mines';
+import { registerPlinko } from './plinko';
+import { refundWheel, registerWheel, startWheel } from './wheel';
 import { handle, type GameSocket } from './socket';
 
 const onlineList = () => [...hub.online.values()].map(({ id, username, activity }) => ({ id, username, activity }));
@@ -20,7 +25,8 @@ export function setupRealtime(io: Server) {
   hub.io = io;
   startCrash(io);
   startRoulette(io);
-  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerBlackjack(io), registerPoker(io)];
+  startWheel(io);
+  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerWheel, registerJackpot, registerBlackjack(io), registerPoker(io)];
 
   // The session cookie is the only source of identity; nothing from the client is trusted.
   io.use(async (socket, next) => {
@@ -82,5 +88,5 @@ export function setupRealtime(io: Server) {
 /** Shutdown: closes all sockets first (no new actions), then returns every open stake once. */
 export async function closeAndRefund() {
   await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
-  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundBlackjack, refundPoker]) await refund();
+  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundWheel, refundJackpot, refundBlackjack, refundPoker]) await refund();
 }

@@ -3,6 +3,11 @@
 import type { Role } from '@prisma/client';
 import {
   Bell,
+  Bomb,
+  Dices,
+  FerrisWheel,
+  PiggyBank,
+  Triangle,
   CircleDot,
   Club,
   Coins as CoinsIcon,
@@ -46,6 +51,11 @@ const GAMES: NavItem[] = [
   { href: '/play/roulette', label: 'Roulette', icon: CircleDot },
   { href: '/play/poker', label: 'Poker', icon: Club },
   { href: '/play/coinflip', label: 'Coinflip', icon: CoinsIcon },
+  { href: '/play/mines', label: 'Mines', icon: Bomb },
+  { href: '/play/dice', label: 'Dice', icon: Dices },
+  { href: '/play/plinko', label: 'Plinko', icon: Triangle },
+  { href: '/play/wheel', label: 'Glücksrad', icon: FerrisWheel },
+  { href: '/play/jackpot', label: 'Jackpot', icon: PiggyBank },
 ];
 
 type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };

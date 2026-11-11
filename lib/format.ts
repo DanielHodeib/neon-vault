@@ -19,6 +19,11 @@ export const GAME_NAMES: Record<string, string> = {
   roulette: 'Roulette',
   poker: 'Poker',
   coinflip: 'Coinflip',
+  mines: 'Mines',
+  dice: 'Dice',
+  plinko: 'Plinko',
+  wheel: 'Glücksrad',
+  jackpot: 'Jackpot',
 };
 
 export const THEMES = ['neon', 'steel', 'sunset', 'ocean', 'matrix'] as const;
