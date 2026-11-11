@@ -104,7 +104,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface/80 px-3 backdrop-blur sm:gap-3 sm:px-5 md:h-16">
+        <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface/80 px-3 backdrop-blur sm:gap-3 sm:px-5 md:h-16">
           <Link href="/" className="md:hidden"><Logo compact /></Link>
           <div className="flex min-w-0 items-center gap-2 rounded-lg border border-line bg-bg px-3 py-1.5">
             <CoinsIcon size={15} className="shrink-0 text-gold" />
