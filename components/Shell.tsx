@@ -3,6 +3,9 @@
 import type { Role } from '@prisma/client';
 import {
   Bell,
+  ChevronDown,
+  PanelLeftClose,
+  PanelLeftOpen,
   ChartColumn,
   Bomb,
   Dices,
@@ -42,6 +45,7 @@ import { atLeast } from '@/lib/roles';
 import { Chat } from './Chat';
 import { useLive } from './SocketProvider';
 import { Avatar, Logo } from './ui';
+import { usePref } from './usePref';
 
 type NavItem = { href: string; label: string; icon: LucideIcon };
 
@@ -68,6 +72,16 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
   // null = default (docked on wide screens, closed elsewhere)
   const [chat, setChat] = useState<boolean | null>(null);
   const [sheet, setSheet] = useState<'games' | 'more' | null>(null);
+  // Laptop sidebar: full width or folded to an icon rail; groups can be closed one by one.
+  const [folded, setFolded] = usePref('nv-sidebar-folded', '0');
+  const [closedRaw, setClosed] = usePref('nv-nav-closed', '');
+  const wide = folded !== '1';
+  const closed = new Set(closedRaw.split(',').filter(Boolean));
+  const toggleGroup = (title: string) => {
+    const next = new Set(closed);
+    if (!next.delete(title)) next.add(title);
+    setClosed([...next].join(','));
+  };
 
   const community: NavItem[] = [
     { href: '/friends', label: 'Freunde', icon: Users },
@@ -87,20 +101,42 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
   return (
     <div className="flex h-dvh overflow-hidden">
       {/* Sidebar: icon rail on tablets, full on laptops, hidden on phones */}
-      <aside className="hidden w-[68px] shrink-0 flex-col border-r border-line bg-surface md:flex lg:w-60">
-        <Link href="/" className="flex h-16 items-center justify-center border-b border-line px-4 lg:justify-start">
-          <span className="lg:hidden"><Logo compact /></span>
-          <span className="hidden lg:block"><Logo /></span>
+      <aside className={`hidden w-[68px] shrink-0 flex-col border-r border-line bg-surface transition-[width] md:flex ${wide ? 'lg:w-60' : ''}`}>
+        <Link href="/" className={`flex h-16 items-center justify-center border-b border-line px-4 ${wide ? 'lg:justify-start' : ''}`} title="Zur Lobby">
+          <span className={wide ? 'lg:hidden' : ''}><Logo compact /></span>
+          <span className={wide ? 'hidden lg:block' : 'hidden'}><Logo /></span>
         </Link>
-        <nav className="no-scrollbar flex-1 space-y-6 overflow-y-auto p-3">
-          <NavGroup items={[{ href: '/', label: 'Lobby', icon: House }]} isActive={isActive} />
-          <NavGroup title="Spiele" items={GAMES} isActive={isActive} />
-          <NavGroup title="Community" items={community} isActive={isActive} />
-          <NavGroup title="Konto" items={account} isActive={isActive} />
+        <nav className={`no-scrollbar flex-1 overflow-y-auto p-3 ${wide ? 'space-y-6 lg:space-y-4' : 'space-y-6'}`}>
+          <NavGroup items={[{ href: '/', label: 'Lobby', icon: House }]} isActive={isActive} wide={wide} />
+          {[
+            ['Spiele', GAMES],
+            ['Community', community],
+            ['Konto', account],
+          ].map(([title, items]) => (
+            <NavGroup
+              key={title as string}
+              title={title as string}
+              items={items as NavItem[]}
+              isActive={isActive}
+              wide={wide}
+              open={!closed.has(title as string)}
+              onToggle={() => toggleGroup(title as string)}
+            />
+          ))}
         </nav>
-        <button onClick={() => logout()} className="m-3 flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg lg:justify-start" title="Abmelden">
-          <LogOut size={18} /> <span className="hidden lg:inline">Abmelden</span>
-        </button>
+        <div className="space-y-0.5 border-t border-line p-3">
+          <button
+            onClick={() => setFolded(wide ? '1' : '0')}
+            className={`hidden w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg lg:flex ${wide ? 'lg:justify-start' : ''}`}
+            title={wide ? 'Leiste einklappen' : 'Leiste ausklappen'}
+          >
+            {wide ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
+            <span className={wide ? 'hidden lg:inline' : 'hidden'}>Einklappen</span>
+          </button>
+          <button onClick={() => logout()} className={`flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg ${wide ? 'lg:justify-start' : ''}`} title="Abmelden">
+            <LogOut size={18} /> <span className={wide ? 'hidden lg:inline' : 'hidden'}>Abmelden</span>
+          </button>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -180,22 +216,46 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
   );
 }
 
-function NavGroup({ title, items, isActive }: { title?: string; items: NavItem[]; isActive: (href: string) => boolean }) {
+function NavGroup({
+  title,
+  items,
+  isActive,
+  wide,
+  open = true,
+  onToggle,
+}: {
+  title?: string;
+  items: NavItem[];
+  isActive: (href: string) => boolean;
+  wide: boolean;
+  open?: boolean;
+  onToggle?: () => void;
+}) {
+  // On the icon rail (tablet or folded) groups are always open; closing only hides labels there.
   return (
     <div>
-      {title && <p className="eyebrow mb-2 hidden px-3 lg:block">{title}</p>}
-      <div className="space-y-0.5">
+      {title && (
+        <button
+          onClick={onToggle}
+          aria-expanded={open}
+          className={`eyebrow group mb-1 hidden w-full items-center justify-between rounded-md px-3 py-1 hover:text-muted ${wide ? 'lg:flex' : ''}`}
+        >
+          {title}
+          <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
+        </button>
+      )}
+      <div className={`space-y-0.5 ${open ? '' : wide ? 'lg:hidden' : ''}`}>
         {items.map(({ href, label, icon: Icon }) => (
           <Link
             key={href}
             href={href}
             title={label}
-            className={`flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition lg:justify-start ${
+            className={`flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
               isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
             }`}
           >
             <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
-            <span className="hidden lg:inline">{label}</span>
+            <span className={wide ? 'hidden lg:inline' : 'hidden'}>{label}</span>
           </Link>
         ))}
       </div>
