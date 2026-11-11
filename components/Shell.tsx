@@ -34,6 +34,7 @@ import {
   Spade,
   Target,
   Trophy,
+  UserRound,
   Users,
   X,
   Zap,
@@ -52,7 +53,7 @@ import { useLive } from './SocketProvider';
 import { Avatar, Logo } from './ui';
 import { usePref } from './usePref';
 
-type NavItem = { href: string; label: string; icon: LucideIcon };
+type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
 
 const GAMES: NavItem[] = [
   { href: '/play/crash', label: 'Crash', icon: Rocket },
@@ -67,7 +68,7 @@ const GAMES: NavItem[] = [
   { href: '/play/hilo', label: 'Hi-Lo', icon: ArrowUpDown },
   { href: '/play/wheel', label: 'Glücksrad', icon: FerrisWheel },
   { href: '/play/jackpot', label: 'Jackpot', icon: PiggyBank },
-  { href: '/play/race', label: 'Pferderennen', icon: Flag },
+  { href: '/play/race', label: 'Rennen', icon: Flag },
 ];
 
 type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };
@@ -92,14 +93,15 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
 
   const community: NavItem[] = [
     { href: '/friends', label: 'Freunde', icon: Users },
-    { href: '/messages', label: dmUnread ? `Nachrichten (${dmUnread})` : 'Nachrichten', icon: Mail },
+    { href: '/messages', label: 'Nachrichten', icon: Mail, badge: dmUnread },
     { href: '/tournament', label: 'Turnier', icon: Medal },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
     { href: '/quests', label: 'Quests', icon: Target },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
-    { href: '/stats', label: 'Statistik', icon: ChartColumn },
   ];
+  // Account links live in the avatar menu (and the phone "Mehr" sheet), not in the sidebar.
   const account: NavItem[] = [
+    { href: '/stats', label: 'Statistik', icon: ChartColumn },
     { href: '/support', label: 'Support', icon: Headphones },
     { href: '/settings', label: 'Einstellungen', icon: Settings },
     ...(atLeast(user.role, 'SUPPORT') ? [{ href: '/admin', label: 'Admin', icon: Shield }] : []),
@@ -121,7 +123,6 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           {[
             ['Spiele', GAMES],
             ['Community', community],
-            ['Konto', account],
           ].map(([title, items]) => (
             <NavGroup
               key={title as string}
@@ -129,22 +130,20 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
               items={items as NavItem[]}
               isActive={isActive}
               wide={wide}
+              tiles={title === 'Spiele'}
               open={!closed.has(title as string)}
               onToggle={() => toggleGroup(title as string)}
             />
           ))}
         </nav>
-        <div className="space-y-0.5 border-t border-line p-3">
+        <div className="hidden border-t border-line p-3 lg:block">
           <button
             onClick={() => setFolded(wide ? '1' : '0')}
-            className={`hidden w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg lg:flex ${wide ? 'lg:justify-start' : ''}`}
+            className={`flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg ${wide ? 'lg:justify-start' : ''}`}
             title={wide ? 'Leiste einklappen' : 'Leiste ausklappen'}
           >
             {wide ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             <span className={wide ? 'hidden lg:inline' : 'hidden'}>Einklappen</span>
-          </button>
-          <button onClick={() => logout()} className={`flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg ${wide ? 'lg:justify-start' : ''}`} title="Abmelden">
-            <LogOut size={18} /> <span className={wide ? 'hidden lg:inline' : 'hidden'}>Abmelden</span>
           </button>
         </div>
       </aside>
@@ -173,13 +172,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
             <button onClick={toggleChat} className="btn-ghost hidden h-9 w-9 px-0 md:inline-flex" aria-label="Chat ein- oder ausblenden">
               <MessageSquare size={18} />
             </button>
-            <Link href={`/profile/${user.username}`} className="flex items-center gap-2.5 rounded-lg p-1 hover:bg-raised sm:pr-3">
-              <Avatar url={user.avatarUrl} name={user.username} size={30} frame={user.frame} />
-              <span className="hidden text-left leading-tight sm:block">
-                <span className="block text-sm font-medium">{user.username}</span>
-                <span className="block text-[11px] text-faint">Level {user.level}</span>
-              </span>
-            </Link>
+            <UserMenu user={user} items={account} />
           </div>
         </header>
 
@@ -233,6 +226,7 @@ function NavGroup({
   wide,
   open = true,
   onToggle,
+  tiles = false,
 }: {
   title?: string;
   items: NavItem[];
@@ -240,6 +234,7 @@ function NavGroup({
   wide: boolean;
   open?: boolean;
   onToggle?: () => void;
+  tiles?: boolean; // compact 3-column grid on the wide sidebar (used for the many games)
 }) {
   // On the icon rail (tablet or folded) groups are always open; closing only hides labels there.
   return (
@@ -254,18 +249,40 @@ function NavGroup({
           <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
         </button>
       )}
-      <div className={`space-y-0.5 ${open ? '' : wide ? 'lg:hidden' : ''}`}>
-        {items.map(({ href, label, icon: Icon }) => (
+      {tiles && wide && open && (
+        <div className="hidden grid-cols-3 gap-1 lg:grid">
+          {items.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              title={label}
+              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[10.5px] leading-tight transition ${
+                isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
+              }`}
+            >
+              <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
+              <span className="w-full truncate text-center">{label}</span>
+            </Link>
+          ))}
+        </div>
+      )}
+      <div className={`space-y-0.5 ${!open && wide ? 'lg:hidden' : ''} ${tiles && wide ? 'lg:hidden' : ''}`}>
+        {items.map(({ href, label, icon: Icon, badge }) => (
           <Link
             key={href}
             href={href}
             title={label}
-            className={`flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
+            className={`relative flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
               isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
             }`}
           >
             <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
             <span className={wide ? 'hidden lg:inline' : 'hidden'}>{label}</span>
+            {!!badge && (
+              <span className={`grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-fg ${wide ? 'absolute top-1 right-2 lg:static lg:ml-auto' : 'absolute top-1 right-2'}`}>
+                {badge}
+              </span>
+            )}
           </Link>
         ))}
       </div>
@@ -331,6 +348,43 @@ function Notifications({ items }: { items: Notification[] }) {
                 </div>
               ))}
             </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Avatar button with the account menu: profile, stats, settings, support, admin, logout. */
+function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
+  const [open, setOpen] = useState(false);
+  const close = () => setOpen(false);
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex items-center gap-2.5 rounded-lg p-1 hover:bg-raised sm:pr-2">
+        <Avatar url={user.avatarUrl} name={user.username} size={30} frame={user.frame} />
+        <span className="hidden text-left leading-tight sm:block">
+          <span className="block text-sm font-medium">{user.username}</span>
+          <span className="block text-[11px] text-faint">Level {user.level}</span>
+        </span>
+        <ChevronDown size={14} className={`hidden text-faint transition-transform sm:block ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={close} />
+          <div className="panel absolute top-12 right-0 z-50 w-56 p-1.5 shadow-2xl shadow-black/50">
+            <Link href={`/profile/${user.username}`} onClick={close} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-raised">
+              <UserRound size={16} className="text-muted" /> Mein Profil
+            </Link>
+            {items.map(({ href, label, icon: Icon }) => (
+              <Link key={href} href={href} onClick={close} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-raised">
+                <Icon size={16} className="text-muted" /> {label}
+              </Link>
+            ))}
+            <div className="my-1 border-t border-line" />
+            <button onClick={() => logout()} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg">
+              <LogOut size={16} /> Abmelden
+            </button>
           </div>
         </>
       )}
