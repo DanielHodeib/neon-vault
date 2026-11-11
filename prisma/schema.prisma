@@ -44,12 +44,14 @@ model User {
   rankTag   String  @default("BRONZE")
 
   // settings
-  soundEnabled  Boolean @default(true)
-  theme         String  @default("neon")
-  publicProfile Boolean @default(true)
-  showBalance   Boolean @default(false)
-  showHistory   Boolean @default(false)
-  dailyLimit    BigInt? // self-set cap on stakes per day; null = none
+  soundEnabled     Boolean   @default(true)
+  theme            String    @default("neon")
+  publicProfile    Boolean   @default(true)
+  showBalance      Boolean   @default(false)
+  showHistory      Boolean   @default(false)
+  dailyLimit       BigInt? // self-set cap on stakes per day; null = none
+  dailyLimitNext   BigInt? // pending looser limit (null = none) ...
+  dailyLimitNextAt DateTime? // ... taking effect at this time (see lib/limits.ts)
 
   // equipped cosmetics (ids from lib/shop.ts)
   frame      String?

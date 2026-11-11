@@ -2,8 +2,9 @@ import { changePassword, deleteAccount, updateProfile, updateSettings } from '@/
 import { ImageField } from '@/components/ImageField';
 import { ActionForm, PageHeader, Section, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
-import { THEMES } from '@/lib/format';
+import { coins, THEMES } from '@/lib/format';
 import { db } from '@/lib/hub';
+import { effectiveLimit, limitPending } from '@/lib/limits';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 
 export const metadata = { title: 'Einstellungen' };
@@ -31,6 +32,7 @@ function Toggle({ name, label, hint, checked }: { name: string; label: string; h
 
 export default async function SettingsPage() {
   const user = await requireUser();
+  const pendingLimit = limitPending(user);
   const ownerFriend = (await db.friendship.count({
     where: { accepted: true, OR: [{ fromId: user.id, to: { role: 'OWNER' } }, { toId: user.id, from: { role: 'OWNER' } }] },
   })) > 0;
@@ -93,8 +95,14 @@ export default async function SettingsPage() {
               </div>
               <div>
                 <label className="label" htmlFor="dailyLimit">Tageslimit für Einsätze (Selbstschutz)</label>
-                <input id="dailyLimit" className="input num" name="dailyLimit" type="number" inputMode="numeric" min={100} placeholder="leer = kein Limit" defaultValue={user.dailyLimit?.toString() ?? ''} />
-                <p className="mt-1 text-xs text-faint">Zählt alle Einsätze und Poker-Buy-ins ab Mitternacht (UTC).</p>
+                <input id="dailyLimit" className="input num" name="dailyLimit" type="number" inputMode="numeric" min={100} placeholder="leer = kein Limit" defaultValue={(pendingLimit ? user.dailyLimitNext : effectiveLimit(user))?.toString() ?? ''} />
+                <p className="mt-1 text-xs text-faint">Zählt alle Einsätze und Poker-Buy-ins ab Mitternacht (UTC). Senken gilt sofort, Erhöhen oder Entfernen erst nach 24 Stunden.</p>
+                {pendingLimit && (
+                  <p className="mt-2 rounded-lg bg-gold/10 px-3 py-2 text-xs text-gold">
+                    Aktuell gilt {coins(effectiveLimit(user) ?? 0)} NVC. Ab {user.dailyLimitNextAt!.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}:{' '}
+                    {user.dailyLimitNext === null ? 'kein Limit' : `${coins(user.dailyLimitNext)} NVC`}.
+                  </p>
+                )}
               </div>
               <SubmitButton>Speichern</SubmitButton>
             </ActionForm>

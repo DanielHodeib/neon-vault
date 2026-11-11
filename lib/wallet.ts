@@ -1,4 +1,5 @@
 import { db, emitToUser, hub, notify, UserError } from './hub';
+import { effectiveLimit } from './limits';
 import { levelOf } from './ranks';
 
 // BET/WIN: a played round. CANCEL: a stake handed back unplayed (undoes the bet's XP and quest
@@ -97,13 +98,14 @@ type Tx = Parameters<Parameters<typeof db.$transaction>[0]>[0];
  * the debit transaction, so parallel bets can't all slip under it.
  */
 async function checkLimit(tx: Tx, userId: string, amount: bigint) {
-  const user = await tx.user.findUnique({ where: { id: userId }, select: { dailyLimit: true } });
-  if (user?.dailyLimit == null) return;
+  const user = await tx.user.findUnique({ where: { id: userId }, select: { dailyLimit: true, dailyLimitNext: true, dailyLimitNextAt: true } });
+  const limit = user && effectiveLimit(user);
+  if (limit == null) return;
   const { _sum } = await tx.ledgerEntry.aggregate({
     where: { userId, createdAt: { gte: startOfDay() }, kind: { in: ['BET', 'CANCEL', 'BUYIN'] } },
     _sum: { amount: true },
   });
-  const left = user.dailyLimit + (_sum.amount ?? 0n);
+  const left = limit + (_sum.amount ?? 0n);
   if (amount > left) throw new UserError(`Dein Tageslimit ist erreicht – heute noch ${(left > 0n ? left : 0n).toLocaleString('de-DE')} NVC möglich.`);
 }
 

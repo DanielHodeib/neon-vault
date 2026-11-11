@@ -13,6 +13,7 @@ import { claimQuest } from '@/lib/quests';
 import { THEMES } from '@/lib/format';
 import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
+import { changeLimit } from '@/lib/limits';
 
 const optionalUrl = z.union([z.literal(''), z.string().trim().max(500).regex(IMAGE_URL, 'Bild-URL muss mit https:// beginnen.')]);
 const checkbox = z.literal('on').optional().transform(Boolean);
@@ -62,9 +63,12 @@ export async function updateSettings(_: ActionState, form: FormData) {
       }),
       form,
     );
-    await db.user.update({ where: { id: user.id }, data: { ...data, dailyLimit: data.dailyLimit === '' ? null : BigInt(data.dailyLimit) } });
+    const limit = changeLimit(user, data.dailyLimit === '' ? null : BigInt(data.dailyLimit));
+    await db.user.update({ where: { id: user.id }, data: { ...data, ...limit } });
     refresh();
-    return 'Einstellungen gespeichert.';
+    return limit.dailyLimitNextAt
+      ? 'Gespeichert. Ein höheres oder entferntes Tageslimit gilt erst nach 24 Stunden.'
+      : 'Einstellungen gespeichert.';
   });
 }
 
