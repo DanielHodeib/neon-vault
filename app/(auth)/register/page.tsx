@@ -5,13 +5,16 @@ import { ActionForm, SubmitButton } from '@/components/ui';
 
 export const metadata = { title: 'Registrieren' };
 
-export default function RegisterPage() {
+export default async function RegisterPage({ searchParams }: PageProps<'/register'>) {
+  const { ref } = (await searchParams) as { ref?: string };
   return (
     <>
       <h1 className="text-2xl font-semibold tracking-tight">Konto erstellen</h1>
       <p className="mt-1 text-sm text-muted">Du startest mit 10.000 NVC. Alles ist Spielgeld, es gibt keine Auszahlung.</p>
+      {ref && <p className="mt-3 rounded-lg bg-accent/10 px-3 py-2 text-sm text-accent">Eingeladen von {ref}: ihr bekommt beide 2.500 NVC Bonus.</p>}
 
       <ActionForm action={register} className="mt-8 space-y-3">
+        {ref && <input type="hidden" name="ref" value={ref} />}
         <div>
           <label className="label" htmlFor="username">Benutzername</label>
           <input id="username" className="input" name="username" placeholder="3–20 Zeichen" autoComplete="username" autoCapitalize="off" required />

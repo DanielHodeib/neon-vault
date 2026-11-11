@@ -1,4 +1,7 @@
+import { headers } from 'next/headers';
+
 import { removeFriend, respondFriend, sendFriendRequest, sendMoney, setBlocked } from '@/app/actions/social';
+import { CopyLink } from '@/components/CopyLink';
 import { FormButton } from '@/components/FormButton';
 import { ActionForm, Empty, PageHeader, Section, SubmitButton, UserLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
@@ -9,6 +12,8 @@ export const metadata = { title: 'Freunde' };
 
 export default async function FriendsPage() {
   const me = await requireUser();
+  const h = await headers();
+  const inviteUrl = `${h.get('x-forwarded-proto') ?? 'http'}://${h.get('x-forwarded-host') ?? h.get('host')}/register?ref=${encodeURIComponent(me.username)}`;
   const [links, blocks, transfers] = await Promise.all([
     db.friendship.findMany({
       where: { OR: [{ fromId: me.id }, { toId: me.id }] },
@@ -90,6 +95,11 @@ export default async function FriendsPage() {
         </div>
 
         <div className="space-y-4">
+          <Section title="Freunde einladen" pad>
+            <p className="mb-3 text-sm text-muted">Wer sich über deinen Link registriert, bekommt mit dir je 2.500 NVC – und ihr seid direkt befreundet.</p>
+            <CopyLink url={inviteUrl} />
+          </Section>
+
           <Section title="NVC senden" pad>
             {friends.length === 0 ? (
               <p className="text-sm text-faint">Geld kannst du nur an Freunde schicken.</p>
