@@ -1,12 +1,11 @@
 import { CircleDot, Cherry, Club, Coins, Crown, Rocket, Spade, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
-import { claimFaucet } from '@/app/actions/account';
-import { FormButton } from '@/components/FormButton';
+import { DailySpin } from '@/components/DailySpin';
 import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins } from '@/lib/format';
-import { db } from '@/lib/hub';
+import { dailyStatus } from '@/lib/daily';
 import { netProfitSince, startOfDay } from '@/lib/wallet';
 
 const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint: string }[] = [
@@ -20,24 +19,12 @@ const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint:
 
 export default async function Lobby() {
   const user = await requireUser();
-  const [today, faucet] = await Promise.all([
-    netProfitSince(startOfDay(), 5),
-    db.questClaim.findUnique({ where: { userId_questKey_periodStart: { userId: user.id, questKey: 'faucet', periodStart: startOfDay() } } }),
-  ]);
+  const [today, daily] = await Promise.all([netProfitSince(startOfDay(), 5), dailyStatus(user.id)]);
   const king = today.find((t) => t.profit > 0);
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <section className="panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
-        <div>
-          <p className="eyebrow">Willkommen zurück</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{user.username}</h1>
-          <p className="mt-1 text-sm text-muted">Jeden Tag 5.000 NVC gratis abholen.</p>
-        </div>
-        <FormButton action={claimFaucet} className="btn-primary w-full sm:w-auto" disabled={!!faucet}>
-          {faucet ? 'Morgen wieder verfügbar' : 'Tagesbonus abholen'}
-        </FormButton>
-      </section>
+      <DailySpin username={user.username} claimedToday={daily.claimedToday} streak={daily.streak} />
 
       <section>
         <h2 className="eyebrow mb-3">Spiele</h2>

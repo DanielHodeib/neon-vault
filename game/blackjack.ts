@@ -197,7 +197,7 @@ export function registerBlackjack(io: Server): Register {
 
     handle(socket, 'bj:create', z.object({ bots: z.number().int().min(0).max(3), isPrivate: z.boolean() }), ({ bots, isPrivate }) => {
       const t: Table = { id: newId(), isPrivate, phase: 'betting', seats: [], dealer: [], deck: newDeck(6), turn: null, deadline: 0 };
-      for (let i = 0; i < bots; i++) t.seats.push({ userId: null, name: `🤖 ${BOT_NAMES[i]}`, bet: 0, hands: [], insurance: 0 });
+      for (let i = 0; i < bots; i++) t.seats.push({ userId: null, name: BOT_NAMES[i], bet: 0, hands: [], insurance: 0 });
       tables.set(t.id, t);
       return join(socket, t);
     });

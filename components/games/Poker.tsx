@@ -6,7 +6,7 @@ import { coins } from '@/lib/format';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
 
-type Seat = { name: string; isBot: boolean; isMe: boolean; stack: number; bet: number; folded: boolean; allIn: boolean; cards: string[] };
+type Seat = { name: string; isBot: boolean; isMe: boolean; stack: number; bet: number; folded: boolean; allIn: boolean; lastAction: string; hand: string | null; cards: string[] };
 type State = {
   id: string;
   isPrivate: boolean;
@@ -19,6 +19,7 @@ type State = {
   deadline: number;
   pot: number;
   results: { name: string; won: number; hand?: string }[];
+  log: string[];
   seats: Seat[];
 };
 
@@ -64,6 +65,8 @@ export function Poker() {
   const toCall = state.currentBet - mySeat.bet;
   const seconds = Math.max(0, Math.ceil((state.deadline - now) / 1000));
   const raiseTo = raise ?? state.currentBet + state.minRaise;
+  const between = state.phase === 'showdown' || state.phase === 'waiting';
+  const broke = mySeat.stack < 100; // can't post a big blind any more
   const act = (type: string, to?: number) => {
     setRaise(null);
     return call('poker:action', to ? { type, to } : { type });
@@ -98,7 +101,10 @@ export function Poker() {
                 {coins(s.stack)} {s.allIn && <span className="text-loss">· All-in</span>}
               </p>
               <div className="mt-2 flex justify-center -space-x-3 sm:-space-x-2">{s.cards.map((c, j) => <PlayingCard key={j} card={c} />)}</div>
-              <p className="num mt-1 h-4 text-[11px] text-white/60">{s.bet > 0 && `Einsatz ${coins(s.bet)}`}</p>
+              {s.hand && <p className="mt-1 text-[11px] font-medium text-accent">{s.hand}</p>}
+              <p className="mt-1 h-5">
+                {s.lastAction && <span className="rounded bg-black/40 px-1.5 py-0.5 text-[11px] text-white/80">{s.lastAction}</span>}
+              </p>
             </div>
           ))}
         </div>
@@ -107,7 +113,9 @@ export function Poker() {
       <div className="card mt-4">
         {myTurn ? (
           <div className="space-y-3">
-            <p className="text-center text-xs text-muted">Du bist dran · <span className="num">{seconds}s</span></p>
+            <p className="text-center text-xs text-muted">
+              {mySeat.hand && <span className="text-accent">{mySeat.hand} · </span>}Du bist dran · <span className="num">{seconds}s</span>
+            </p>
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <button className="btn-secondary" onClick={() => act('fold')}>Fold</button>
               {toCall === 0 ? (
@@ -122,12 +130,41 @@ export function Poker() {
               </div>
             </div>
           </div>
+        ) : between ? (
+          <div className="space-y-3 text-center">
+            {broke ? (
+              <>
+                <p className="text-sm text-muted">Deine Chips sind weg. Kauf nach, um weiterzuspielen.</p>
+                <div className="mx-auto flex max-w-xs rounded-lg border border-line bg-bg">
+                  <input className="num h-10 w-full min-w-0 bg-transparent px-3 text-sm outline-none" type="number" inputMode="numeric" min={1000} value={buyIn || ''} onChange={(e) => setBuyIn(Math.floor(Number(e.target.value)))} />
+                  <button className="border-l border-line px-3 text-sm font-medium text-accent" onClick={() => call('poker:rebuy', { buyIn })}>Nachkaufen</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted">{state.phase === 'showdown' ? `Nächste Hand startet in ${seconds}s` : 'Bereit für die nächste Hand.'}</p>
+                <button className="btn-primary" onClick={() => call('poker:next')}>Nächste Hand starten</button>
+              </>
+            )}
+          </div>
         ) : (
           <p className="text-center text-sm text-muted">
-            {state.phase === 'waiting' ? 'Warte auf mindestens zwei Spieler …' : state.toAct >= 0 ? `${state.seats[state.toAct]?.name} ist am Zug …` : 'Nächste Hand gleich …'}
+            {mySeat.hand && <span className="mr-2 text-accent">Deine Hand: {mySeat.hand} ·</span>}
+            {state.toAct >= 0 ? `${state.seats[state.toAct]?.name} ist am Zug …` : 'Gleich geht es weiter …'}
           </p>
         )}
       </div>
+
+      {state.log.length > 0 && (
+        <div className="panel mt-4">
+          <p className="border-b border-line px-4 py-2.5 text-sm font-semibold">Verlauf</p>
+          <ul className="max-h-48 space-y-1 overflow-y-auto px-4 py-3 text-sm">
+            {[...state.log].reverse().map((line, i) => (
+              <li key={i} className={line.startsWith('—') ? 'text-faint' : line.includes('gewinnt') ? 'text-win' : 'text-muted'}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

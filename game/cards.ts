@@ -64,3 +64,10 @@ export function bestHand(cards: string[]) {
 }
 
 export const handName = (score: number) => HAND_NAMES[Math.floor(score / 16 ** 5)];
+
+/** Name of the best hand in 2–7 cards (pre-flop only pairs count). */
+export function describeHand(cards: string[]) {
+  if (cards.length >= 5) return handName(bestHand(cards));
+  const counts = Object.values(cards.reduce<Record<string, number>>((m, c) => ({ ...m, [c[0]]: (m[c[0]] ?? 0) + 1 }), {})).sort((a, b) => b - a);
+  return counts[0] === 4 ? 'Vierling' : counts[0] === 3 ? 'Drilling' : counts[0] === 2 && counts[1] === 2 ? 'Zwei Paare' : counts[0] === 2 ? 'Paar' : 'Höchste Karte';
+}

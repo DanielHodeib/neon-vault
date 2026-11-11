@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { applyLedger, assertAmount } from '@/lib/wallet';
-import { bestHand, handName, newDeck, rankValue } from './cards';
+import { bestHand, describeHand, handName, newDeck, rankValue } from './cards';
 import { id as newId, rand } from './rng';
 import { empty, handle, type Register } from './socket';
 
@@ -15,6 +15,7 @@ const BOT_STACK = 10_000;
 const TURN_MS = 20_000;
 const NEXT_HAND_MS = 5_000;
 const BOT_NAMES = ['Ace', 'Blitz', 'Cobra', 'Dice', 'Echo'];
+const LOG_SIZE = 8;
 
 type Seat = {
   userId: string | null; // null = bot
@@ -27,6 +28,7 @@ type Seat = {
   allIn: boolean;
   acted: boolean;
   away: boolean; // left mid-hand, cashed out after it
+  lastAction: string; // shown on the seat, cleared each street
 };
 
 type Table = {
@@ -42,6 +44,7 @@ type Table = {
   minRaise: number;
   deadline: number;
   results: { name: string; won: number; hand?: string }[];
+  log: string[];
   timer?: NodeJS.Timeout;
 };
 
@@ -82,6 +85,7 @@ const publicView = (t: Table, viewerId: string | null) => ({
   deadline: t.deadline,
   pot: t.seats.reduce((s, x) => s + x.total, 0),
   results: t.results,
+  log: t.log,
   seats: t.seats.map((s) => ({
     name: s.name,
     isBot: !s.userId,
@@ -90,6 +94,9 @@ const publicView = (t: Table, viewerId: string | null) => ({
     bet: s.bet,
     folded: s.folded,
     allIn: s.allIn,
+    lastAction: s.lastAction,
+    // Only the viewer gets their own hand strength; at showdown everyone sees the live hands.
+    hand: s.cards.length && (s.userId === viewerId || (t.phase === 'showdown' && inHand(s))) ? describeHand([...s.cards, ...t.board]) : null,
     cards: s.userId === viewerId || (t.phase === 'showdown' && inHand(s)) ? s.cards : s.cards.map(() => '??'),
   })),
 });
@@ -113,6 +120,11 @@ export function registerPoker(io: Server): Register {
     return -1;
   };
 
+  const say = (t: Table, s: Seat | null, text: string) => {
+    if (s) s.lastAction = text;
+    t.log = [...t.log, s ? `${s.name}: ${text}` : text].slice(-LOG_SIZE);
+  };
+
   const commit = (t: Table, s: Seat, chips: number) => {
     const put = Math.min(chips, s.stack);
     s.stack -= put;
@@ -121,11 +133,11 @@ export function registerPoker(io: Server): Register {
     if (s.stack === 0) s.allIn = true;
   };
 
-  const maybeStart = (t: Table) => {
+  const maybeStart = (t: Table, delay = 2_000) => {
     if (t.phase !== 'waiting') return;
     for (const s of t.seats) if (!s.userId && s.stack < BIG_BLIND) s.stack = BOT_STACK; // bots rebuy
     const ready = t.seats.filter((s) => s.stack > 0 && !s.away);
-    if (ready.length >= 2 && ready.some((s) => s.userId)) schedule(t, 2_000, () => startHand(t));
+    if (ready.length >= 2 && ready.some((s) => s.userId)) schedule(t, delay, () => startHand(t));
   };
 
   const startHand = (t: Table) => {
@@ -136,15 +148,18 @@ export function registerPoker(io: Server): Register {
     t.board = [];
     t.results = [];
     for (const s of t.seats) {
-      Object.assign(s, { bet: 0, total: 0, acted: false, allIn: false, folded: s.stack === 0 || s.away });
+      Object.assign(s, { bet: 0, total: 0, acted: false, allIn: false, folded: s.stack === 0 || s.away, lastAction: '' });
       s.cards = s.folded ? [] : [t.deck.pop()!, t.deck.pop()!];
     }
     t.button = nextSeat(t, t.button, inHand);
     // Heads-up: the button posts the small blind.
     const sb = players.length === 2 ? t.button : nextSeat(t, t.button, inHand);
     const bb = nextSeat(t, sb, inHand);
+    say(t, null, '— Neue Hand —');
     commit(t, t.seats[sb], SMALL_BLIND);
+    say(t, t.seats[sb], `Small Blind ${SMALL_BLIND}`);
     commit(t, t.seats[bb], BIG_BLIND);
+    say(t, t.seats[bb], `Big Blind ${BIG_BLIND}`);
     Object.assign(t, { phase: 'preflop', currentBet: BIG_BLIND, minRaise: BIG_BLIND, toAct: bb });
     const first = nextSeat(t, bb, canAct);
     if (first < 0) return advance(t); // the blinds put everyone all-in
@@ -166,16 +181,22 @@ export function registerPoker(io: Server): Register {
     const s = t.seats[seatIndex];
     const toCall = t.currentBet - s.bet;
 
-    if (action.type === 'fold') s.folded = true;
-    else if (action.type === 'check') {
+    if (action.type === 'fold') {
+      s.folded = true;
+      say(t, s, 'Fold');
+    } else if (action.type === 'check') {
       if (toCall > 0) throw new UserError('Check nicht möglich – du musst callen.');
-    } else if (action.type === 'call') commit(t, s, toCall);
-    else {
+      say(t, s, 'Check');
+    } else if (action.type === 'call') {
+      commit(t, s, toCall);
+      say(t, s, s.allIn ? `All-in (${s.bet})` : toCall > 0 ? `Call ${toCall}` : 'Check');
+    } else {
       const to = 'to' in action ? action.to : s.bet + s.stack;
       const isFullRaise = to - t.currentBet >= t.minRaise;
       if (to <= t.currentBet && action.type === 'raise') throw new UserError('Raise muss höher als der aktuelle Einsatz sein.');
       if (action.type === 'raise' && (!isFullRaise || to > s.bet + s.stack)) throw new UserError(`Raise mindestens auf ${t.currentBet + t.minRaise}.`);
       commit(t, s, to - s.bet);
+      say(t, s, s.allIn ? `All-in (${s.bet})` : `Raise auf ${s.bet}`);
       if (s.bet > t.currentBet) {
         if (isFullRaise) {
           t.minRaise = s.bet - t.currentBet;
@@ -203,6 +224,8 @@ export function registerPoker(io: Server): Register {
     if (next === order.length) return finish(t);
     t.phase = order[next];
     t.board.push(...t.deck.splice(-(t.phase === 'flop' ? 3 : 1)));
+    for (const s of t.seats) if (!s.folded) s.lastAction = '';
+    say(t, null, `— ${{ flop: 'Flop', turn: 'Turn', river: 'River' }[t.phase as 'flop' | 'turn' | 'river']} —`);
     // With at most one player able to bet, just run the board out.
     if (t.seats.filter(canAct).length < 2) return advance(t);
     prompt(t, nextSeat(t, t.button, canAct));
@@ -218,15 +241,20 @@ export function registerPoker(io: Server): Register {
       .filter((r) => r.won > 0);
     t.seats.forEach((s, i) => (s.stack += won[i]));
     t.phase = 'showdown';
+    for (const r of t.results) say(t, null, `${r.name} gewinnt ${r.won.toLocaleString('de-DE')}${r.hand ? ` mit ${r.hand}` : ''}`);
     const big = t.results.find((r) => r.won >= 50_000);
     if (big) systemMessage(`${big.name} gewinnt einen ${big.won.toLocaleString('de-DE')} NVC Pot beim Poker!`);
     void emit(t);
-    schedule(t, NEXT_HAND_MS, () => {
-      for (const s of t.seats.filter((x) => x.away)) void cashOut(t, s).catch(console.error);
-      t.phase = 'waiting';
-      void emit(t);
-      maybeStart(t);
-    });
+    schedule(t, NEXT_HAND_MS, () => endHand(t));
+  };
+
+  /** Clears the finished hand; `delay` until the next one starts. */
+  const endHand = (t: Table, delay?: number) => {
+    if (t.phase !== 'showdown') return;
+    for (const s of t.seats.filter((x) => x.away)) void cashOut(t, s).catch(console.error);
+    t.phase = 'waiting';
+    void emit(t);
+    maybeStart(t, delay);
   };
 
   const botDecision = (t: Table, s: Seat): Action => {
@@ -285,7 +313,7 @@ export function registerPoker(io: Server): Register {
         if (t.seats.length >= MAX_SEATS) throw new UserError('Tisch ist voll.');
         assertAmount(buyIn, BIG_BLIND * 10);
         await applyLedger([{ userId: user.id, amount: -buyIn, kind: 'BUYIN', game: 'poker' }]);
-        t.seats.push({ userId: user.id, name: user.username, stack: buyIn, cards: [], bet: 0, total: 0, folded: true, allIn: false, acted: false, away: false });
+        t.seats.push({ userId: user.id, name: user.username, stack: buyIn, cards: [], bet: 0, total: 0, folded: true, allIn: false, acted: false, away: false, lastAction: '' });
         tableOf.set(user.id, t.id);
       } finally {
         seating.delete(user.id);
@@ -307,9 +335,9 @@ export function registerPoker(io: Server): Register {
       'poker:create',
       z.object({ bots: z.number().int().min(0).max(5), isPrivate: z.boolean(), buyIn }),
       ({ bots, isPrivate, buyIn }) => {
-        const t: Table = { id: newId(), isPrivate, phase: 'waiting', seats: [], board: [], deck: [], button: 0, toAct: -1, currentBet: 0, minRaise: BIG_BLIND, deadline: 0, results: [] };
+        const t: Table = { id: newId(), isPrivate, phase: 'waiting', seats: [], board: [], deck: [], button: 0, toAct: -1, currentBet: 0, minRaise: BIG_BLIND, deadline: 0, results: [], log: [] };
         for (let i = 0; i < bots; i++) {
-          t.seats.push({ userId: null, name: `🤖 ${BOT_NAMES[i]}`, stack: BOT_STACK, cards: [], bet: 0, total: 0, folded: true, allIn: false, acted: false, away: false });
+          t.seats.push({ userId: null, name: BOT_NAMES[i], stack: BOT_STACK, cards: [], bet: 0, total: 0, folded: true, allIn: false, acted: false, away: false, lastAction: '' });
         }
         tables.set(t.id, t);
         return sit(t, buyIn);
@@ -336,6 +364,44 @@ export function registerPoker(io: Server): Register {
     });
 
     handle(socket, 'poker:leave', empty, () => leave(user.id));
+
+    const myTable = () => {
+      const t = tables.get(tableOf.get(user.id) ?? '');
+      if (!t) throw new UserError('Du sitzt an keinem Tisch.');
+      return t;
+    };
+
+    handle(socket, 'poker:next', empty, () => {
+      const t = myTable();
+      if (!['showdown', 'waiting'].includes(t.phase)) throw new UserError('Die Hand läuft noch.');
+      if (t.seats.filter((s) => (s.stack > 0 || !s.userId) && !s.away).length < 2) throw new UserError('Mindestens zwei Spieler mit Chips nötig.');
+      if (t.phase === 'showdown') endHand(t, 300);
+      else maybeStart(t, 300);
+    });
+
+    handle(
+      socket,
+      'poker:rebuy',
+      z.object({ buyIn }),
+      async ({ buyIn }) => {
+        const t = myTable();
+        const seat = t.seats.find((s) => s.userId === user.id)!;
+        if (['preflop', 'flop', 'turn', 'river'].includes(t.phase) && inHand(seat)) throw new UserError('Nachkaufen geht erst nach der Hand.');
+        if (seating.has(user.id)) throw new UserError('Einen Moment …');
+        seating.add(user.id);
+        try {
+          assertAmount(buyIn, BIG_BLIND * 10);
+          await applyLedger([{ userId: user.id, amount: -buyIn, kind: 'BUYIN', game: 'poker' }]);
+          seat.stack += buyIn;
+          say(t, seat, `kauft ${buyIn.toLocaleString('de-DE')} nach`);
+        } finally {
+          seating.delete(user.id);
+        }
+        maybeStart(t);
+        void emit(t);
+      },
+      { play: true },
+    );
 
     handle(
       socket,

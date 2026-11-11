@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { bestHand, bjTotal, handName } from './cards';
+import { bestHand, bjTotal, describeHand, handName } from './cards';
 import { crashPointFrom } from './crash';
 import { splitPots } from './poker';
 import { rouletteMultiplier } from './roulette';
@@ -71,4 +71,12 @@ test('poker side pots', () => {
   assert.deepEqual(won, [350, 800, 0, 0]);
   // split pot with an odd chip
   assert.deepEqual(splitPots([{ total: 51, folded: false, score: 5 }, { total: 50, folded: false, score: 5 }]), [51, 50]);
+});
+
+test('own hand is named before and after the flop', () => {
+  assert.equal(describeHand(['AS', 'KD']), 'Höchste Karte');
+  assert.equal(describeHand(['7S', '7D']), 'Paar');
+  assert.equal(describeHand(['7S', '7D', '7H', '2C']), 'Drilling');
+  assert.equal(describeHand(['2H', '7H', '9H', 'JH', 'KH']), 'Flush');
+  assert.equal(describeHand(['AS', 'AD', 'KS', 'KD', '2C', '9H']), 'Zwei Paare');
 });

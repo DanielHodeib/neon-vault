@@ -8,13 +8,11 @@ import { z } from 'zod';
 import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
 import { endSession, requireUser, startSession } from '@/lib/auth';
 import { db, disconnectUser, UserError } from '@/lib/hub';
+import { spinDaily } from '@/lib/daily';
 import { claimQuest } from '@/lib/quests';
 import { THEMES } from '@/lib/format';
 import { RANKS, rankAllowed } from '@/lib/ranks';
-import { applyLedger, startOfDay } from '@/lib/wallet';
 
-const FAUCET = 5_000;
-const FAUCET_XP = 120;
 
 const optionalUrl = z.union([z.literal(''), z.string().url('Ungültige Bild-URL.').startsWith('https://', 'Bild-URL muss mit https:// beginnen.')]);
 const checkbox = z.literal('on').optional().transform(Boolean);
@@ -85,17 +83,15 @@ export async function deleteAccount(_: ActionState, form: FormData) {
   redirect('/register');
 }
 
-export async function claimFaucet() {
-  return run(async () => {
+/** Returns the winning segment so the client can animate the wheel before refreshing. */
+export async function dailySpinAction() {
+  try {
     const user = await requireUser();
-    // The claim row's primary key makes a second claim on the same day fail.
-    const claimed = await db.questClaim.create({ data: { userId: user.id, questKey: 'faucet', periodStart: startOfDay() } }).catch(() => null);
-    if (!claimed) throw new UserError('Faucet heute schon abgeholt – morgen wieder!');
-    await applyLedger([{ userId: user.id, amount: FAUCET, kind: 'FAUCET' }]);
-    await db.user.update({ where: { id: user.id }, data: { xp: { increment: FAUCET_XP } } });
-    refresh();
-    return `+${FAUCET} NVC abgeholt!`;
-  });
+    return { ok: true as const, ...(await spinDaily(user.id)) };
+  } catch (err) {
+    if (err instanceof UserError) return { ok: false as const, error: err.message };
+    throw err;
+  }
 }
 
 export async function claimQuestAction(key: string) {
