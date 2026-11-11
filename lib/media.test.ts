@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { IMAGE_URL, sniffImage } from './media';
+import { IMAGE_URL, sniffAudio, sniffImage } from './media';
 
 const bytes = (...xs: (number | string)[]) => new Uint8Array(xs.flatMap((x) => (typeof x === 'string' ? [...x].map((c) => c.charCodeAt(0)) : [x])));
 
@@ -20,4 +20,14 @@ test('profile image URLs are uploads or https', () => {
   assert.ok(!IMAGE_URL.test('http://example.com/a.jpg'));
   assert.ok(!IMAGE_URL.test('javascript:alert(1)'));
   assert.ok(!IMAGE_URL.test('/media/../admin'));
+});
+
+test('audio type comes from the magic bytes', () => {
+  const bytes = (...xs: (number | string)[]) => new Uint8Array(xs.flatMap((x) => (typeof x === 'string' ? [...x].map((c) => c.charCodeAt(0)) : [x])));
+  assert.equal(sniffAudio(bytes('ID3', 4, 0)), 'audio/mpeg');
+  assert.equal(sniffAudio(bytes(0xff, 0xfb, 0x90)), 'audio/mpeg');
+  assert.equal(sniffAudio(bytes('OggS', 0)), 'audio/ogg');
+  assert.equal(sniffAudio(bytes('RIFF', 0, 0, 0, 0, 'WAVE')), 'audio/wav');
+  assert.equal(sniffAudio(bytes(0, 0, 0, 0x20, 'ftypM4A ')), 'audio/mp4');
+  assert.equal(sniffAudio(bytes('<html>')), null);
 });

@@ -47,6 +47,15 @@ export const sound = {
   gem: () => arpeggio([880, 1320], 0.05, { type: 'sine', gain: 0.05 }),
   bomb: () => arpeggio([160, 110, 70], 0.09, { type: 'sawtooth', gain: 0.07 }),
   start: () => arpeggio([392, 523], 0.07, { type: 'sine', gain: 0.04 }),
+  /** Four-on-the-floor beat with a bass line for `seconds`. */
+  disco: (seconds: number) => {
+    const beat = 0.48;
+    for (let i = 0; i < seconds / beat; i++) {
+      tone(65, 0.18, { type: 'sine', gain: 0.12, at: i * beat }); // kick
+      if (i % 2) tone(7000, 0.04, { type: 'square', gain: 0.008, at: i * beat }); // hi-hat
+      tone([110, 110, 131, 98][Math.floor(i / 4) % 4], 0.2, { type: 'sawtooth', gain: 0.025, at: i * beat + beat / 2 }); // bass
+    }
+  },
   airhorn: () => [0, 0.32, 0.64].forEach((at) => [415, 440, 466].forEach((f) => tone(f, 0.28, { type: 'sawtooth', gain: 0.05, at }))),
   turn: () => arpeggio([660, 880], 0.08, { type: 'sine', gain: 0.05 }),
 };

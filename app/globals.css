@@ -110,8 +110,53 @@ body {
 .fx-confetti i { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; animation-name: fx-fall; animation-timing-function: linear; animation-fill-mode: forwards; }
 .fx-shake { animation: fx-shake .15s linear 8; }
 .fx-flip { transform: rotate(180deg); transition: transform .6s; }
-.fx-disco { animation: fx-disco 1.2s linear infinite; }
+.fx-disco main { animation: fx-disco 2.4s linear infinite; }
+
+/* Shared layer for screen effects; fades out before it is removed. */
+.fx-layer { position: fixed; inset: 0; z-index: 100; pointer-events: none; overflow: hidden; transition: opacity .6s; }
+.fx-layer.fx-out { opacity: 0; }
+
+/* Disco: mirror ball, lasers, spotlights, low fog from the sides. */
+@keyframes fx-ball-drop { from { transform: translate(-50%, -110%); } to { transform: translate(-50%, 0); } }
+@keyframes fx-ball-spin { to { background-position: 120px 0, 0 0; } }
+@keyframes fx-ball-glow { 0%, 100% { filter: brightness(1) drop-shadow(0 0 12px #fff8); } 50% { filter: brightness(1.4) drop-shadow(0 0 30px #fffc); } }
+@keyframes fx-laser { from { transform: rotate(-38deg); } to { transform: rotate(38deg); } }
+@keyframes fx-spot { 0%, 100% { transform: translateX(-25vw) rotate(-12deg); } 50% { transform: translateX(25vw) rotate(12deg); } }
+@keyframes fx-fog-left { from { transform: translateX(-70%); opacity: 0; } to { transform: translateX(-15%); opacity: 1; } }
+@keyframes fx-fog-right { from { transform: translateX(70%); opacity: 0; } to { transform: translateX(15%); opacity: 1; } }
+@keyframes fx-fog-sway { 0%, 100% { margin-bottom: 0; } 50% { margin-bottom: 2vh; } }
+.fx-disco-scene { background: radial-gradient(ellipse at top, #0000 40%, #0006); }
+.fx-ball-rig { position: absolute; top: 0; left: 50%; display: flex; flex-direction: column; align-items: center; animation: fx-ball-drop 1.4s cubic-bezier(.3, 1.4, .5, 1) both; }
+.fx-ball-string { width: 2px; height: 12vh; background: linear-gradient(#999, #ddd); }
+.fx-ball {
+  width: clamp(70px, 11vmin, 120px); aspect-ratio: 1; border-radius: 50%;
+  background:
+    repeating-linear-gradient(90deg, #fff3 0 6px, #0003 6px 12px),
+    repeating-linear-gradient(0deg, #fff6 0 6px, #8889 6px 12px),
+    radial-gradient(circle at 35% 30%, #fff, #bbb 40%, #555);
+  background-blend-mode: overlay, overlay, normal;
+  box-shadow: 0 0 40px #fff6, inset -10px -14px 30px #0008;
+  animation: fx-ball-spin 2s linear infinite, fx-ball-glow 1s ease-in-out infinite;
+}
+.fx-laser { position: absolute; top: -2vh; width: 3px; height: 130vh; transform-origin: top center; mix-blend-mode: screen; opacity: .8; animation: fx-laser 2s ease-in-out infinite; }
+.fx-spot { position: absolute; top: -10vh; width: 40vw; height: 120vh; mix-blend-mode: screen; animation: fx-spot 6s ease-in-out infinite; }
+.fx-fog { position: absolute; bottom: -6vh; width: 60vw; height: 32vh; border-radius: 50%; background: radial-gradient(ellipse, #fff3, #fff1 45%, transparent 70%); filter: blur(28px); }
+.fx-fog-left { left: 0; animation: fx-fog-left 4s ease-out both, fx-fog-sway 7s ease-in-out infinite; }
+.fx-fog-right { right: 0; animation: fx-fog-right 4.5s ease-out both, fx-fog-sway 8s ease-in-out infinite; }
+
+/* Uploaded image entering the screen (4.2 s in total). */
+@keyframes fx-image-shoot { 0% { transform: translateX(-120vw) rotate(-25deg) scale(.6); } 18% { transform: translateX(4vw) rotate(6deg) scale(1.08); } 26%, 82% { transform: none; } 100% { transform: translateX(120vw) rotate(25deg) scale(.6); } }
+@keyframes fx-image-zoom { 0% { transform: scale(0); opacity: 0; } 16% { transform: scale(1.25); opacity: 1; } 24%, 82% { transform: scale(1); } 100% { transform: scale(3); opacity: 0; } }
+@keyframes fx-image-drop { 0% { transform: translateY(-120vh); } 14% { transform: translateY(4vh); } 20% { transform: translateY(-2vh); } 26%, 82% { transform: none; } 100% { transform: translateY(120vh) rotate(15deg); } }
+@keyframes fx-image-spin { 0% { transform: rotate(-720deg) scale(0); } 22%, 82% { transform: none; } 100% { transform: rotate(720deg) scale(0); } }
+.fx-image-stage { display: grid; place-items: center; background: radial-gradient(circle, #0005, transparent 70%); }
+.fx-image { max-width: min(70vw, 560px); max-height: 60vh; border-radius: 16px; box-shadow: 0 20px 60px #000a; animation: 4.2s cubic-bezier(.3, 1.2, .5, 1) both; }
+.fx-image-shoot { animation-name: fx-image-shoot; }
+.fx-image-zoom { animation-name: fx-image-zoom; }
+.fx-image-drop { animation-name: fx-image-drop; }
+.fx-image-spin { animation-name: fx-image-spin; }
+
 @media (prefers-reduced-motion: reduce) {
-  .fx-shake, .fx-disco { animation: none; }
+  .fx-shake, .fx-disco main, .fx-laser, .fx-spot, .fx-ball, .fx-image { animation: none; }
   .fx-confetti { display: none; }
 }

@@ -3,6 +3,8 @@ import type { NextConfig } from 'next';
 const nextConfig: NextConfig = {
   devIndicators: false,
   poweredByHeader: false,
+  // Fun sounds/images in the admin area are up to 2 MB (each upload action checks its own limit).
+  experimental: { serverActions: { bodySizeLimit: '3mb' } },
   headers: async () => [
     {
       source: '/:path*',

@@ -10,7 +10,8 @@ import { requireRole } from '@/lib/auth';
 import { announce, cancelCountdown, systemMessage, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
 import { EVENT_INFO, EVENT_KEYS, type EventType } from '@/lib/eventTypes';
 import { backupNow } from '@/lib/backup';
-import { FX } from '@/lib/fx';
+import { FX, IMAGE_STYLES, type FxAssetPayload } from '@/lib/fx';
+import { sniffAudio, sniffImage } from '@/lib/media';
 import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } from '@/lib/hub';
 import { canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { applyLedger } from '@/lib/wallet';
@@ -252,5 +253,53 @@ export async function trollAction(effect: string, userId: string | null) {
     }
     broadcast('fx', payload);
     return 'Effekt an alle geschickt.';
+  });
+}
+
+const FX_MAX_BYTES = 2_000_000;
+
+/** Adds a sound or image to the fun library; the type comes from the file's bytes. */
+export async function uploadFxAsset(_: ActionState, form: FormData) {
+  return run(async () => {
+    await requireRole('ADMIN');
+    const file = form.get('file');
+    const name = String(form.get('name') ?? '').trim().slice(0, 40);
+    if (!(file instanceof File) || file.size === 0) throw new UserError('Keine Datei.');
+    if (file.size > FX_MAX_BYTES) throw new UserError('Datei ist zu groß (max. 2 MB).');
+    const data = new Uint8Array(await file.arrayBuffer());
+    const image = sniffImage(data);
+    const audio = image ? null : sniffAudio(data);
+    if (!image && !audio) throw new UserError('Nur Bilder (JPG, PNG, WebP, GIF) oder Sounds (MP3, OGG, WAV, M4A).');
+    await db.fxAsset.create({ data: { kind: image ? 'image' : 'sound', name: name || file.name.replace(/\.[^.]+$/, '').slice(0, 40), mime: (image ?? audio)!, data } });
+    refresh();
+    return image ? 'Bild hinzugefügt.' : 'Sound hinzugefügt.';
+  });
+}
+
+export async function deleteFxAsset(id: string) {
+  return run(async () => {
+    await requireRole('ADMIN');
+    await db.fxAsset.deleteMany({ where: { id } });
+    refresh();
+    return 'Gelöscht.';
+  });
+}
+
+/** Plays an uploaded sound or shows an uploaded image – for everyone (`userId` null) or one player. */
+export async function playFxAsset(id: string, style: string, userId: string | null) {
+  return run(async () => {
+    const actor = await requireRole('ADMIN');
+    const asset = await db.fxAsset.findUnique({ where: { id }, select: { id: true, kind: true, name: true } });
+    if (!asset) throw new UserError('Nicht gefunden.');
+    if (asset.kind === 'image' && !Object.hasOwn(IMAGE_STYLES, style)) throw new UserError('Unbekannter Effekt.');
+    const payload: FxAssetPayload = { effect: 'asset', kind: asset.kind as 'sound' | 'image', url: `/fx/${asset.id}`, by: actor.username, ...(asset.kind === 'image' ? { style: style as keyof typeof IMAGE_STYLES } : {}) };
+    if (userId) {
+      const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
+      if (!user) throw new UserError('Spieler nicht gefunden.');
+      emitToUser(user.id, 'fx', payload);
+      return `„${asset.name}“ an ${user.username}.`;
+    }
+    broadcast('fx', payload);
+    return `„${asset.name}“ an alle.`;
   });
 }

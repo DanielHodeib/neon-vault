@@ -18,6 +18,9 @@ import {
   setMaintenanceAction,
   setRole,
   trollAction,
+  playFxAsset,
+  deleteFxAsset,
+  uploadFxAsset,
   unbanUser,
 } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
@@ -25,7 +28,7 @@ import { EventForm } from './EventForm';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
 import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
-import { FX } from '@/lib/fx';
+import { FX, IMAGE_STYLES } from '@/lib/fx';
 import { db, hub, isMuted } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast, canEditSelf, canManage, ROLES } from '@/lib/roles';
@@ -442,24 +445,77 @@ export function ServerTab({ actor }: { actor: User }) {
 }
 
 export async function FunTab({ q, selectedId }: { q: string; selectedId?: string }) {
-  const [users, target] = await Promise.all([findUsers(q), selectedId ? db.user.findUnique({ where: { id: selectedId }, select: { id: true, username: true } }) : null]);
+  const [users, target, assets] = await Promise.all([
+    findUsers(q),
+    selectedId ? db.user.findUnique({ where: { id: selectedId }, select: { id: true, username: true } }) : null,
+    db.fxAsset.findMany({ orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, name: true } }),
+  ]);
+  const to = target?.id ?? null;
+  const sounds = assets.filter((a) => a.kind === 'sound');
+  const images = assets.filter((a) => a.kind === 'image');
   return (
     <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-      <Section
-        title={target ? `Effekte für ${target.username}` : 'Effekte für alle'}
-        action={target && <Link href="/admin?tab=fun" className="text-xs text-muted hover:text-fg">An alle senden</Link>}
-        pad
-      >
-        <p className="mb-4 text-sm text-muted">Harmloser Spaß: verändert nur kurz, wie die Seite aussieht oder klingt. Rechts einen Spieler wählen, um nur ihn zu trollen.</p>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {Object.entries(FX).map(([key, fx]) => (
-            <FormButton key={key} action={trollAction.bind(null, key, target?.id ?? null)} className="btn-secondary h-auto flex-col gap-1 py-4">
-              <span className="text-2xl">{fx.emoji}</span>
-              <span className="text-xs">{fx.label}</span>
-            </FormButton>
-          ))}
-        </div>
-      </Section>
+      <div className="min-w-0 space-y-4">
+        <Section
+          title={target ? `Effekte für ${target.username}` : 'Effekte für alle'}
+          action={target && <Link href="/admin?tab=fun" className="text-xs text-muted hover:text-fg">An alle senden</Link>}
+          pad
+        >
+          <p className="mb-4 text-sm text-muted">Harmloser Spaß: verändert nur kurz, wie die Seite aussieht oder klingt. Rechts einen Spieler wählen, um nur ihn zu trollen.</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {Object.entries(FX).map(([key, fx]) => (
+              <FormButton key={key} action={trollAction.bind(null, key, to)} className="btn-secondary h-auto flex-col gap-1 py-4">
+                <span className="text-2xl">{fx.emoji}</span>
+                <span className="text-xs">{fx.label}</span>
+              </FormButton>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Eigene Sounds" pad>
+          {sounds.length === 0 && <p className="mb-3 text-sm text-faint">Noch keine Sounds – lade unten einen hoch.</p>}
+          <ul className="space-y-2">
+            {sounds.map((a) => (
+              <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2">
+                <span className="min-w-0 flex-1 truncate text-sm font-medium">🔊 {a.name}</span>
+                <audio src={`/fx/${a.id}`} controls preload="none" className="h-8 w-40 sm:w-52" />
+                <FormButton action={playFxAsset.bind(null, a.id, '', to)} className="btn-primary h-8 text-xs">{target ? `An ${target.username}` : 'An alle'}</FormButton>
+                <FormButton action={deleteFxAsset.bind(null, a.id)} confirm={`„${a.name}“ löschen?`} className="btn-ghost h-8 text-xs">Löschen</FormButton>
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        <Section title="Eigene Bilder" pad>
+          {images.length === 0 && <p className="mb-3 text-sm text-faint">Noch keine Bilder – lade unten eins hoch.</p>}
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {images.map((a) => (
+              <li key={a.id} className="rounded-lg border border-line p-3">
+                <div className="mb-2 flex items-center gap-3">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- uploaded asset, served from the DB */}
+                  <img src={`/fx/${a.id}`} alt="" className="h-14 w-14 shrink-0 rounded-md object-cover" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.name}</span>
+                  <FormButton action={deleteFxAsset.bind(null, a.id)} confirm={`„${a.name}“ löschen?`} className="btn-ghost h-8 text-xs">Löschen</FormButton>
+                </div>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {Object.entries(IMAGE_STYLES).map(([style, label]) => (
+                    <FormButton key={style} action={playFxAsset.bind(null, a.id, style, to)} className="btn-secondary h-8 text-xs">{label}</FormButton>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        <Section title="Sound oder Bild hochladen" pad>
+          <ActionForm action={uploadFxAsset} className="grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            <input className="input" name="name" maxLength={40} placeholder="Name, z. B. fahh" />
+            <input className="input py-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-raised file:px-2 file:py-1 file:text-fg" type="file" name="file" accept="audio/*,image/*" required />
+            <SubmitButton className="btn-primary">Hochladen</SubmitButton>
+          </ActionForm>
+          <p className="mt-2 text-xs text-faint">MP3, OGG, WAV, M4A oder JPG, PNG, WebP, GIF · max. 2 MB. Wird nur auf deinem Server gespeichert.</p>
+        </Section>
+      </div>
       <PlayerSearch tab="fun" q={q} selectedId={selectedId} users={users} />
     </div>
   );

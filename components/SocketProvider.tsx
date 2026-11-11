@@ -6,10 +6,10 @@ import toast from 'react-hot-toast';
 import { io, type Socket } from 'socket.io-client';
 
 import { GAME_NAMES } from '@/lib/format';
-import type { FxName } from '@/lib/fx';
+import type { FxAssetPayload, FxName } from '@/lib/fx';
 import { tPage } from '@/lib/i18n';
 import type { ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
-import { runFx } from './fx';
+import { runAsset, runFx } from './fx';
 
 type Online = { id: string; username: string; activity: string };
 type Ctx = {
@@ -104,7 +104,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       },
       event: setEvent,
       countdown: setCountdown,
-      fx: (d: { effect: FxName; by: string }) => runFx(d.effect, d.by),
+      fx: (d: { effect: FxName | 'asset'; by: string }) => (d.effect === 'asset' ? runAsset(d as FxAssetPayload) : runFx(d.effect, d.by)),
       chatClear: () => setChat([]),
       rain: setRain,
       dm: (m: { from: string; text: string }) => {
