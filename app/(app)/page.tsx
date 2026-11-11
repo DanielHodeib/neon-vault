@@ -1,4 +1,4 @@
-import { ArrowUpDown, Bomb, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, PiggyBank, Rocket, Spade, Triangle, type LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Bomb, Flag, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, PiggyBank, Rocket, Spade, Triangle, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
 import { DailySpin } from '@/components/DailySpin';
@@ -24,6 +24,7 @@ const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint:
   { slug: 'hilo', name: 'Hi-Lo', text: 'Höher oder tiefer?', icon: ArrowUpDown, tint: '#22d3ee' },
   { slug: 'wheel', name: 'Glücksrad', text: 'Alle drehen gemeinsam', icon: FerrisWheel, tint: '#34d399' },
   { slug: 'jackpot', name: 'Jackpot', text: 'Ein Topf, ein Gewinner', icon: PiggyBank, tint: '#fbbf24' },
+  { slug: 'race', name: 'Pferderennen', text: 'Alle wetten, live', icon: Flag, tint: '#fb7185' },
 ];
 
 export default async function Lobby() {

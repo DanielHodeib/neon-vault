@@ -9,6 +9,7 @@ import { Jackpot } from '@/components/games/Jackpot';
 import { Mines } from '@/components/games/Mines';
 import { Plinko } from '@/components/games/Plinko';
 import { Poker } from '@/components/games/Poker';
+import { Race } from '@/components/games/Race';
 import { Roulette } from '@/components/games/Roulette';
 import { Slots } from '@/components/games/Slots';
 import { Wheel } from '@/components/games/Wheel';
@@ -26,6 +27,7 @@ const GAMES = {
   hilo: <HiLo />,
   wheel: <Wheel />,
   jackpot: <Jackpot />,
+  race: <Race />,
 };
 
 export default async function PlayPage({ params }: PageProps<'/play/[game]'>) {

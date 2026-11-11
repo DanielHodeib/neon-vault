@@ -25,6 +25,7 @@ export const GAME_NAMES: Record<string, string> = {
   hilo: 'Hi-Lo',
   wheel: 'Glücksrad',
   jackpot: 'Jackpot',
+  race: 'Pferderennen',
 };
 
 export const THEMES = ['neon', 'steel', 'sunset', 'ocean', 'matrix'] as const;

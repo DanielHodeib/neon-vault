@@ -11,6 +11,7 @@ import {
   Bomb,
   Dices,
   FerrisWheel,
+  Flag,
   PiggyBank,
   Triangle,
   CircleDot,
@@ -63,6 +64,7 @@ const GAMES: NavItem[] = [
   { href: '/play/hilo', label: 'Hi-Lo', icon: ArrowUpDown },
   { href: '/play/wheel', label: 'Glücksrad', icon: FerrisWheel },
   { href: '/play/jackpot', label: 'Jackpot', icon: PiggyBank },
+  { href: '/play/race', label: 'Pferderennen', icon: Flag },
 ];
 
 type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };
