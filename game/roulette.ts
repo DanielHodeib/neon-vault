@@ -1,18 +1,17 @@
+import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
+import { REDS, WHEEL } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { payout, placeBet } from '@/lib/wallet';
 import { randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
-import type { Server } from 'socket.io';
 
 const BET_MS = 15_000;
 const SPIN_MS = 6_000;
 const RESULT_MS = 4_000;
 
-export const WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
-export const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
 const betSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('number'), value: z.number().int().min(0).max(36), amount }),

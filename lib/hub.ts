@@ -33,6 +33,8 @@ type Hub = {
   freeSpins: Map<string, { spins: number; bet: number; machine: string }>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
+  timers: Record<string, NodeJS.Timeout | undefined>;
+  rainActive: boolean;
 };
 
 const g = globalThis as unknown as { __neonHub?: Hub };
@@ -46,12 +48,19 @@ export const hub: Hub = (g.__neonHub ??= {
   freeSpins: new Map(),
   chat: [],
   chatActive: new Map(),
+  timers: {},
+  rainActive: false,
 });
 
 export const db = hub.db;
 
 export function emitToUser(userId: string, event: string, data: unknown) {
   hub.io?.to(`user:${userId}`).emit(event, data);
+}
+
+/** Kicks every socket of a user, e.g. after a ban or account deletion. */
+export function disconnectUser(userId: string) {
+  hub.io?.in(`user:${userId}`).disconnectSockets(true);
 }
 
 export function broadcast(event: string, data: unknown) {

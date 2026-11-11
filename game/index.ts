@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import { db, hub, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
+import { atLeast } from '@/lib/roles';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
 import { registerBlackjack } from './blackjack';
 import { registerCoinflip } from './coinflip';
@@ -33,6 +34,7 @@ export function setupRealtime(io: Server) {
     const socket = raw as GameSocket;
     const { user } = socket.data;
     void socket.join(`user:${user.id}`);
+    if (atLeast(user.role, 'SUPPORT')) void socket.join('staff');
 
     const entry = hub.online.get(user.id) ?? { id: user.id, username: user.username, activity: 'Lobby', sockets: 0 };
     entry.sockets++;
@@ -75,9 +77,4 @@ export function setupRealtime(io: Server) {
       io.emit('online', onlineList());
     });
   });
-}
-
-/** Kicks every socket of a user, e.g. after a ban or account deletion. */
-export function disconnectUser(userId: string) {
-  hub.io?.in(`user:${userId}`).disconnectSockets(true);
 }

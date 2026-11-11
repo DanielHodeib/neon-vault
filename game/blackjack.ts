@@ -36,7 +36,7 @@ const publicView = (t: Table) => ({
   phase: t.phase,
   deadline: t.deadline,
   turn: t.turn,
-  seats: t.seats.map((s) => ({ ...s, isBot: !s.userId })),
+  seats: t.seats.map((s) => ({ ...s, isBot: !s.userId, hands: s.hands.map((h) => ({ ...h, total: bjTotal(h.cards) })) })),
   dealer: t.phase === 'playing' ? [t.dealer[0], '??'] : t.dealer,
   dealerTotal: t.phase === 'playing' ? null : bjTotal(t.dealer),
 });

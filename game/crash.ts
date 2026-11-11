@@ -2,6 +2,7 @@ import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { cashback, systemMessage, winBoost } from '@/lib/events';
+import { multiplierAt } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { payout, placeBet } from '@/lib/wallet';
 import { rand } from './rng';
@@ -15,8 +16,6 @@ const MAX_POINT = 1000;
 /** 1 % of rounds bust at 1.00×; otherwise P(point ≥ x) = 0.99 / x. */
 export const crashPointFrom = (r: number) => Math.min(MAX_POINT, Math.max(1, Math.floor(99 / (1 - r)) / 100));
 
-/** Shared by server and client so the curve looks identical. */
-export const multiplierAt = (ms: number) => Math.floor(100 * Math.exp(0.00006 * ms)) / 100;
 
 // `paid` is false while the stake is still being debited.
 type Bet = { userId: string; username: string; amount: number; auto: number | null; cashedAt: number | null; paid: boolean };

@@ -14,7 +14,7 @@ export const EVENT_TYPES: Record<GlobalEvent['type'], Omit<GlobalEvent, 'endsAt'
 };
 
 const BOOSTED_GAMES = new Set(['crash', 'coinflip']);
-const timers: Record<string, NodeJS.Timeout | undefined> = {};
+const timers = hub.timers;
 
 export const winBoost = (game: string) => (hub.event?.type === 'BOOST' && BOOSTED_GAMES.has(game) ? 1.2 : 1);
 
@@ -67,17 +67,15 @@ async function rainDrop() {
   broadcast('toast', `🌧️ Rain-Drop: +${drop} NVC für alle Online-Spieler`);
 }
 
-let rainActive = false;
-
 /** Splits `amount` among up to `players` users who chatted in the last 10 minutes. */
 export function startRain(amount: number, seconds: number, players: number, by: string) {
-  if (rainActive) return false;
-  rainActive = true;
+  if (hub.rainActive) return false;
+  hub.rainActive = true;
   const endsAt = Date.now() + seconds * 1000;
   broadcast('rain', { amount, endsAt, players, by });
   systemMessage(`🌧️ RAIN von ${by}: ${amount} NVC für ${players} aktive Chatter in ${seconds}s!`);
   setTimeout(async () => {
-    rainActive = false;
+    hub.rainActive = false;
     broadcast('rain', null);
     const since = Date.now() - 10 * 60_000;
     const winners = shuffle([...hub.chatActive].filter(([, at]) => at >= since).map(([id]) => id)).slice(0, players);
