@@ -11,10 +11,10 @@ import { db, disconnectUser, UserError } from '@/lib/hub';
 import { spinDaily } from '@/lib/daily';
 import { claimQuest } from '@/lib/quests';
 import { THEMES } from '@/lib/format';
+import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 
-
-const optionalUrl = z.union([z.literal(''), z.string().url('Ungültige Bild-URL.').startsWith('https://', 'Bild-URL muss mit https:// beginnen.')]);
+const optionalUrl = z.union([z.literal(''), z.string().trim().max(500).regex(IMAGE_URL, 'Bild-URL muss mit https:// beginnen.')]);
 const checkbox = z.literal('on').optional().transform(Boolean);
 
 export async function updateProfile(_: ActionState, form: FormData) {
@@ -40,6 +40,9 @@ export async function updateProfile(_: ActionState, form: FormData) {
       where: { id: user.id },
       data: { ...data, avatarUrl: data.avatarUrl || null, bannerUrl: data.bannerUrl || null, clanTag: data.clanTag || null },
     });
+    // Drop uploads the profile no longer points at.
+    const keep = [data.avatarUrl, data.bannerUrl].filter((u) => u.startsWith('/media/')).map((u) => u.slice('/media/'.length));
+    await db.media.deleteMany({ where: { userId: user.id, id: { notIn: keep } } });
     refresh();
     return 'Profil gespeichert.';
   });

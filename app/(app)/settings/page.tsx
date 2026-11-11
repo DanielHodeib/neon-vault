@@ -1,4 +1,5 @@
 import { changePassword, deleteAccount, updateProfile, updateSettings } from '@/app/actions/account';
+import { ImageField } from '@/components/ImageField';
 import { ActionForm, PageHeader, Section, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { THEMES } from '@/lib/format';
@@ -41,14 +42,8 @@ export default async function SettingsPage() {
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <Section title="Profil" pad>
           <ActionForm action={updateProfile} className="space-y-4">
-            <div>
-              <label className="label">Avatar-URL</label>
-              <input className="input" name="avatarUrl" defaultValue={user.avatarUrl ?? ''} placeholder="https://…" inputMode="url" />
-            </div>
-            <div>
-              <label className="label">Banner-URL</label>
-              <input className="input" name="bannerUrl" defaultValue={user.bannerUrl ?? ''} placeholder="https://…" inputMode="url" />
-            </div>
+            <ImageField kind="avatar" name="avatarUrl" label="Avatar" initial={user.avatarUrl} />
+            <ImageField kind="banner" name="bannerUrl" label="Banner" initial={user.bannerUrl} />
             <div>
               <label className="label">Über mich</label>
               <textarea className="input h-auto py-2" name="bio" maxLength={240} rows={3} defaultValue={user.bio} />

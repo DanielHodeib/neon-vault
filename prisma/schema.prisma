@@ -54,6 +54,7 @@ model User {
   ledger        LedgerEntry[]    @relation("LedgerOwner")
   questClaims   QuestClaim[]
   freeSpins     FreeSpins?
+  media         Media[]
   notifications Notification[]
   friendsOut    Friendship[]     @relation("FriendshipFrom")
   friendsIn     Friendship[]     @relation("FriendshipTo")
@@ -104,6 +105,19 @@ model FreeSpins {
   bet     BigInt
   spins   Int
   user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Uploaded avatar/banner images. A new upload gets a new id, so /media/<id> can be cached forever.
+model Media {
+  id        String   @id @default(cuid())
+  userId    String
+  kind      String   // avatar | banner
+  mime      String
+  data      Bytes
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, kind])
 }
 
 model Notification {
