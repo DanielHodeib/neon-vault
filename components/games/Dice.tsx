@@ -1,19 +1,20 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { coins } from '@/lib/format';
 import { DICE_MAX, DICE_MIN, diceChance, diceMultiplier, type DiceSide } from '@/lib/solo';
 import { useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
 
 type Result = { roll: number; win: boolean; multiplier: number; payout: number };
 
 const fmt = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function Dice() {
-  const { call, balance } = useLive();
+  const { call, balance, holdBalance } = useLive();
   const [amount, setAmount] = useState(100);
   const [target, setTarget] = useState(50);
   const [side, setSide] = useState<DiceSide>('under');
@@ -24,17 +25,37 @@ export function Dice() {
   const chance = diceChance(target, side);
   const multiplier = diceMultiplier(chance);
 
+  const [rolling, setRolling] = useState<number | null>(null);
+
+  // Short shuffle of random numbers before the result shows.
+  const isRolling = rolling !== null;
+  useEffect(() => {
+    if (!isRolling) return;
+    const t = setInterval(() => {
+      setRolling(Math.random() * 100);
+      sound.tick();
+    }, 55);
+    return () => clearInterval(t);
+  }, [isRolling]);
+
   const roll = async () => {
     setBusy(true);
-    const res = await call<Result>('dice:roll', { amount, target, side });
+    const release = holdBalance();
+    setRolling(50);
+    const [res] = await Promise.all([call<Result>('dice:roll', { amount, target, side }), new Promise((r) => setTimeout(r, 550))]);
+    setRolling(null);
     setBusy(false);
-    if (res) setHistory((h) => [res, ...h].slice(0, 10));
+    release();
+    if (!res) return;
+    setHistory((h) => [res, ...h].slice(0, 10));
+    if (res.win) sound.win(res.multiplier >= 3 ? 2 : 1);
+    else sound.lose();
   };
 
   const stage = (
     <div className="panel px-4 py-8 sm:py-12">
-      <p className={`num text-center text-6xl font-semibold sm:text-7xl ${!last ? 'text-faint' : last.win ? 'text-win' : 'text-loss'}`}>
-        {last ? fmt(last.roll) : '--,--'}
+      <p className={`num text-center text-6xl font-semibold sm:text-7xl ${rolling !== null || !last ? 'text-faint' : last.win ? 'text-win' : 'text-loss'}`}>
+        {rolling !== null ? fmt(rolling) : last ? fmt(last.roll) : '--,--'}
       </p>
       <p className="mt-2 min-h-6 text-center text-sm text-muted">
         {last && (last.win ? <>+<span className="num text-win">{coins(last.payout)}</span> NVC</> : 'Leider verloren')}

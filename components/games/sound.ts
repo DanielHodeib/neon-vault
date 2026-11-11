@@ -41,6 +41,12 @@ export const sound = {
   feature: () => arpeggio([392, 523, 659, 784, 1047], 0.07, { type: 'sine', gain: 0.06 }),
   flip: () => arpeggio([700, 900, 700, 900, 700, 900], 0.05, { type: 'sine', gain: 0.02 }),
   lose: () => arpeggio([330, 262], 0.12, { type: 'sine', gain: 0.04 }),
+  card: () => tone(1200, 0.05, { type: 'square', gain: 0.015 }),
+  tick: () => tone(900, 0.03, { type: 'square', gain: 0.012 }),
+  gem: () => arpeggio([880, 1320], 0.05, { type: 'sine', gain: 0.05 }),
+  bomb: () => arpeggio([160, 110, 70], 0.09, { type: 'sawtooth', gain: 0.07 }),
+  start: () => arpeggio([392, 523], 0.07, { type: 'sine', gain: 0.04 }),
+  turn: () => arpeggio([660, 880], 0.08, { type: 'sine', gain: 0.05 }),
 };
 
 /** For useSyncExternalStore: muted state shared by every game. */

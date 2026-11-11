@@ -4,7 +4,9 @@ import { useCallback, useEffect, useState } from 'react';
 
 import { coins } from '@/lib/format';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
+import { sound } from './sound';
 import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
+import { useCue } from './useCue';
 
 type Seat = { name: string; isBot: boolean; isMe: boolean; stack: number; bet: number; folded: boolean; allIn: boolean; lastAction: string; hand: string | null; cards: string[] };
 type State = {
@@ -34,6 +36,9 @@ export function Poker() {
 
   useJoin<{ state: State | null }>('poker:watch', useCallback((r) => setState(r.state), []));
   useSocketEvent('poker:state', setState);
+  const cardCount = state ? state.board.length + state.seats.reduce((n, s) => n + s.cards.length, 0) : 0;
+  useCue(cardCount, (next, prev) => next > prev && sound.card());
+  useCue(!!state && state.seats[state.toAct]?.isMe === true && state.phase !== 'showdown' && state.phase !== 'waiting', (myTurn) => myTurn && sound.turn());
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);

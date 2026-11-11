@@ -7,6 +7,8 @@ import { JACKPOT_CLOSE_MS, JACKPOT_FEE } from '@/lib/wheel';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
+import { useCue } from './useCue';
 
 type Winner = { userId: string; username: string; win: number; pot: number; chance: number };
 type State = {
@@ -31,6 +33,7 @@ export function Jackpot() {
   useJoin<{ state: State }>('jackpot:join', useCallback((r) => setState(r.state), []));
   useSocketEvent('jackpot:state', setState);
   useSocketEvent('jackpot:result', setHighlight);
+  useCue(highlight?.userId ?? null, (winner) => winner && (winner === me.id ? sound.big() : sound.stop()));
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);

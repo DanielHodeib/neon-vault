@@ -7,6 +7,8 @@ import { WHEEL_OPTIONS, WHEEL_SEGMENTS, wheelColor } from '@/lib/wheel';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
+import { useCue } from './useCue';
 
 type Bet = { multiplier: number; amount: number };
 type State = { phase: 'betting' | 'spinning' | 'result'; endsAt: number; index: number | null; history: number[]; players: { userId: string; username: string; bets: Bet[] }[] };
@@ -32,6 +34,14 @@ export function Wheel() {
   }, []);
   useJoin<{ state: State }>('wheel:join', useCallback((r) => onState(r.state), [onState]));
   useSocketEvent('wheel:state', onState);
+
+  useCue(state?.phase, (phase) => {
+    if (phase === 'spinning') sound.start();
+    if (phase === 'result' && state?.index != null) {
+      const hit = state.players.some((p) => p.userId === me.id && p.bets.some((b) => b.multiplier === WHEEL_SEGMENTS[state.index!]));
+      (hit ? () => sound.win(1) : sound.stop)();
+    }
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);

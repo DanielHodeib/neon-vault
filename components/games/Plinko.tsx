@@ -7,6 +7,7 @@ import { PLINKO, PLINKO_RISK_LABEL, PLINKO_ROWS, type PlinkoRisk } from '@/lib/s
 import { useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
 
 type Drop = { path: number[]; slot: number; multiplier: number; payout: number };
 type Ball = Drop & { id: number; start: number; bet: number };
@@ -36,7 +37,7 @@ function ballAt(path: number[], t: number) {
 }
 
 export function Plinko() {
-  const { call, balance } = useLive();
+  const { call, balance, holdBalance } = useLive();
   const [amount, setAmount] = useState(100);
   const [risk, setRisk] = useState<PlinkoRisk>('medium');
   const [balls, setBalls] = useState<Ball[]>([]);
@@ -57,13 +58,18 @@ export function Plinko() {
 
   const drop = async () => {
     const bet = amount;
+    const release = holdBalance();
     const res = await call<Drop>('plinko:drop', { amount: bet, risk });
-    if (!res) return;
+    if (!res) return release();
     const ball: Ball = { ...res, bet, id: nextId.current++, start: performance.now() };
     setBalls((b) => [...b, ball]);
     setTimeout(() => {
       setBalls((b) => b.filter((x) => x.id !== ball.id));
       setResults((r) => [{ ...res, bet }, ...r].slice(0, 12));
+      release();
+      if (res.multiplier >= 2) sound.win(res.multiplier >= 10 ? 2 : 1);
+      else if (res.multiplier >= 1) sound.gem();
+      else sound.stop();
     }, DURATION);
   };
 

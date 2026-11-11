@@ -53,7 +53,7 @@ function useCountUp(target: number, ms = 900) {
 }
 
 export function Slots() {
-  const { call, balance } = useLive();
+  const { call, balance, holdBalance } = useLive();
   const [key, setKey] = useState('classic');
   const machine = MACHINES[key];
   const [amount, setAmount] = useState(machine.minBet);
@@ -110,14 +110,15 @@ export function Slots() {
     setStrips(Array.from({ length: m.cols }, () => Array.from({ length: STRIP }, () => m.symbols[Math.floor(Math.random() * m.symbols.length)].icon)));
     setStopped(0);
     const started = Date.now();
+    const release = holdBalance(); // the meter shows the new balance once the reels are done
     const res = await call<Result>('slots:spin', { machine: key, amount });
-    if (!alive.current) return;
+    if (!alive.current) return release();
     if (!res) {
       setStopped(m.cols);
       setPhase('idle');
       setAuto(0);
       busy.current = false;
-      return;
+      return release();
     }
 
     // Reels stop left to right; two scatters already showing slow the rest down.
@@ -153,7 +154,7 @@ export function Slots() {
       sound.feature();
       await sleep(turbo ? 300 : 700);
     }
-    if (!alive.current) return;
+    if (!alive.current) return release();
 
     const mult = res.win / res.bet;
     const tier = BIG_WIN.find(([min]) => mult >= min);
@@ -168,7 +169,8 @@ export function Slots() {
     if (res.win) setHistory((h) => [{ id: Date.now(), machine: m.name, win: res.win, mult }, ...h].slice(0, 8));
     setPhase('idle');
     busy.current = false;
-  }, [machine, key, amount, turbo, scatter, call]);
+    release();
+  }, [machine, key, amount, turbo, scatter, call, holdBalance]);
 
   // Autoplay, and free spins play on by themselves until paused.
   useEffect(() => {

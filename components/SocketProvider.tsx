@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 import { io, type Socket } from 'socket.io-client';
 
@@ -18,6 +18,8 @@ type Ctx = {
   event: GlobalEvent | null;
   rain: { amount: number; endsAt: number; players: number; by: string } | null;
   call: <T = Record<string, unknown>>(event: string, data?: unknown) => Promise<T | null>;
+  /** Freezes the shown balance until the returned release() runs, so it can't spoil an animation. */
+  holdBalance: () => () => void;
 };
 
 const SocketContext = createContext<Ctx | null>(null);
@@ -69,6 +71,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [event, setEvent] = useState<GlobalEvent | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
+  const held = useRef(0);
+  const pending = useRef<number | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -79,7 +83,10 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
         setOnline(d.online);
         setEvent(d.event);
       },
-      balance: setBalance,
+      balance: (b: number) => {
+        if (held.current > 0) pending.current = b;
+        else setBalance(b);
+      },
       online: setOnline,
       chat: (m: ChatMessage) => {
         setChat((c) => [...c.slice(-49), m]);
@@ -124,6 +131,24 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     [socket],
   );
 
-  const value = useMemo(() => ({ socket, me, balance, online, chat, event, rain, call }), [socket, me, balance, online, chat, event, rain, call]);
+  const holdBalance = useCallback(() => {
+    held.current++;
+    let done = false;
+    const release = () => {
+      if (done) return;
+      done = true;
+      if (--held.current === 0 && pending.current !== null) {
+        setBalance(pending.current);
+        pending.current = null;
+      }
+    };
+    setTimeout(release, 15_000); // never freeze for good, e.g. if the game unmounts mid-animation
+    return release;
+  }, []);
+
+  const value = useMemo(
+    () => ({ socket, me, balance, online, chat, event, rain, call, holdBalance }),
+    [socket, me, balance, online, chat, event, rain, call, holdBalance],
+  );
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
 }

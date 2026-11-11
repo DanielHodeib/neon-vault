@@ -7,6 +7,8 @@ import { multiplierAt } from '@/lib/games';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
+import { useCue } from './useCue';
 
 type Bet = { userId: string; username: string; amount: number; cashedAt: number | null };
 type State = { id: number; phase: 'waiting' | 'running' | 'crashed'; startsAt: number; startedAt: number; multiplier: number; point: number | null; history: number[]; bets: Bet[] };
@@ -29,6 +31,16 @@ export function Crash() {
   useSocketEvent('crash:state', onState);
   useSocketEvent('crash:tick', setMultiplier);
   useJoin<{ state: State }>('crash:join', useCallback((r) => onState(r.state), [onState]));
+
+  const mine = state?.bets.find((b) => b.userId === me.id);
+  useCue(`${state?.phase}|${mine ? 'bet' : ''}|${mine?.cashedAt ?? ''}`, (next, prev) => {
+    const [phase, bet, cashed] = next.split('|');
+    if (cashed && !prev.endsWith(`|${cashed}`)) sound.win(1);
+    else if (phase !== prev.split('|')[0]) {
+      if (phase === 'running') sound.start();
+      if (phase === 'crashed') (bet && !cashed ? sound.bomb : sound.stop)();
+    }
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 200);

@@ -7,6 +7,8 @@ import { REDS, WHEEL } from '@/lib/games';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
+import { useCue } from './useCue';
 
 type Bet = { type: string; value?: number; amount: number };
 type BetKey = Omit<Bet, 'amount'>;
@@ -53,6 +55,11 @@ export function Roulette() {
   }, []);
   useJoin<{ state: State }>('roulette:join', useCallback((r) => onState(r.state), [onState]));
   useSocketEvent('roulette:state', onState);
+
+  useCue(state?.phase, (phase) => {
+    if (phase === 'spinning') sound.start();
+    if (phase === 'result') sound.stop();
+  });
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 250);

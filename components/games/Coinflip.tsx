@@ -21,7 +21,7 @@ const FLIP_MS = 1400;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function Coinflip() {
-  const { call, balance, me } = useLive();
+  const { call, balance, me, holdBalance } = useLive();
   const [mode, setMode] = useState<Mode>('solo');
   const [lobbies, setLobbies] = useState<Lobby[]>([]);
   const [amount, setAmount] = useState(500);
@@ -39,14 +39,19 @@ export function Coinflip() {
   const flip = async (stake = amount) => {
     if (busy.current) return;
     busy.current = true;
+    const release = holdBalance();
     const res = await call<{ result: Side; win: number }>('coinflip:solo', { amount: stake, side });
-    if (!res) return void (busy.current = false);
+    if (!res) {
+      release();
+      return void (busy.current = false);
+    }
     const f = { id: Date.now(), side, result: res.result, win: res.win, amount: stake };
     setLast(null);
     setFlipping(f);
     sound.flip();
     await sleep(FLIP_MS);
     busy.current = false;
+    release();
     setFlipping(null);
     setLast(f);
     setHistory((h) => [f, ...h].slice(0, 24));

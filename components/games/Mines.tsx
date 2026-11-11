@@ -7,6 +7,7 @@ import { MINES_MAX, MINES_MIN, MINES_TILES, minesMultiplier } from '@/lib/solo';
 import { useJoin, useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
+import { sound } from './sound';
 
 type Round = { bet: number; mines: number; revealed: number[]; multiplier: number };
 type Reveal = { bomb: boolean; tile: number; multiplier?: number; done?: boolean; bombs?: number[]; payout?: number };
@@ -53,6 +54,7 @@ export function Mines() {
     setRound(null);
     setBombs(res.bombs);
     setOutcome({ win: true, payout: res.payout, multiplier: res.multiplier });
+    sound.win(res.multiplier >= 3 ? 2 : 1);
   };
 
   const reveal = async (tile: number) => {
@@ -64,8 +66,10 @@ export function Mines() {
       setHit(tile);
       setBombs(res.bombs ?? []);
       setOutcome({ win: false, payout: 0, multiplier: 0 });
+      sound.bomb();
       return;
     }
+    if (!res.done) sound.gem();
     setRevealed((r) => [...r, tile]);
     if (res.done) end(res as Cashout);
     else setRound({ ...round, revealed: [...round.revealed, tile], multiplier: res.multiplier ?? round.multiplier });

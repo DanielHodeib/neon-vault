@@ -5,7 +5,9 @@ import { useEffect, useState } from 'react';
 import { coins } from '@/lib/format';
 import { useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput } from '../ui';
+import { sound } from './sound';
 import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
+import { useCue } from './useCue';
 
 type Hand = { cards: string[]; total: number; soft: boolean; bet: number; done: boolean; result?: string; won?: number };
 type Seat = { userId: string | null; name: string; isBot: boolean; bet: number; hands: Hand[]; insurance: number; net: number | null };
@@ -22,6 +24,15 @@ export function Blackjack() {
   const [now, setNow] = useState(() => Date.now());
 
   useSocketEvent('bj:state', setState);
+  const meSeat = state?.seats.findIndex((s) => s.userId === me.id) ?? -1;
+  const cards = state ? state.dealer.length + state.seats.reduce((n, s) => n + s.hands.reduce((m, h) => m + h.cards.length, 0), 0) : 0;
+  useCue(cards, (next, prev) => next > prev && sound.card());
+  useCue(state?.phase === 'playing' && state.turn?.seat === meSeat, (myTurn) => myTurn && sound.turn());
+  useCue(state?.phase === 'result' ? (state.seats[meSeat]?.net ?? null) : null, (net) => {
+    if (net === null) return;
+    if (net > 0) sound.win(1);
+    else if (net < 0) sound.lose();
+  });
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => {
