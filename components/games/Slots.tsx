@@ -9,6 +9,7 @@ import { useJoin, useLive } from '../SocketProvider';
 import { BetInput, Section } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound, soundPref } from './sound';
+import { useT } from '@/components/I18n';
 
 type Cell = [number, number];
 type Win = { symbol: string; count: number; cells: Cell[]; amount: number; line?: number; ways?: number };
@@ -53,6 +54,7 @@ function useCountUp(target: number, ms = 900) {
 }
 
 export function Slots() {
+  const t = useT();
   const { call, balance, holdBalance } = useLive();
   const [key, setKey] = useState('classic');
   const machine = MACHINES[key];
@@ -229,11 +231,11 @@ export function Slots() {
     >
       <div className="mb-3 flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <p className="truncate text-lg font-semibold tracking-tight sm:text-xl">{machine.name}</p>
-          <p className="truncate text-xs text-white/60">{machine.tagline}</p>
+          <p className="truncate text-lg font-semibold tracking-tight sm:text-xl">{t(machine.name)}</p>
+          <p className="truncate text-xs text-white/60">{t(machine.tagline)}</p>
         </div>
         <p className="shrink-0 rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-medium text-white/70">
-          {machine.lines ? `${machine.lines.length} Linien` : `${lineCount(machine)} Wege`} · {machine.cols}×{machine.rows}
+          {machine.lines ? t('{n} Linien', { n: machine.lines.length }) : t('{n} Wege', { n: lineCount(machine) })} · {machine.cols}×{machine.rows}
         </p>
       </div>
 
@@ -301,42 +303,42 @@ export function Slots() {
             type="button"
             onClick={() => setBig(null)}
             className="absolute inset-0 z-10 grid place-items-center rounded-xl bg-black/70 backdrop-blur-sm"
-            aria-label="Schließen"
+            aria-label={t('Schließen')}
           >
             <BigWin label={big.label} amount={big.amount} />
           </button>
         )}
         {result?.freeWon && !big ? (
           <div className="pop-in pointer-events-none absolute inset-x-0 top-1/2 z-10 mx-auto w-fit -translate-y-1/2 rounded-xl bg-black/80 px-5 py-3 text-center ring-1 ring-gold/60">
-            <p className="text-xs font-semibold tracking-wider text-gold uppercase">Free Spins</p>
+            <p className="text-xs font-semibold tracking-wider text-gold uppercase">{t('Free Spins')}</p>
             <p className="text-2xl font-bold">+{result.freeWon}</p>
-            {result.special && <p className="text-xs text-white/70">Sondersymbol {result.special}</p>}
+            {result.special && <p className="text-xs text-white/70">{t('Sondersymbol')} {result.special}</p>}
           </div>
         ) : null}
       </div>
 
       <div className="mt-3 grid grid-cols-3 items-center gap-2 text-center">
-        <Meter label="Einsatz" value={coins(freeHere ? free!.bet : amount)} />
+        <Meter label={t('Einsatz')} value={coins(freeHere ? free!.bet : amount)} />
         <div>
-          <p className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">Gewinn</p>
+          <p className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">{t('Gewinn')}</p>
           <p className={`num text-xl font-bold sm:text-2xl ${result?.win ? 'text-gold' : 'text-white/40'}`}>{coins(shownWin)}</p>
         </div>
-        <Meter label="Guthaben" value={coins(balance)} />
+        <Meter label={t('Guthaben')} value={coins(balance)} />
       </div>
 
       <div className="mt-2 flex min-h-7 flex-wrap items-center justify-center gap-1.5 text-xs">
         {focused && (
           <span className="rounded-full bg-black/40 px-2.5 py-1 text-white/80">
-            {focused.line !== undefined ? `Linie ${focused.line + 1}` : `${focused.ways} Wege`} · {focused.count}× {focused.symbol} ·{' '}
+            {focused.line !== undefined ? t('Linie {n}', { n: focused.line + 1 }) : t('{n} Wege', { n: focused.ways! })} · {focused.count}× {focused.symbol} ·{' '}
             <span className="num text-gold">{coins(Math.floor(focused.amount * (result?.bet ?? amount) * (step?.mult ?? 1) * (result?.chaos ?? 1) * (result?.free ? (machine.freeSpins?.mult ?? 1) : 1)))}</span>
           </span>
         )}
-        {step && step.mult > 1 && <Badge>Kaskade ×{step.mult}</Badge>}
+        {step && step.mult > 1 && <Badge>{t('Kaskade')} ×{step.mult}</Badge>}
         {result?.chaos && result.chaos > 1 && <Badge>Chaos ×{result.chaos}</Badge>}
         {result?.features.includes('mystery') && <Badge>Mystery!</Badge>}
         {result?.expand && <Badge>{result.expand.symbol} breitet sich aus · {result.expand.amount}×</Badge>}
         {result?.free && machine.freeSpins?.mult && result.win > 0 && <Badge>Free Spin ×{machine.freeSpins.mult}</Badge>}
-        {!focused && phase === 'idle' && result && !result.win && <span className="text-white/40">Kein Gewinn</span>}
+        {!focused && phase === 'idle' && result && !result.win && <span className="text-white/40">{t('Kein Gewinn')}</span>}
       </div>
     </div>
   );
@@ -355,7 +357,7 @@ export function Slots() {
             style={{ background: `linear-gradient(160deg, ${m.colors[0]}, ${m.colors[1]})` }}
           >
             <span className="text-2xl leading-none">{topSymbol(m)}</span>
-            <span className="w-full truncate text-xs font-semibold">{m.name}</span>
+            <span className="w-full truncate text-xs font-semibold">{t(m.name)}</span>
             <span className="text-[10px] text-white/60">ab {coins(m.minBet)}</span>
             {free?.machine === k && free.spins > 0 && (
               <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-full bg-gold px-1.5 text-[10px] font-bold text-black">
@@ -367,14 +369,14 @@ export function Slots() {
       </div>
       {cabinet}
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Odd label="Auszahlungsquote" value={`${pct(machine.odds.rtp)} %`} hint="langfristig zurück" />
-        <Odd label="Trefferquote" value={`${pct(machine.odds.hit)} %`} hint={`etwa jeder ${Math.round(100 / machine.odds.hit)}. Spin`} />
+        <Odd label={t('Auszahlungsquote')} value={`${pct(machine.odds.rtp)} %`} hint={t('langfristig zurück')} />
+        <Odd label={t('Trefferquote')} value={`${pct(machine.odds.hit)} %`} hint={t('etwa jeder {n}. Spin', { n: Math.round(100 / machine.odds.hit) })} />
         <Odd
-          label={machine.freeSpins ? 'Free Spins' : 'Feature'}
-          value={machine.odds.feature ? `1 : ${machine.odds.feature}` : featureShort(machine)}
-          hint={machine.odds.feature ? 'Chance pro Spin' : 'bei jedem Spin aktiv'}
+          label={machine.freeSpins ? t('Free Spins') : 'Feature'}
+          value={machine.odds.feature ? `1 : ${machine.odds.feature}` : t(featureShort(machine))}
+          hint={machine.odds.feature ? t('Chance pro Spin') : t('bei jedem Spin aktiv')}
         />
-        <Odd label="Max. Gewinn" value={`${coins(SLOT_MAX_WIN)}×`} hint={coins(SLOT_MAX_WIN * amount) + ' NVC'} />
+        <Odd label={t('Max. Gewinn')} value={`${coins(SLOT_MAX_WIN)}×`} hint={coins(SLOT_MAX_WIN * amount) + ' NVC'} />
       </dl>
     </div>
   );
@@ -385,8 +387,8 @@ export function Slots() {
         <div className="rounded-lg bg-gold/10 px-3 py-2.5 text-sm text-gold">
           <p className="font-semibold">{freeHere} Free Spins übrig</p>
           <p className="text-xs text-gold/80">
-            Einsatz <span className="num">{coins(free!.bet)}</span> NVC{free!.special && ` · Sondersymbol ${free!.special}`}
-            {machine.freeSpins?.mult && ` · Gewinne ×${machine.freeSpins.mult}`}
+            {t('Einsatz')} <span className="num">{coins(free!.bet)}</span> NVC{free!.special && ` · ${t('Sondersymbol')} ${free!.special}`}
+            {machine.freeSpins?.mult && ` · ${t('Gewinne')} ×${machine.freeSpins.mult}`}
           </p>
         </div>
       ) : (
@@ -395,11 +397,11 @@ export function Slots() {
 
       {autoRunning ? (
         <button className="btn-secondary h-14 w-full text-base" onClick={stopAuto}>
-          <Square className="h-4 w-4" /> Stopp{auto > 0 && ` (${auto})`}
+          <Square className="h-4 w-4" /> {t('Stopp')}{auto > 0 && ` (${auto})`}
         </button>
       ) : (
         <button className="btn-primary h-14 w-full text-base font-semibold" onClick={spinNow} disabled={phase !== 'idle'}>
-          {phase !== 'idle' ? 'Dreht …' : freeHere ? `Free Spin (${freeHere})` : 'Drehen'}
+          {phase !== 'idle' ? t('Dreht …') : freeHere ? `Free Spin (${freeHere})` : t('Drehen')}
         </button>
       )}
 
@@ -415,7 +417,7 @@ export function Slots() {
                 setAutoFree(true);
               }}
             >
-              {n || 'Aus'}
+              {n || t('Aus')}
             </button>
           ))}
         </div>
@@ -429,22 +431,22 @@ export function Slots() {
           {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />} Ton
         </button>
       </div>
-      <p className="hidden text-center text-[11px] text-faint sm:block">Leertaste = Drehen</p>
+      <p className="hidden text-center text-[11px] text-faint sm:block">{t('Leertaste = Drehen')}</p>
     </div>
   );
 
   const extra = (
     <>
-      <Section title="Gewinntabelle" action={<span className="text-xs text-muted">bei {coins(amount)} NVC Einsatz</span>} pad>
-        <p className="mb-3 text-sm text-muted">{machine.feature}</p>
-        <p className="mb-2 text-[11px] text-faint">Prozent = Chance, dass ein Feld dieses Symbol zeigt.</p>
+      <Section title={t('Gewinntabelle')} action={<span className="text-xs text-muted">{t('bei {n} NVC Einsatz', { n: coins(amount) })}</span>} pad>
+        <p className="mb-3 text-sm text-muted">{t(machine.feature)}</p>
+        <p className="mb-2 text-[11px] text-faint">{t('Prozent = Chance, dass ein Feld dieses Symbol zeigt.')}</p>
         <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
           {[...machine.symbols].reverse().map((s) => (
             <li key={s.icon} className="flex items-center gap-3 text-sm">
               <span className="w-8 text-center text-2xl">{s.icon}</span>
-              <span className="num w-12 shrink-0 text-right text-[11px] text-faint" title="Chance pro Feld">{pct((s.weight / totalWeight) * 100)} %</span>
+              <span className="num w-12 shrink-0 text-right text-[11px] text-faint" title={t('Chance pro Feld')}>{pct((s.weight / totalWeight) * 100)} %</span>
               <span className="min-w-0 flex-1 text-xs text-muted">
-                {s.mystery ? 'Mystery – alle werden zum selben Symbol' : s.wild && !s.pays ? 'Wild – ersetzt alle Symbole' : (
+                {s.mystery ? t('Mystery – alle werden zum selben Symbol') : s.wild && !s.pays ? t('Wild – ersetzt alle Symbole') : (
                   <>
                     {s.wild && <span className="text-gold">Wild{s.scatter && ' + Scatter'} · </span>}
                     {s.scatter && !s.wild && <span className="text-gold">Scatter · </span>}
@@ -459,10 +461,10 @@ export function Slots() {
             </li>
           ))}
         </ul>
-        {!machine.lines && <p className="mt-3 text-xs text-faint">Werte pro Weg. Mehrere gleiche Symbole auf einer Walze multiplizieren die Wege.</p>}
+        {!machine.lines && <p className="mt-3 text-xs text-faint">{t('Werte pro Weg. Mehrere gleiche Symbole auf einer Walze multiplizieren die Wege.')}</p>}
       </Section>
       {session.spins > 0 && (
-        <Section title="Diese Sitzung" pad>
+        <Section title={t('Diese Sitzung')} pad>
           <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
             <Stat label="Spins" value={String(session.spins)} />
             <Stat label="Eingesetzt" value={coins(session.bet)} />
@@ -486,16 +488,17 @@ export function Slots() {
     </>
   );
 
-  return <GameFrame title="Slots" subtitle="Acht Automaten, jeder mit eigenen Regeln." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Slots" subtitle={t('Acht Automaten, jeder mit eigenen Regeln.')} stage={stage} controls={controls} extra={extra} />;
 }
 
 function BigWin({ label, amount }: { label: string; amount: number }) {
+  const t = useT();
   const value = useCountUp(amount, 2200);
   return (
     <span className="pop-in block text-center">
       <span className="slot-glow block text-sm font-bold tracking-[0.3em] text-gold uppercase">{label}</span>
       <span className="num mt-1 block text-4xl font-bold text-white sm:text-5xl">{coins(value)}</span>
-      <span className="mt-2 block text-xs text-white/50">Tippen zum Schließen</span>
+      <span className="mt-2 block text-xs text-white/50">{t('Tippen zum Schließen')}</span>
     </span>
   );
 }

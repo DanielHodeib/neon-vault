@@ -10,6 +10,7 @@ import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { PlayingCard } from './TableLobby';
+import { useT } from '@/components/I18n';
 
 type Round = { bet: number; card: string; multiplier: number; steps: number; skips: number; history: string[] };
 type Outcome = { win: boolean; payout: number; multiplier: number; card?: string };
@@ -18,6 +19,7 @@ const value = (card: string) => '23456789TJQKA'.indexOf(card[0]) + 2;
 const pct = (p: number) => `${(p * 100).toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 
 export function HiLo() {
+  const t = useT();
   const { call, balance } = useLive();
   const [amount, setAmount] = useState(100);
   const [round, setRound] = useState<Round | null>(null);
@@ -99,17 +101,17 @@ export function HiLo() {
                 +<span className="num">{coins(outcome.payout)}</span> NVC · {outcome.multiplier}×
               </p>
             ) : (
-              <p className="pop-in text-2xl font-bold text-loss">Daneben!</p>
+              <p className="pop-in text-2xl font-bold text-loss">{t('Daneben!')}</p>
             )
           ) : round ? (
             <>
               <p className="num text-3xl font-bold">{round.multiplier}×</p>
               <p className="text-sm text-muted">
-                {round.steps} richtig · aktuell <span className="num text-fg">{coins(Math.floor(round.bet * round.multiplier))}</span> NVC
+                {t('{n} richtig · aktuell', { n: round.steps })} <span className="num text-fg">{coins(Math.floor(round.bet * round.multiplier))}</span> NVC
               </p>
             </>
           ) : (
-            <p className="text-sm text-muted">Höher oder tiefer? Gleich zählt immer für dich.</p>
+            <p className="text-sm text-muted">{t('Höher oder tiefer? Gleich zählt immer für dich.')}</p>
           )}
         </div>
       </div>
@@ -134,17 +136,17 @@ export function HiLo() {
             {options.map(({ g, p, step }) => (
               <button key={g} className="btn-secondary h-auto flex-col gap-0.5 py-3" disabled={busy || p >= 1} onClick={() => guess(g)}>
                 <span className="flex items-center gap-1.5 font-semibold">
-                  {g === 'higher' ? <ArrowUp size={16} /> : <ArrowDown size={16} />} {g === 'higher' ? 'Höher' : 'Tiefer'}
+                  {g === 'higher' ? <ArrowUp size={16} /> : <ArrowDown size={16} />} {g === 'higher' ? t('Höher') : t('Tiefer')}
                 </span>
-                <span className="text-[11px] text-muted">{p >= 1 ? 'sicher' : `${pct(p)} · ${step}×`}</span>
+                <span className="text-[11px] text-muted">{p >= 1 ? t('sicher') : `${pct(p)} · ${step}×`}</span>
               </button>
             ))}
           </div>
           <button className="btn-ghost h-9 w-full border border-line text-xs" disabled={busy || round.skips >= HILO_SKIPS} onClick={skip}>
-            <Shuffle size={14} /> Karte tauschen ({HILO_SKIPS - round.skips} übrig)
+            <Shuffle size={14} /> {t('Karte tauschen ({n} übrig)', { n: HILO_SKIPS - round.skips })}
           </button>
           <button className="btn-primary h-12 w-full text-base" disabled={busy || !round.steps} onClick={cashout}>
-            Auszahlen · <span className="num">{coins(Math.floor(round.bet * round.multiplier))}</span>
+            {t('Auszahlen')} · <span className="num">{coins(Math.floor(round.bet * round.multiplier))}</span>
           </button>
         </>
       ) : (
@@ -155,9 +157,9 @@ export function HiLo() {
           </button>
         </>
       )}
-      <p className="text-xs text-faint">Jeder Treffer multipliziert deinen Gewinn. Gleiche Karte zählt als Treffer. 2 % Hausvorteil, max. 5.000×.</p>
+      <p className="text-xs text-faint">{t('Jeder Treffer multipliziert deinen Gewinn. Gleiche Karte zählt als Treffer. 2 % Hausvorteil, max. 5.000×.')}</p>
     </div>
   );
 
-  return <GameFrame title="Hi-Lo" subtitle="Nächste Karte höher oder tiefer?" stage={stage} controls={controls} />;
+  return <GameFrame title="Hi-Lo" subtitle={t('Nächste Karte höher oder tiefer?')} stage={stage} controls={controls} />;
 }

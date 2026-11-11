@@ -9,6 +9,7 @@ import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Bet = { multiplier: number; amount: number };
 type State = { phase: 'betting' | 'spinning' | 'result'; endsAt: number; index: number | null; history: number[]; players: { userId: string; username: string; bets: Bet[] }[] };
@@ -18,6 +19,7 @@ const WHEEL_BG = `conic-gradient(${WHEEL_SEGMENTS.map((m, i) => `${wheelColor(m)
 const label = (m: number) => `${String(m).replace('.', ',')}×`;
 
 export function Wheel() {
+  const t = useT();
   const { call, me, balance } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [amount, setAmount] = useState(100);
@@ -75,8 +77,8 @@ export function Wheel() {
           </div>
         </div>
         <div className="w-full min-w-0 text-center sm:text-left">
-          <p className="text-sm font-medium">{open ? 'Einsätze offen' : state.phase === 'spinning' ? 'Das Rad dreht sich' : 'Ergebnis'}</p>
-          <p className="text-xs text-muted">Setze auf einen Multiplikator – trifft er, bekommst du Einsatz × Multiplikator.</p>
+          <p className="text-sm font-medium">{open ? t('Einsätze offen') : state.phase === 'spinning' ? t('Das Rad dreht sich') : t('Ergebnis')}</p>
+          <p className="text-xs text-muted">{t('Setze auf einen Multiplikator – trifft er, bekommst du Einsatz × Multiplikator.')}</p>
           <div className="mt-3 flex flex-wrap justify-center gap-1 sm:justify-start">
             {state.history.slice(0, 14).map((m, i) => (
               <span key={i} className="num grid h-7 min-w-9 place-items-center rounded-md px-1 text-[11px] font-semibold text-white" style={{ background: wheelColor(m) }}>{label(m)}</span>
@@ -100,7 +102,7 @@ export function Wheel() {
             style={{ borderColor: o.color, background: `${o.color}26` }}
           >
             <span className="num block text-lg font-semibold">{label(o.multiplier)}</span>
-            <span className="num block text-xs text-muted">{onMine(o.multiplier) ? `Gesetzt: ${coins(onMine(o.multiplier))}` : `${o.count} von 30 Feldern`}</span>
+            <span className="num block text-xs text-muted">{onMine(o.multiplier) ? t('Gesetzt: {n}', { n: coins(onMine(o.multiplier)) }) : t('{n} von 30 Feldern', { n: o.count })}</span>
           </button>
         ))}
       </div>
@@ -109,9 +111,9 @@ export function Wheel() {
 
   const extra = (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Am Rad</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Am Rad')}</p>
       {state.players.length === 0 ? (
-        <Empty>Noch keine Einsätze in dieser Runde.</Empty>
+        <Empty>{t('Noch keine Einsätze in dieser Runde.')}</Empty>
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.players.map((p) => (
@@ -131,5 +133,5 @@ export function Wheel() {
     </div>
   );
 
-  return <GameFrame title="Glücksrad" subtitle="Gemeinsames Rad · neue Runde alle 25 Sekunden" stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Glücksrad" subtitle={t('Gemeinsames Rad · neue Runde alle 25 Sekunden')} stage={stage} controls={controls} extra={extra} />;
 }

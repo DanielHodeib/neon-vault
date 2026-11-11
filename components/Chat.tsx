@@ -7,11 +7,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { suggest } from '@/lib/chatSuggest';
 import { shopItem } from '@/lib/shop';
+import { useT } from './I18n';
 import { useJoin, useLive } from './SocketProvider';
 import { RankTag, RoleBadge } from './ui';
 
 export function Chat({ onClose }: { onClose: () => void }) {
   const { chat, online, call, me } = useLive();
+  const t = useT();
   const [text, setText] = useState('');
   const [tab, setTab] = useState<'chat' | 'online'>('chat');
   const [pick, setPick] = useState(0);
@@ -81,12 +83,12 @@ export function Chat({ onClose }: { onClose: () => void }) {
   return (
     <section className="flex w-full flex-col pt-[env(safe-area-inset-top)] xl:bg-surface">
       <div className="flex h-14 shrink-0 items-center gap-1 border-b border-line px-2 md:h-16">
-        {(['chat', 'online'] as const).map((t) => (
-          <button key={t} onClick={() => setTab(t)} className={tab === t ? 'chip-active' : 'chip border-transparent'}>
-            {t === 'chat' ? 'Chat' : `Online · ${online.length}`}
+        {(['chat', 'online'] as const).map((tb) => (
+          <button key={tb} onClick={() => setTab(tb)} className={tab === tb ? 'chip-active' : 'chip border-transparent'}>
+            {tb === 'chat' ? 'Chat' : `Online · ${online.length}`}
           </button>
         ))}
-        <button onClick={onClose} className="btn-ghost ml-auto h-8 w-8 px-0 xl:hidden" aria-label="Chat schließen">
+        <button onClick={onClose} className="btn-ghost ml-auto h-8 w-8 px-0 xl:hidden" aria-label={t('Chat schließen')}>
           <X size={18} />
         </button>
       </div>
@@ -108,7 +110,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
                   <p className={`mt-0.5 break-words text-fg/90 ${m.text.includes(`@${me.username}`) ? 'rounded bg-accent/10 px-1.5 py-0.5' : ''}`}>{m.text}</p>
                 </div>
               ) : (
-                <p key={m.id} className="rounded-lg border border-line bg-raised px-3 py-2 text-xs text-muted">{m.text}</p>
+                <p key={m.id} className="rounded-lg border border-line bg-raised px-3 py-2 text-xs text-muted">{t(m.text)}</p>
               ),
             )
           : online.map((u) => (
@@ -141,7 +143,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
                   </button>
                 </li>
               ))}
-              <li className="border-t border-line px-3 pt-1.5 pb-1 text-[10px] text-faint">↑↓ wählen · Tab/Enter übernehmen · Esc schließen</li>
+              <li className="border-t border-line px-3 pt-1.5 pb-1 text-[10px] text-faint">{t('↑↓ wählen · Tab/Enter übernehmen · Esc schließen')}</li>
             </ul>
           )}
           <input
@@ -150,14 +152,14 @@ export function Chat({ onClose }: { onClose: () => void }) {
             maxLength={300}
             onChange={(e) => change(e.target.value)}
             onKeyDown={onKey}
-            placeholder="Nachricht … ( / für Befehle, @ für Namen)"
+            placeholder={t('Nachricht … ( / für Befehle, @ für Namen)')}
             enterKeyHint="send"
             role="combobox"
             aria-expanded={items.length > 0}
             aria-controls="chat-suggest"
             aria-autocomplete="list"
           />
-          <button className="btn-primary w-10 px-0" aria-label="Senden" disabled={!text.trim()}>
+          <button className="btn-primary w-10 px-0" aria-label={t('Senden')} disabled={!text.trim()}>
             <Send size={16} />
           </button>
         </form>

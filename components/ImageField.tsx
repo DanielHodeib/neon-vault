@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 
 import { uploadImage } from '@/app/actions/media';
+import { useT } from '@/components/I18n';
 
 const SIZE = { avatar: [256, 256], banner: [1500, 500] } as const;
 
@@ -22,6 +23,7 @@ async function resize(file: File, [w, h]: readonly [number, number]) {
 
 /** Avatar/banner picker: upload a file, or paste a direct image URL with live preview. */
 export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'banner'; name: string; label: string; initial: string | null }) {
+  const t = useT();
   const [url, setUrl] = useState(initial ?? '');
   const [broken, setBroken] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -38,10 +40,10 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
       else {
         setUrl(res.url);
         setBroken(false);
-        toast.success(kind === 'avatar' ? 'Avatar gespeichert.' : 'Banner gespeichert.');
+        toast.success(kind === 'avatar' ? t('Avatar gespeichert.') : t('Banner gespeichert.'));
       }
     } catch {
-      toast.error('Dieses Bild konnte nicht gelesen werden.');
+      toast.error(t('Dieses Bild konnte nicht gelesen werden.'));
     } finally {
       setBusy(false);
       if (fileInput.current) fileInput.current.value = '';
@@ -56,7 +58,7 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
 
   return (
     <div>
-      <label className="label">{label}</label>
+      <label className="label">{t(label)}</label>
       <div className={kind === 'avatar' ? 'flex items-center gap-3' : 'space-y-2'}>
         {preview || (
           <div className={`grid place-items-center border border-dashed border-line text-faint ${kind === 'avatar' ? 'h-16 w-16 shrink-0 rounded-full' : 'aspect-[3/1] w-full rounded-lg'}`}>
@@ -65,7 +67,7 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
         )}
         <div className="flex min-w-0 flex-1 flex-wrap gap-2">
           <button type="button" className="btn-secondary" onClick={() => fileInput.current?.click()} disabled={busy}>
-            {busy ? 'Lädt …' : 'Datei wählen'}
+            {busy ? t('Lädt …') : t('Datei wählen')}
           </button>
           <input
             className="input min-w-40 flex-1"
@@ -75,12 +77,12 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
               setUrl(e.target.value.trim());
               setBroken(false);
             }}
-            placeholder="oder Bild-URL einfügen"
+            placeholder={t('oder Bild-URL einfügen')}
             inputMode="url"
             readOnly={uploaded}
           />
           {url && (
-            <button type="button" className="btn-ghost w-10 px-0" aria-label="Bild entfernen" onClick={() => (setUrl(''), setBroken(false))}>
+            <button type="button" className="btn-ghost w-10 px-0" aria-label={t('Bild entfernen')} onClick={() => (setUrl(''), setBroken(false))}>
               <X size={16} />
             </button>
           )}
@@ -89,10 +91,10 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files?.[0])} />
       {broken && (
         <p className="mt-1.5 text-xs text-loss">
-          Unter dieser Adresse liegt kein Bild – das ist wohl eine Webseite. Rechtsklick (am Handy: lange drücken) auf das Bild → „Bildadresse kopieren“, oder lade die Datei hoch.
+          {t('Unter dieser Adresse liegt kein Bild – das ist wohl eine Webseite. Rechtsklick (am Handy: lange drücken) auf das Bild → „Bildadresse kopieren“, oder lade die Datei hoch.')}
         </p>
       )}
-      {uploaded && <p className="mt-1.5 text-xs text-faint">Hochgeladen und gespeichert. Mit ✕ entfernen und danach „Profil speichern“.</p>}
+      {uploaded && <p className="mt-1.5 text-xs text-faint">{t('Hochgeladen und gespeichert. Mit ✕ entfernen und danach „Profil speichern“.')}</p>}
     </div>
   );
 }

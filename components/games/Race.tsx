@@ -10,6 +10,7 @@ import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Bet = { horse: number; amount: number };
 type State = {
@@ -27,6 +28,7 @@ const pct = (p: number) => `${(p * 100).toLocaleString('de-DE', { maximumFractio
 const odds = (o: number) => `${o.toLocaleString('de-DE')}×`;
 
 export function Race() {
+  const t = useT();
   const { call, balance, me } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [amount, setAmount] = useState(100);
@@ -68,7 +70,7 @@ export function Race() {
     <div className="panel overflow-hidden">
       <div className="flex items-center justify-between border-b border-line px-4 py-3 text-sm">
         <span className="font-medium">
-          {open ? `Einsätze offen · Start in ${seconds}s` : state.phase === 'racing' ? 'Das Rennen läuft!' : `Sieger: ${HORSES[state.winner!].name}`}
+          {open ? t('Einsätze offen · Start in {n}s', { n: seconds }) : state.phase === 'racing' ? t('Das Rennen läuft!') : t('Sieger: {name}', { name: HORSES[state.winner!].name })}
         </span>
         <span className="flex gap-1">
           {state.history.slice(0, 8).map((h, i) => (
@@ -118,22 +120,22 @@ export function Race() {
               <span className="h-3 w-3 shrink-0 rounded-full" style={{ background: h.color }} />
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium">{h.name}</span>
-                <span className="block text-[11px] text-muted">{onHorse(i) ? `Gesetzt: ${coins(onHorse(i))}` : `Chance ${pct(f.chance)}`}</span>
+                <span className="block text-[11px] text-muted">{onHorse(i) ? t('Gesetzt: {n}', { n: coins(onHorse(i)) }) : `Chance ${pct(f.chance)}`}</span>
               </span>
               <span className="num text-sm font-semibold text-gold">{odds(f.odds)}</span>
             </button>
           );
         })}
       </div>
-      <p className="text-xs text-faint">Quoten ändern sich jede Runde. Gewinnt dein Pferd, bekommst du Einsatz × Quote.</p>
+      <p className="text-xs text-faint">{t('Quoten ändern sich jede Runde. Gewinnt dein Pferd, bekommst du Einsatz × Quote.')}</p>
     </div>
   );
 
   const extra = (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Wetten dieser Runde</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Wetten dieser Runde')}</p>
       {state.players.length === 0 ? (
-        <Empty>Noch keine Wetten.</Empty>
+        <Empty>{t('Noch keine Wetten.')}</Empty>
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.players.map((p) => (
@@ -153,5 +155,5 @@ export function Race() {
     </div>
   );
 
-  return <GameFrame title="Pferderennen" subtitle="Alle wetten, ein Rennen, live." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Pferderennen" subtitle={t('Alle wetten, ein Rennen, live.')} stage={stage} controls={controls} extra={extra} />;
 }

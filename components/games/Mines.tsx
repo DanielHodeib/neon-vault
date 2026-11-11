@@ -8,6 +8,7 @@ import { useJoin, useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
+import { useT } from '@/components/I18n';
 
 type Round = { bet: number; mines: number; revealed: number[]; multiplier: number };
 type Reveal = { bomb: boolean; tile: number; multiplier?: number; done?: boolean; bombs?: number[]; payout?: number };
@@ -17,6 +18,7 @@ type Outcome = { win: boolean; payout: number; multiplier: number };
 const PRESETS = [1, 3, 5, 10, 24];
 
 export function Mines() {
+  const t = useT();
   const { call, balance } = useLive();
   const [amount, setAmount] = useState(100);
   const [mines, setMines] = useState(3);
@@ -98,7 +100,7 @@ export function Mines() {
           return (
             <button
               key={i}
-              aria-label={`Feld ${i + 1}`}
+              aria-label={t('Feld {n}', { n: i + 1 })}
               disabled={!round || busy || gem}
               onClick={() => reveal(i)}
               className={`grid aspect-square place-items-center rounded-lg border transition ${style} ${outcome && !gem && !bomb ? 'opacity-40' : ''}`}
@@ -114,10 +116,10 @@ export function Mines() {
           outcome.win ? (
             <span className="text-win">+<span className="num">{coins(outcome.payout)}</span> NVC · {outcome.multiplier}×</span>
           ) : (
-            <span className="text-loss">Mine getroffen</span>
+            <span className="text-loss">{t('Mine getroffen')}</span>
           )
         ) : (
-          round && <span className="text-muted">Nächstes Feld: <span className="num text-fg">{next}×</span></span>
+          round && <span className="text-muted">{t('Nächstes Feld:')} <span className="num text-fg">{next}×</span></span>
         )}
       </p>
     </div>
@@ -127,7 +129,7 @@ export function Mines() {
     <div className="card space-y-4">
       <BetInput value={amount} onChange={setAmount} balance={balance} />
       <div>
-        <label className="label">Minen</label>
+        <label className="label">{t('Minen')}</label>
         <div className="flex flex-wrap gap-2">
           {PRESETS.map((m) => (
             <button key={m} className={mines === m ? 'chip-active' : 'chip'} disabled={!!round} onClick={() => setMines(m)}>{m}</button>
@@ -139,7 +141,7 @@ export function Mines() {
       </div>
       {round ? (
         <button className="btn-primary h-12 w-full text-base" onClick={cashout} disabled={busy || !round.revealed.length}>
-          Auszahlen · <span className="num">{round.multiplier}× = {coins(Math.floor(round.bet * round.multiplier))}</span>
+          {t('Auszahlen')} · <span className="num">{round.multiplier}× = {coins(Math.floor(round.bet * round.multiplier))}</span>
         </button>
       ) : (
         <button
@@ -156,9 +158,9 @@ export function Mines() {
           Start
         </button>
       )}
-      <p className="text-xs text-faint">Erstes sicheres Feld: {minesMultiplier(round?.mines ?? mines, 1)}×. 1 % Hausvorteil.</p>
+      <p className="text-xs text-faint">{t('Erstes sicheres Feld: {x}×. 1 % Hausvorteil.', { x: minesMultiplier(round?.mines ?? mines, 1) })}</p>
     </div>
   );
 
-  return <GameFrame title="Mines" subtitle="Decke Edelsteine auf und steig rechtzeitig aus." stage={stage} controls={controls} />;
+  return <GameFrame title="Mines" subtitle={t('Decke Edelsteine auf und steig rechtzeitig aus.')} stage={stage} controls={controls} />;
 }

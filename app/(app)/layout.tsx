@@ -7,8 +7,10 @@ import { requireUser } from '@/lib/auth';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast } from '@/lib/roles';
+import { getT } from '@/lib/i18nServer';
 
 export default async function AppLayout({ children }: { children: ReactNode }) {
+  const t = await getT();
   const user = await requireUser();
   const isStaff = atLeast(user.role, 'SUPPORT');
 
@@ -17,9 +19,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <main className="grid min-h-dvh place-items-center p-6 text-center">
         <div className="max-w-sm">
           <Logo />
-          <h1 className="mt-8 text-2xl font-semibold">Kurz in Wartung</h1>
-          <p className="mt-2 text-sm text-muted">Wir verbessern gerade etwas. Dein Guthaben ist sicher.</p>
-          {hub.maintenance.endsAt && <p className="mt-4 text-sm text-faint">Voraussichtlich zurück: {new Date(hub.maintenance.endsAt).toLocaleString('de-DE')}</p>}
+          <h1 className="mt-8 text-2xl font-semibold">{t('Kurz in Wartung')}</h1>
+          <p className="mt-2 text-sm text-muted">{t('Wir verbessern gerade etwas. Dein Guthaben ist sicher.')}</p>
+          {hub.maintenance.endsAt && <p className="mt-4 text-sm text-faint">{t('Voraussichtlich zurück:')} {new Date(hub.maintenance.endsAt).toLocaleString('de-DE')}</p>}
         </div>
       </main>
     );

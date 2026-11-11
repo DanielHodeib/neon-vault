@@ -8,6 +8,7 @@ import { BetInput } from '../ui';
 import { sound } from './sound';
 import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Hand = { cards: string[]; total: number; soft: boolean; bet: number; done: boolean; result?: string; won?: number };
 type Seat = { userId: string | null; name: string; isBot: boolean; bet: number; hands: Hand[]; insurance: number; net: number | null };
@@ -18,6 +19,7 @@ const CHIPS = [50, 100, 500, 1000, 5000];
 const RESULT: Record<string, string> = { blackjack: 'Blackjack', win: 'Gewonnen', push: 'Push', lose: 'Verloren' };
 
 export function Blackjack() {
+  const t = useT();
   const { call, balance, me } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [amount, setAmount] = useState(100);
@@ -47,7 +49,7 @@ export function Blackjack() {
     return (
       <TableLobby
         title="Blackjack"
-        subtitle="Allein, mit Bots oder mit Freunden an einem Tisch. Dealer steht auf 17, Blackjack zahlt 3:2."
+        subtitle={t('Allein, mit Bots oder mit Freunden an einem Tisch. Dealer steht auf 17, Blackjack zahlt 3:2.')}
         game="bj"
         maxBots={3}
         onCreate={(opts) => call<{ state: State }>('bj:create', opts).then(enter)}
@@ -70,7 +72,7 @@ export function Blackjack() {
       <Felt>
         <div className="text-center">
           <p className="eyebrow text-white/50">
-            Dealer {state.dealerTotal !== null && <span className="num">· {state.dealer.includes('??') ? `zeigt ${state.dealerTotal}` : state.dealerTotal}</span>}
+            Dealer {state.dealerTotal !== null && <span className="num">· {state.dealer.includes('??') ? t('zeigt {n}', { n: state.dealerTotal }) : state.dealerTotal}</span>}
           </p>
           <div className="mt-2 flex min-h-[clamp(3rem,10vw,4.6rem)] justify-center gap-1.5">{state.dealer.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
         </div>
@@ -91,11 +93,11 @@ export function Blackjack() {
                   <div className="flex justify-center -space-x-3 sm:-space-x-2">{h.cards.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
                   <p className="mt-1 text-xs">
                     <span className="num text-white/70">{h.soft && h.total < 21 ? `Soft ${h.total}` : h.total}</span>
-                    {h.result && <span className={h.result === 'lose' ? ' text-loss' : h.result === 'push' ? ' text-white/60' : ' text-win'}> · {RESULT[h.result]}{h.won ? ` +${coins(h.won)}` : ''}</span>}
+                    {h.result && <span className={h.result === 'lose' ? ' text-loss' : h.result === 'push' ? ' text-white/60' : ' text-win'}> · {t(RESULT[h.result])}{h.won ? ` +${coins(h.won)}` : ''}</span>}
                   </p>
                 </div>
               ))}
-              {s.insurance > 0 && <p className="mt-1 text-[11px] text-white/50">Versichert {coins(s.insurance)}</p>}
+              {s.insurance > 0 && <p className="mt-1 text-[11px] text-white/50">{t('Versichert {n}', { n: coins(s.insurance) })}</p>}
               {s.net !== null && state.phase === 'result' && (
                 <p className={`num mt-1 text-xs font-semibold ${s.net > 0 ? 'text-win' : s.net < 0 ? 'text-loss' : 'text-white/60'}`}>
                   {s.net > 0 ? '+' : ''}
@@ -117,7 +119,7 @@ export function Blackjack() {
             </div>
             <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
               <BetInput value={amount} onChange={setAmount} balance={balance} />
-              <button className="btn-primary h-10 px-8" onClick={() => call('bj:bet', { amount })}>Setzen</button>
+              <button className="btn-primary h-10 px-8" onClick={() => call('bj:bet', { amount })}>{t('Setzen')}</button>
             </div>
           </div>
         )}
@@ -128,20 +130,20 @@ export function Blackjack() {
               <span className="num text-muted"> · {seconds}s</span>
             </p>
             {mySeat?.hands.length > 0 && !mySeat.insurance && (
-              <button className="btn-secondary" onClick={() => call('bj:insurance')}>Versichern (zahlt 2:1 bei Dealer-Blackjack)</button>
+              <button className="btn-secondary" onClick={() => call('bj:insurance')}>{t('Versichern (zahlt 2:1 bei Dealer-Blackjack)')}</button>
             )}
           </div>
         )}
-        {state.phase === 'betting' && mySeat?.bet > 0 && <p className="text-center text-sm text-muted">Warte auf die anderen Spieler{state.deadline > 0 && ` · ${seconds}s`}</p>}
-        {state.phase === 'playing' && !myTurn && <p className="text-center text-sm text-muted">{state.turn ? `${state.seats[state.turn.seat]?.name} ist am Zug …` : 'Dealer spielt …'}</p>}
+        {state.phase === 'betting' && mySeat?.bet > 0 && <p className="text-center text-sm text-muted">{t('Warte auf die anderen Spieler')}{state.deadline > 0 && ` · ${seconds}s`}</p>}
+        {state.phase === 'playing' && !myTurn && <p className="text-center text-sm text-muted">{state.turn ? t('{name} ist am Zug …', { name: state.seats[state.turn.seat]?.name ?? '' }) : t('Dealer spielt …')}</p>}
         {myHand && (
           <div className="space-y-3">
-            <p className="text-center text-xs text-muted">Du bist dran · <span className="num">{seconds}s</span></p>
+            <p className="text-center text-xs text-muted">{t('Du bist dran')} · <span className="num">{seconds}s</span></p>
             <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-center">
-              <button className="btn-primary" onClick={() => act('hit')}>Karte</button>
-              <button className="btn-secondary" onClick={() => act('stand')}>Halten</button>
-              {myHand.cards.length === 2 && <button className="btn-secondary" onClick={() => act('double')}>Verdoppeln</button>}
-              {myHand.cards.length === 2 && mySeat.hands.length === 1 && <button className="btn-secondary" onClick={() => act('split')}>Teilen</button>}
+              <button className="btn-primary" onClick={() => act('hit')}>{t('Karte')}</button>
+              <button className="btn-secondary" onClick={() => act('stand')}>{t('Halten')}</button>
+              {myHand.cards.length === 2 && <button className="btn-secondary" onClick={() => act('double')}>{t('Verdoppeln')}</button>}
+              {myHand.cards.length === 2 && mySeat.hands.length === 1 && <button className="btn-secondary" onClick={() => act('split')}>{t('Teilen')}</button>}
             </div>
           </div>
         )}

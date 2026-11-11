@@ -9,6 +9,7 @@ import { Empty } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Bet = { type: string; value?: number; amount: number };
 type BetKey = Omit<Bet, 'amount'>;
@@ -32,12 +33,13 @@ const OUTSIDE: { label: string; bet: BetKey }[] = [
   { label: 'Ungerade', bet: { type: 'odd' } },
   { label: '19–36', bet: { type: 'high' } },
   ...[1, 2, 3].map((v) => ({ label: `${(v - 1) * 12 + 1}–${v * 12}`, bet: { type: 'dozen', value: v } })),
-  ...[1, 2, 3].map((v) => ({ label: `Reihe ${v}`, bet: { type: 'column', value: v } })),
+  ...[1, 2, 3].map((v) => ({ label: `${v}. Reihe`, bet: { type: 'column', value: v } })),
 ];
 
 const same = (a: BetKey, b: BetKey) => a.type === b.type && a.value === b.value;
 
 export function Roulette() {
+  const t = useT();
   const { call, me } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [chip, setChip] = useState(100);
@@ -111,8 +113,8 @@ export function Roulette() {
           </div>
         </div>
         <div className="w-full min-w-0 text-center sm:text-left">
-          <p className="text-sm font-medium">{open ? 'Einsätze offen' : state.phase === 'spinning' ? 'Nichts geht mehr' : 'Ergebnis'}</p>
-          <p className="text-xs text-muted">Alle Spieler setzen auf dieselbe Kugel.</p>
+          <p className="text-sm font-medium">{open ? t('Einsätze offen') : state.phase === 'spinning' ? t('Nichts geht mehr') : t('Ergebnis')}</p>
+          <p className="text-xs text-muted">{t('Alle Spieler setzen auf dieselbe Kugel.')}</p>
           <div className="mt-3 flex flex-wrap justify-center gap-1 sm:justify-start">
             {state.history.slice(0, 14).map((n, i) => (
               <span key={i} className="num grid h-7 w-7 place-items-center rounded-md text-[11px] font-semibold text-white" style={{ background: color(n) }}>{n}</span>
@@ -128,14 +130,14 @@ export function Roulette() {
           {NUMBERS.map((n) => cell({ type: 'number', value: n }, String(n), color(n)))}
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">{OUTSIDE.map((o) => cell(o.bet, o.label, o.bet.type === 'red' ? RED : o.bet.type === 'black' ? BLACK : 'var(--color-raised)'))}</div>
+      <div className="grid grid-cols-3 gap-1 sm:grid-cols-6">{OUTSIDE.map((o) => cell(o.bet, t(o.label), o.bet.type === 'red' ? RED : o.bet.type === 'black' ? BLACK : 'var(--color-raised)'))}</div>
     </div>
   );
 
   const controls = (
     <div className="card space-y-4">
       <div>
-        <p className="label">Chip-Wert</p>
+        <p className="label">{t('Chip-Wert')}</p>
         <div className="grid grid-cols-6 gap-1.5">
           {CHIPS.map((c) => (
             <button key={c} onClick={() => setChip(c)} className={`num aspect-square rounded-full border text-xs font-semibold transition ${chip === c ? 'border-accent bg-accent/15 text-fg' : 'border-line text-muted'}`}>
@@ -145,21 +147,21 @@ export function Roulette() {
         </div>
       </div>
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted">Gesamteinsatz</span>
+        <span className="text-muted">{t('Gesamteinsatz')}</span>
         <span className="num font-semibold text-gold">{coins(total)}</span>
       </div>
       <div className="grid grid-cols-[auto_1fr] gap-2">
-        <button className="btn-secondary" onClick={() => setSlip([])} disabled={!slip.length}>Leeren</button>
-        <button className="btn-primary" onClick={place} disabled={!slip.length || !open}>Setzen</button>
+        <button className="btn-secondary" onClick={() => setSlip([])} disabled={!slip.length}>{t('Leeren')}</button>
+        <button className="btn-primary" onClick={place} disabled={!slip.length || !open}>{t('Setzen')}</button>
       </div>
     </div>
   );
 
   const extra = (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Am Tisch</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Am Tisch')}</p>
       {state.players.length === 0 ? (
-        <Empty>Noch keine Einsätze in dieser Runde.</Empty>
+        <Empty>{t('Noch keine Einsätze in dieser Runde.')}</Empty>
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.players.map((p) => (
@@ -173,5 +175,5 @@ export function Roulette() {
     </div>
   );
 
-  return <GameFrame title="Roulette" subtitle="Europäisches Roulette · neue Runde alle 25 Sekunden" stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Roulette" subtitle={t('Europäisches Roulette · neue Runde alle 25 Sekunden')} stage={stage} controls={controls} extra={extra} />;
 }

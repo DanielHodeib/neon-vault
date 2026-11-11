@@ -2,8 +2,10 @@ import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
 
+import { I18nProvider } from '@/components/I18n';
 import { Toaster } from '@/components/Toaster';
 import { getUser } from '@/lib/auth';
+import { getLang } from '@/lib/i18nServer';
 
 import './globals.css';
 
@@ -19,12 +21,14 @@ export const metadata: Metadata = {
 export const viewport: Viewport = { themeColor: '#0a0b0d', viewportFit: 'cover' };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const user = await getUser();
+  const [user, lang] = await Promise.all([getUser(), getLang()]);
   return (
-    <html lang="de" data-theme={user?.theme ?? 'neon'} className={`${inter.variable} ${mono.variable}`}>
+    <html lang={lang} data-theme={user?.theme ?? 'neon'} className={`${inter.variable} ${mono.variable}`}>
       <body>
-        {children}
-        <Toaster />
+        <I18nProvider lang={lang}>
+          {children}
+          <Toaster />
+        </I18nProvider>
       </body>
     </html>
   );

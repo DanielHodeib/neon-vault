@@ -46,11 +46,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 
-import { clearNotifications, readNotifications, setTheme } from '@/app/actions/account';
+import { clearNotifications, readNotifications, setLang, setTheme } from '@/app/actions/account';
 import { logout } from '@/app/actions/auth';
 import { coins, THEME_INFO, THEMES, timeAgo } from '@/lib/format';
 import { atLeast } from '@/lib/roles';
 import { Chat } from './Chat';
+import { useLang, useT } from './I18n';
 import { useLive } from './SocketProvider';
 import { Avatar, Logo } from './ui';
 import { usePref } from './usePref';
@@ -79,6 +80,7 @@ type User = { username: string; avatarUrl: string | null; frame: string | null; 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
   const pathname = usePathname();
   const { balance, event, rain, dmUnread } = useLive();
+  const t = useT();
   // null = default (docked on wide screens, closed elsewhere)
   const [chat, setChat] = useState<boolean | null>(null);
   const [sheet, setSheet] = useState<'games' | 'more' | null>(null);
@@ -116,7 +118,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
     <div className="flex h-dvh overflow-hidden">
       {/* Sidebar: icon rail on tablets, full on laptops, hidden on phones */}
       <aside className={`hidden w-[68px] shrink-0 flex-col border-r border-line bg-surface transition-[width] md:flex ${wide ? 'lg:w-60' : ''}`}>
-        <Link href="/" className={`flex h-16 items-center justify-center border-b border-line px-4 ${wide ? 'lg:justify-start' : ''}`} title="Zur Lobby">
+        <Link href="/" className={`flex h-16 items-center justify-center border-b border-line px-4 ${wide ? 'lg:justify-start' : ''}`} title={t('Zur Lobby')}>
           <span className={wide ? 'lg:hidden' : ''}><Logo compact /></span>
           <span className={wide ? 'hidden lg:block' : 'hidden'}><Logo /></span>
         </Link>
@@ -142,10 +144,10 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           <button
             onClick={() => setFolded(wide ? '1' : '0')}
             className={`flex w-full items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg ${wide ? 'lg:justify-start' : ''}`}
-            title={wide ? 'Leiste einklappen' : 'Leiste ausklappen'}
+            title={wide ? t('Leiste einklappen') : t('Leiste ausklappen')}
           >
             {wide ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
-            <span className={wide ? 'hidden lg:inline' : 'hidden'}>Einklappen</span>
+            <span className={wide ? 'hidden lg:inline' : 'hidden'}>{t('Einklappen')}</span>
           </button>
         </div>
       </aside>
@@ -158,20 +160,20 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
             <span className="num truncate text-sm font-semibold text-gold">{coins(balance)}</span>
           </div>
           {event && (
-            <span className="hidden items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-xs font-medium text-accent sm:flex" title={event.description}>
-              <Zap size={12} /> {event.label}
+            <span className="hidden items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-xs font-medium text-accent sm:flex" title={t(event.description)}>
+              <Zap size={12} /> {t(event.label)}
             </span>
           )}
           {rain && (
             <span className="hidden items-center gap-1.5 rounded-full border border-sky-400/40 px-3 py-1 text-xs font-medium text-sky-300 sm:flex">
-              <CloudRain size={12} /> Rain {coins(rain.amount)} – im Chat schreiben
+              <CloudRain size={12} /> Rain {coins(rain.amount)} – {t('im Chat schreiben')}
             </span>
           )}
-          {maintenance && <span className="hidden rounded-full bg-loss/15 px-3 py-1 text-xs text-loss sm:block">Wartungsmodus</span>}
+          {maintenance && <span className="hidden rounded-full bg-loss/15 px-3 py-1 text-xs text-loss sm:block">{t('Wartungsmodus')}</span>}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <Notifications items={notifications} />
-            <button onClick={toggleChat} className="btn-ghost hidden h-9 w-9 px-0 md:inline-flex" aria-label="Chat ein- oder ausblenden">
+            <button onClick={toggleChat} className="btn-ghost hidden h-9 w-9 px-0 md:inline-flex" aria-label={t('Chat ein- oder ausblenden')}>
               <MessageSquare size={18} />
             </button>
             <UserMenu user={user} items={account} />
@@ -202,17 +204,17 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
       </nav>
 
       {sheet && (
-        <Sheet title={sheet === 'games' ? 'Spiele' : 'Menü'} onClose={() => setSheet(null)}>
+        <Sheet title={sheet === 'games' ? 'Spiele' : t('Menü')} onClose={() => setSheet(null)}>
           <div className="grid grid-cols-3 gap-2">
             {(sheet === 'games' ? GAMES : [...community, ...account]).map(({ href, label, icon: Icon }) => (
               <Link key={href} href={href} onClick={() => setSheet(null)} className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-xs ${isActive(href) ? 'border-accent text-fg' : 'border-line text-muted'}`}>
                 <Icon size={22} />
-                {label}
+                {t(label)}
               </Link>
             ))}
             {sheet === 'more' && (
               <button onClick={() => logout()} className="flex flex-col items-center gap-2 rounded-xl border border-line p-4 text-xs text-muted">
-                <LogOut size={22} /> Abmelden
+                <LogOut size={22} /> {t('Abmelden')}
               </button>
             )}
           </div>
@@ -240,6 +242,7 @@ function NavGroup({
   tiles?: boolean; // compact 3-column grid on the wide sidebar (used for the many games)
 }) {
   // On the icon rail (tablet or folded) groups are always open; closing only hides labels there.
+  const t = useT();
   return (
     <div>
       {title && (
@@ -248,7 +251,7 @@ function NavGroup({
           aria-expanded={open}
           className={`eyebrow group mb-1 hidden w-full items-center justify-between rounded-md px-3 py-1 hover:text-muted ${wide ? 'lg:flex' : ''}`}
         >
-          {title}
+          {t(title)}
           <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
         </button>
       )}
@@ -258,13 +261,13 @@ function NavGroup({
             <Link
               key={href}
               href={href}
-              title={label}
+              title={t(label)}
               className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[10.5px] leading-tight transition ${
                 isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
               }`}
             >
               <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
-              <span className="w-full truncate text-center">{label}</span>
+              <span className="w-full truncate text-center">{t(label)}</span>
             </Link>
           ))}
         </div>
@@ -274,13 +277,13 @@ function NavGroup({
           <Link
             key={href}
             href={href}
-            title={label}
+            title={t(label)}
             className={`relative flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
               isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
             }`}
           >
             <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
-            <span className={wide ? 'hidden lg:inline' : 'hidden'}>{label}</span>
+            <span className={wide ? 'hidden lg:inline' : 'hidden'}>{t(label)}</span>
             {!!badge && (
               <span className={`grid h-4 min-w-4 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-fg ${wide ? 'absolute top-1 right-2 lg:static lg:ml-auto' : 'absolute top-1 right-2'}`}>
                 {badge}
@@ -294,22 +297,24 @@ function NavGroup({
 }
 
 function TabButton({ icon: Icon, label, href, active, onClick }: { icon: LucideIcon; label: string; href?: string; active?: boolean; onClick?: () => void }) {
+  const t = useT();
   const cls = `flex flex-col items-center gap-1 py-2.5 text-[11px] ${active ? 'text-accent' : 'text-muted'}`;
   const body = (
     <>
-      <Icon size={20} /> {label}
+      <Icon size={20} /> {t(label)}
     </>
   );
   return href ? <Link href={href} className={cls}>{body}</Link> : <button onClick={onClick} className={cls}>{body}</button>;
 }
 
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+  const t = useT();
   return (
     <div className="fixed inset-0 z-50 flex items-end bg-black/60 md:items-center md:justify-center" onClick={onClose}>
       <div className="w-full rounded-t-2xl border-t border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:max-w-md md:rounded-2xl md:border" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-semibold">{title}</h2>
-          <button onClick={onClose} className="btn-ghost h-8 w-8 px-0" aria-label="Schließen"><X size={18} /></button>
+          <h2 className="font-semibold">{t(title)}</h2>
+          <button onClick={onClose} className="btn-ghost h-8 w-8 px-0" aria-label={t('Schließen')}><X size={18} /></button>
         </div>
         {children}
       </div>
@@ -318,6 +323,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
 }
 
 function Notifications({ items }: { items: Notification[] }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const unread = items.filter((n) => !n.isRead).length;
   const toggle = () => {
@@ -326,7 +332,7 @@ function Notifications({ items }: { items: Notification[] }) {
   };
   return (
     <div className="relative">
-      <button onClick={toggle} className="btn-ghost relative h-9 w-9 px-0" aria-label="Benachrichtigungen">
+      <button onClick={toggle} className="btn-ghost relative h-9 w-9 px-0" aria-label={t('Benachrichtigungen')}>
         <Bell size={18} />
         {unread > 0 && <span className="absolute top-1 right-1 h-2 w-2 rounded-full bg-accent" />}
       </button>
@@ -335,19 +341,19 @@ function Notifications({ items }: { items: Notification[] }) {
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
           <div className="panel fixed inset-x-3 top-16 z-50 p-2 shadow-2xl shadow-black/50 sm:absolute sm:inset-x-auto sm:top-11 sm:right-0 sm:w-80">
             <div className="flex items-center justify-between px-2 py-1.5">
-              <span className="text-sm font-semibold">Benachrichtigungen</span>
-              {items.length > 0 && <button className="text-xs text-muted hover:text-fg" onClick={() => clearNotifications()}>Alle löschen</button>}
+              <span className="text-sm font-semibold">{t('Benachrichtigungen')}</span>
+              {items.length > 0 && <button className="text-xs text-muted hover:text-fg" onClick={() => clearNotifications()}>{t('Alle löschen')}</button>}
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
-              {items.length === 0 && <p className="py-8 text-center text-sm text-faint">Keine Benachrichtigungen</p>}
+              {items.length === 0 && <p className="py-8 text-center text-sm text-faint">{t('Keine Benachrichtigungen')}</p>}
               {items.map((n) => (
                 <div key={n.id} className="rounded-lg px-2 py-2.5 hover:bg-raised">
                   <p className="flex items-center gap-2 text-sm font-medium">
                     {!n.isRead && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
-                    {n.title}
+                    {t(n.title)}
                   </p>
-                  <p className="text-sm text-muted">{n.message}</p>
-                  <p className="mt-0.5 text-[11px] text-faint">{timeAgo(n.createdAt)}</p>
+                  <p className="text-sm text-muted">{t(n.message)}</p>
+                  <p className="mt-0.5 text-[11px] text-faint">{t(timeAgo(n.createdAt))}</p>
                 </div>
               ))}
             </div>
@@ -360,6 +366,8 @@ function Notifications({ items }: { items: Notification[] }) {
 
 /** Avatar button with the account menu: profile, stats, settings, support, admin, logout. */
 function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
+  const t = useT();
+  const lang = useLang();
   const [open, setOpen] = useState(false);
   const [theme, pickTheme] = useState(user.theme);
   const close = () => setOpen(false);
@@ -383,32 +391,42 @@ function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
           <div className="fixed inset-0 z-40" onClick={close} />
           <div className="panel absolute top-12 right-0 z-50 w-56 p-1.5 shadow-2xl shadow-black/50">
             <Link href={`/profile/${user.username}`} onClick={close} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-raised">
-              <UserRound size={16} className="text-muted" /> Mein Profil
+              <UserRound size={16} className="text-muted" /> {t('Mein Profil')}
             </Link>
             {items.map(({ href, label, icon: Icon }) => (
               <Link key={href} href={href} onClick={close} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-raised">
-                <Icon size={16} className="text-muted" /> {label}
+                <Icon size={16} className="text-muted" /> {t(label)}
               </Link>
             ))}
             <div className="my-1 border-t border-line" />
             <p className="px-3 pt-1.5 pb-1 text-[11px] text-faint">Theme</p>
             <div className="grid grid-cols-8 gap-1 px-2 pb-2">
-              {THEMES.map((t) => (
+              {THEMES.map((th) => (
                 <button
-                  key={t}
-                  onClick={() => changeTheme(t)}
-                  title={THEME_INFO[t].name}
-                  aria-label={`Theme ${THEME_INFO[t].name}`}
-                  aria-pressed={theme === t}
-                  className={`grid aspect-square place-items-center rounded-full ring-offset-2 ring-offset-surface ${theme === t ? 'ring-2 ring-fg' : 'hover:ring-1 hover:ring-faint'}`}
+                  key={th}
+                  onClick={() => changeTheme(th)}
+                  title={t(THEME_INFO[th].name)}
+                  aria-label={`Theme ${t(THEME_INFO[th].name)}`}
+                  aria-pressed={theme === th}
+                  className={`grid aspect-square place-items-center rounded-full ring-offset-2 ring-offset-surface ${theme === th ? 'ring-2 ring-fg' : 'hover:ring-1 hover:ring-faint'}`}
                 >
-                  <span className="h-full w-full rounded-full" style={{ background: THEME_INFO[t].color }} />
+                  <span className="h-full w-full rounded-full" style={{ background: THEME_INFO[th].color }} />
                 </button>
               ))}
             </div>
+            <div className="flex items-center justify-between gap-2 px-3 py-1.5">
+              <span className="text-[11px] text-faint">{t('Sprache')}</span>
+              <div className="flex rounded-md bg-bg p-0.5 text-xs">
+                {(['de', 'en'] as const).map((l) => (
+                  <button key={l} onClick={() => void setLang(l)} className={`rounded px-2 py-0.5 font-medium ${lang === l ? 'bg-raised text-fg' : 'text-muted hover:text-fg'}`}>
+                    {l.toUpperCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="my-1 border-t border-line" />
             <button onClick={() => logout()} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted hover:bg-raised hover:text-fg">
-              <LogOut size={16} /> Abmelden
+              <LogOut size={16} /> {t('Abmelden')}
             </button>
           </div>
         </>
@@ -420,6 +438,7 @@ function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
 /** Countdown strip under the header for a server restart or scheduled maintenance. */
 function CountdownBanner() {
   const { countdown } = useLive();
+  const t = useT();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!countdown) return;
@@ -439,14 +458,16 @@ function CountdownBanner() {
       <span>
         {left
           ? restart
-            ? 'Server-Neustart in '
-            : `Wartung${countdown.minutes ? ` (ca. ${countdown.minutes} Min.)` : ''} in `
+            ? t('Server-Neustart in ')
+            : countdown.minutes
+              ? t('Wartung (ca. {n} Min.) in ', { n: countdown.minutes })
+              : t('Wartung in ')
           : restart
-            ? 'Neustart läuft – gleich wieder da …'
-            : 'Wartung beginnt …'}
+            ? t('Neustart läuft – gleich wieder da …')
+            : t('Wartung beginnt …')}
         {left > 0 && <span className="num font-bold">{time}</span>}
       </span>
-      <span className="hidden text-xs opacity-70 sm:inline">· Laufende Einsätze werden zurückgebucht</span>
+      <span className="hidden text-xs opacity-70 sm:inline">· {t('Laufende Einsätze werden zurückgebucht')}</span>
     </div>
   );
 }

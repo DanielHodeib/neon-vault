@@ -9,6 +9,7 @@ import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Bet = { userId: string; username: string; amount: number; cashedAt: number | null };
 type State = { id: number; phase: 'waiting' | 'running' | 'crashed'; startsAt: number; startedAt: number; multiplier: number; point: number | null; history: number[]; bets: Bet[] };
@@ -17,6 +18,7 @@ const W = 600;
 const H = 300;
 
 export function Crash() {
+  const t = useT();
   const { call, balance, me } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [multiplier, setMultiplier] = useState(1);
@@ -96,13 +98,13 @@ export function Crash() {
         <div className="absolute inset-0 grid place-items-center">
           {state.phase === 'waiting' ? (
             <div className="text-center">
-              <p className="text-sm text-muted">Nächste Runde startet in</p>
+              <p className="text-sm text-muted">{t('Nächste Runde startet in')}</p>
               <p className="num mt-1 text-4xl font-semibold sm:text-5xl">{countdown.toFixed(1)}s</p>
             </div>
           ) : (
             <div className="text-center">
               <p className={`num text-5xl font-semibold tracking-tight sm:text-7xl ${crashed ? 'text-loss' : ''}`}>{multiplier.toFixed(2)}×</p>
-              {crashed && <p className="mt-1 text-sm text-loss">Abgestürzt</p>}
+              {crashed && <p className="mt-1 text-sm text-loss">{t('Abgestürzt')}</p>}
             </div>
           )}
         </div>
@@ -114,29 +116,29 @@ export function Crash() {
     <div className="card space-y-4">
       <BetInput value={amount} onChange={setAmount} balance={balance} />
       <div>
-        <label className="label">Automatisch aussteigen bei</label>
+        <label className="label">{t('Automatisch aussteigen bei')}</label>
         <input className="input num" type="number" inputMode="decimal" step="0.1" min="1.01" placeholder="z. B. 2,00" value={auto} onChange={(e) => setAuto(e.target.value)} />
       </div>
       {state.phase === 'running' && myBet && !myBet.cashedAt ? (
         <button className="btn-primary h-12 w-full text-base" onClick={() => call('crash:cashout')}>
-          Auszahlen · <span className="num">{coins(Math.floor(myBet.amount * multiplier))}</span>
+          {t('Auszahlen')} · <span className="num">{coins(Math.floor(myBet.amount * multiplier))}</span>
         </button>
       ) : state.phase === 'waiting' && myBet ? (
-        <button className="btn-secondary h-12 w-full" onClick={() => call('crash:cancel')}>Einsatz zurückziehen</button>
+        <button className="btn-secondary h-12 w-full" onClick={() => call('crash:cancel')}>{t('Einsatz zurückziehen')}</button>
       ) : (
         <button className="btn-primary h-12 w-full text-base" disabled={state.phase !== 'waiting'} onClick={() => call('crash:bet', { amount, auto: auto ? Number(auto.replace(',', '.')) : null })}>
-          {state.phase === 'waiting' ? 'Einsatz platzieren' : 'Nächste Runde abwarten'}
+          {state.phase === 'waiting' ? t('Einsatz platzieren') : t('Nächste Runde abwarten')}
         </button>
       )}
-      {myBet?.cashedAt && <p className="text-center text-sm text-win">Ausgestiegen bei {myBet.cashedAt.toFixed(2)}×</p>}
+      {myBet?.cashedAt && <p className="text-center text-sm text-win">{t('Ausgestiegen bei {x}×', { x: myBet.cashedAt.toFixed(2) })}</p>}
     </div>
   );
 
   const extra = (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Diese Runde · {state.bets.length} Spieler</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Diese Runde · {n} Spieler', { n: state.bets.length })}</p>
       {state.bets.length === 0 ? (
-        <Empty>Noch keine Einsätze.</Empty>
+        <Empty>{t('Noch keine Einsätze.')}</Empty>
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.bets.map((b) => (
@@ -152,5 +154,5 @@ export function Crash() {
     </div>
   );
 
-  return <GameFrame title="Crash" subtitle="Steig aus, bevor der Multiplikator crasht." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Crash" subtitle={t('Steig aus, bevor der Multiplikator crasht.')} stage={stage} controls={controls} extra={extra} />;
 }

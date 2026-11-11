@@ -8,12 +8,14 @@ import { useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
+import { useT } from '@/components/I18n';
 
 type Result = { roll: number; win: boolean; multiplier: number; payout: number };
 
 const fmt = (n: number) => n.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export function Dice() {
+  const t = useT();
   const { call, balance, holdBalance } = useLive();
   const [amount, setAmount] = useState(100);
   const [target, setTarget] = useState(50);
@@ -58,7 +60,7 @@ export function Dice() {
         {rolling !== null ? fmt(rolling) : last ? fmt(last.roll) : '--,--'}
       </p>
       <p className="mt-2 min-h-6 text-center text-sm text-muted">
-        {last && (last.win ? <>+<span className="num text-win">{coins(last.payout)}</span> NVC</> : 'Leider verloren')}
+        {last && (last.win ? <>+<span className="num text-win">{coins(last.payout)}</span> NVC</> : t('Leider verloren'))}
       </p>
       <div className="mx-auto mt-8 max-w-lg">
         <div className="relative h-2 rounded-full bg-loss/40">
@@ -67,7 +69,7 @@ export function Dice() {
         </div>
         <input
           type="range"
-          aria-label="Zielzahl"
+          aria-label={t('Zielzahl')}
           className="mt-4 w-full accent-accent"
           min={DICE_MIN}
           max={DICE_MAX}
@@ -77,7 +79,7 @@ export function Dice() {
         <div className="num flex justify-between text-xs text-faint"><span>0</span><span>50</span><span>100</span></div>
       </div>
       <div className="mx-auto mt-6 grid max-w-lg grid-cols-3 gap-2 text-center">
-        {[['Ziel', `${side === 'under' ? '<' : '>'} ${target}`], ['Chance', `${chance} %`], ['Multiplikator', `${multiplier}×`]].map(([label, value]) => (
+        {[[t('Ziel'), `${side === 'under' ? '<' : '>'} ${target}`], ['Chance', `${chance} %`], [t('Multiplikator'), `${multiplier}×`]].map(([label, value]) => (
           <div key={label} className="rounded-lg bg-raised px-2 py-2.5">
             <p className="eyebrow">{label}</p>
             <p className="num mt-1 text-sm font-medium">{value}</p>
@@ -92,13 +94,13 @@ export function Dice() {
       <BetInput value={amount} onChange={setAmount} balance={balance} />
       <div className="grid grid-cols-2 gap-2">
         {(['under', 'over'] as const).map((s) => (
-          <button key={s} className={side === s ? 'btn-primary' : 'btn-secondary'} onClick={() => setSide(s)}>{s === 'under' ? 'Unter' : 'Über'}</button>
+          <button key={s} className={side === s ? 'btn-primary' : 'btn-secondary'} onClick={() => setSide(s)}>{s === 'under' ? t('Unter') : t('Über')}</button>
         ))}
       </div>
       <p className="flex justify-between text-sm text-muted">
-        Möglicher Gewinn <span className="num text-gold">{coins(Math.floor(amount * multiplier))}</span>
+        {t('Möglicher Gewinn')} <span className="num text-gold">{coins(Math.floor(amount * multiplier))}</span>
       </p>
-      <button className="btn-primary h-12 w-full text-base" onClick={roll} disabled={busy}>Würfeln</button>
+      <button className="btn-primary h-12 w-full text-base" onClick={roll} disabled={busy}>{t('Würfeln')}</button>
     </div>
   );
 
@@ -110,5 +112,5 @@ export function Dice() {
     </div>
   );
 
-  return <GameFrame title="Dice" subtitle="Wähle Zielzahl und Richtung, dann würfeln." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Dice" subtitle={t('Wähle Zielzahl und Richtung, dann würfeln.')} stage={stage} controls={controls} extra={extra} />;
 }

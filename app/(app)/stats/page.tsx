@@ -1,16 +1,20 @@
 import { Check } from 'lucide-react';
 
 import { Empty, PageHeader, Section, Stat } from '@/components/ui';
-import { achievements } from '@/lib/achievements';
+import { achievements, ALL_GAMES } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
 import { coins, GAME_NAMES } from '@/lib/format';
 import { dailyNet, playerStats } from '@/lib/stats';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Statistik' };
+export async function generateMetadata() {
+  return { title: (await getT())('Statistik') };
+}
 
 const signed = (n: number) => `${n > 0 ? '+' : ''}${coins(n)}`;
 
 export default async function StatsPage() {
+  const t = await getT();
   const user = await requireUser();
   const [{ games, stats }, days] = await Promise.all([playerStats(user.id), dailyNet(user.id)]);
   const rows = [...games].filter(([, g]) => g.staked > 0).sort((a, b) => b[1].staked - a[1].staked);
@@ -45,7 +49,7 @@ export default async function StatsPage() {
           </div>
           <div className="mt-2 flex justify-between text-[11px] text-faint">
             <span>{new Date(days[0].day).toLocaleDateString('de-DE')}</span>
-            <span>heute</span>
+            <span>{t('heute')}</span>
           </div>
         </Section>
 
@@ -56,7 +60,7 @@ export default async function StatsPage() {
               {rows.map(([game, g]) => (
                 <li key={game} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-2.5 text-sm">
                   <span>
-                    {GAME_NAMES[game] ?? game} <span className="text-xs text-faint">· {g.rounds} Runden</span>
+                    {t(GAME_NAMES[game] ?? game)} <span className="text-xs text-faint">· {t('{n} Runden', { n: g.rounds })}</span>
                   </span>
                   <span className="num text-muted">{coins(g.staked)}</span>
                   <span className={`num w-24 text-right ${g.net >= 0 ? 'text-win' : 'text-loss'}`}>{signed(g.net)}</span>
@@ -73,8 +77,8 @@ export default async function StatsPage() {
                     <Check size={14} />
                   </span>
                   <span>
-                    <span className="block font-medium">{a.title}</span>
-                    <span className="text-xs text-muted">{a.description}</span>
+                    <span className="block font-medium">{t(a.title)}</span>
+                    <span className="text-xs text-muted">{t(a.description, { n: ALL_GAMES })}</span>
                   </span>
                 </li>
               ))}

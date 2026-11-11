@@ -8,6 +8,7 @@ import { useLive } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
+import { useT } from '@/components/I18n';
 
 type Drop = { path: number[]; slot: number; multiplier: number; payout: number };
 type Ball = Drop & { id: number; start: number; bet: number };
@@ -37,6 +38,7 @@ function ballAt(path: number[], t: number) {
 }
 
 export function Plinko() {
+  const t = useT();
   const { call, balance, holdBalance } = useLive();
   const [amount, setAmount] = useState(100);
   const [risk, setRisk] = useState<PlinkoRisk>('medium');
@@ -75,7 +77,7 @@ export function Plinko() {
 
   const stage = (
     <div className="panel p-3 sm:p-6">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mx-auto block w-full max-w-xl" role="img" aria-label="Plinko-Brett">
+      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="mx-auto block w-full max-w-xl" role="img" aria-label={t('Plinko-Brett')}>
         {PEGS.flat().map(([x, y], i) => <circle key={i} cx={x} cy={y} r={1.1} className="fill-faint" />)}
         {balls.map((b) => {
           const { x, y } = ballAt(b.path, Math.max(0, now - b.start) / DURATION);
@@ -94,21 +96,21 @@ export function Plinko() {
     <div className="card space-y-4">
       <BetInput value={amount} onChange={setAmount} balance={balance} />
       <div>
-        <label className="label">Risiko</label>
+        <label className="label">{t('Risiko')}</label>
         <div className="flex gap-2">
           {(Object.keys(PLINKO) as PlinkoRisk[]).map((r) => (
-            <button key={r} className={risk === r ? 'chip-active' : 'chip'} onClick={() => setRisk(r)}>{PLINKO_RISK_LABEL[r]}</button>
+            <button key={r} className={risk === r ? 'chip-active' : 'chip'} onClick={() => setRisk(r)}>{t(PLINKO_RISK_LABEL[r])}</button>
           ))}
         </div>
       </div>
-      <button className="btn-primary h-12 w-full text-base" onClick={drop}>Ball fallen lassen</button>
+      <button className="btn-primary h-12 w-full text-base" onClick={drop}>{t('Ball fallen lassen')}</button>
       <p className="text-xs text-faint">{PLINKO_ROWS} Reihen · bis {Math.max(...table)}×</p>
     </div>
   );
 
   const extra = results.length > 0 && (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Letzte Bälle</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Letzte Bälle')}</p>
       <ul className="divide-y divide-line text-sm">
         {results.map((r, i) => (
           <li key={i} className="flex justify-between gap-2 px-4 py-2.5">
@@ -120,5 +122,5 @@ export function Plinko() {
     </div>
   );
 
-  return <GameFrame title="Plinko" subtitle="Lass die Kugel fallen und hoff auf die Ränder." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Plinko" subtitle={t('Lass die Kugel fallen und hoff auf die Ränder.')} stage={stage} controls={controls} extra={extra} />;
 }

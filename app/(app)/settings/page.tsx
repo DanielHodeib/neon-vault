@@ -6,8 +6,11 @@ import { coins, THEME_INFO, THEMES } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { effectiveLimit, limitPending } from '@/lib/limits';
 import { RANKS, rankAllowed } from '@/lib/ranks';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Einstellungen' };
+export async function generateMetadata() {
+  return { title: (await getT())('Einstellungen') };
+}
 
 function Toggle({ name, label, hint, checked }: { name: string; label: string; hint?: string; checked: boolean }) {
   return (
@@ -23,6 +26,7 @@ function Toggle({ name, label, hint, checked }: { name: string; label: string; h
 }
 
 export default async function SettingsPage() {
+  const t = await getT();
   const user = await requireUser();
   const pendingLimit = limitPending(user);
   const ownerFriend = (await db.friendship.count({
@@ -34,85 +38,85 @@ export default async function SettingsPage() {
     <>
       <PageHeader title="Einstellungen" />
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <Section title="Profil" pad>
+        <Section title={t('Profil')} pad>
           <ActionForm action={updateProfile} className="space-y-4">
             <ImageField kind="avatar" name="avatarUrl" label="Avatar" initial={user.avatarUrl} />
             <ImageField kind="banner" name="bannerUrl" label="Banner" initial={user.bannerUrl} />
             <div>
-              <label className="label">Über mich</label>
+              <label className="label">{t('Über mich')}</label>
               <textarea className="input h-auto py-2" name="bio" maxLength={240} rows={3} defaultValue={user.bio} />
             </div>
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr]">
               <div>
-                <label className="label">Clan-Tag</label>
+                <label className="label">{t('Clan-Tag')}</label>
                 <input className="input uppercase" name="clanTag" maxLength={5} defaultValue={user.clanTag ?? ''} />
               </div>
               <div>
-                <label className="label">Chat-Farbe</label>
+                <label className="label">{t('Chat-Farbe')}</label>
                 <input className="h-10 w-full cursor-pointer rounded-lg border border-line bg-bg p-1 sm:w-14" type="color" name="chatColor" defaultValue={user.chatColor ?? '#e8eaed'} />
               </div>
               <div className="col-span-2 sm:col-span-1">
-                <label className="label">Angezeigter Rang</label>
+                <label className="label">{t('Angezeigter Rang')}</label>
                 <select className="input" name="rankTag" defaultValue={user.rankTag}>
                   {ranks.map((r) => <option key={r.tag} value={r.tag}>{r.tag.replace(/_/g, ' ')}</option>)}
                 </select>
               </div>
             </div>
-            <SubmitButton>Profil speichern</SubmitButton>
+            <SubmitButton>{t('Profil speichern')}</SubmitButton>
           </ActionForm>
         </Section>
 
         <div className="space-y-4">
-          <Section title="Darstellung & Privatsphäre" pad>
+          <Section title={t('Darstellung & Privatsphäre')} pad>
             <ActionForm action={updateSettings} className="space-y-4">
               <div>
                 <label className="label">Theme</label>
                 <div className="flex flex-wrap gap-2">
-                  {THEMES.map((t) => (
-                    <label key={t} className="cursor-pointer">
-                      <input type="radio" name="theme" value={t} defaultChecked={user.theme === t} className="peer sr-only" />
+                  {THEMES.map((th) => (
+                    <label key={th} className="cursor-pointer">
+                      <input type="radio" name="theme" value={th} defaultChecked={user.theme === th} className="peer sr-only" />
                       <span className="chip gap-2 peer-checked:border-accent peer-checked:text-fg">
-                        <span className="h-3 w-3 rounded-full" style={{ background: THEME_INFO[t].color }} />
-                        {THEME_INFO[t].name}
+                        <span className="h-3 w-3 rounded-full" style={{ background: THEME_INFO[th].color }} />
+                        {t(THEME_INFO[th].name)}
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
               <div className="divide-y divide-line border-y border-line">
-                <Toggle name="soundEnabled" label="Ton bei Erwähnungen" hint="Wenn jemand @deinName im Chat schreibt" checked={user.soundEnabled} />
-                <Toggle name="publicProfile" label="Öffentliches Profil" checked={user.publicProfile} />
-                <Toggle name="showBalance" label="Guthaben im Profil zeigen" checked={user.showBalance} />
-                <Toggle name="showHistory" label="Letzte Spiele im Profil zeigen" checked={user.showHistory} />
+                <Toggle name="soundEnabled" label={t('Ton bei Erwähnungen')} hint={t('Wenn jemand @deinName im Chat schreibt')} checked={user.soundEnabled} />
+                <Toggle name="publicProfile" label={t('Öffentliches Profil')} checked={user.publicProfile} />
+                <Toggle name="showBalance" label={t('Guthaben im Profil zeigen')} checked={user.showBalance} />
+                <Toggle name="showHistory" label={t('Letzte Spiele im Profil zeigen')} checked={user.showHistory} />
               </div>
               <div>
-                <label className="label" htmlFor="dailyLimit">Tageslimit für Einsätze (Selbstschutz)</label>
-                <input id="dailyLimit" className="input num" name="dailyLimit" type="number" inputMode="numeric" min={100} placeholder="leer = kein Limit" defaultValue={(pendingLimit ? user.dailyLimitNext : effectiveLimit(user))?.toString() ?? ''} />
-                <p className="mt-1 text-xs text-faint">Zählt alle Einsätze und Poker-Buy-ins ab Mitternacht (UTC). Senken gilt sofort, Erhöhen oder Entfernen erst nach 24 Stunden.</p>
+                <label className="label" htmlFor="dailyLimit">{t('Tageslimit für Einsätze (Selbstschutz)')}</label>
+                <input id="dailyLimit" className="input num" name="dailyLimit" type="number" inputMode="numeric" min={100} placeholder={t('leer = kein Limit')} defaultValue={(pendingLimit ? user.dailyLimitNext : effectiveLimit(user))?.toString() ?? ''} />
+                <p className="mt-1 text-xs text-faint">{t('Zählt alle Einsätze und Poker-Buy-ins ab Mitternacht (UTC). Senken gilt sofort, Erhöhen oder Entfernen erst nach 24 Stunden.')}</p>
                 {pendingLimit && (
                   <p className="mt-2 rounded-lg bg-gold/10 px-3 py-2 text-xs text-gold">
-                    Aktuell gilt {coins(effectiveLimit(user) ?? 0)} NVC. Ab {user.dailyLimitNextAt!.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}:{' '}
-                    {user.dailyLimitNext === null ? 'kein Limit' : `${coins(user.dailyLimitNext)} NVC`}.
+                    {t('Aktuell gilt {n} NVC. Ab {date}:', { n: coins(effectiveLimit(user) ?? 0), date: user.dailyLimitNextAt!.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) })}{' '}
+                    {user.dailyLimitNext === null ? t('kein Limit') : `${coins(user.dailyLimitNext)} NVC`}.
                   </p>
                 )}
               </div>
-              <SubmitButton>Speichern</SubmitButton>
+              <SubmitButton>{t('Speichern')}</SubmitButton>
             </ActionForm>
           </Section>
 
-          <Section title="Passwort ändern" pad>
+          <Section title={t('Passwort ändern')} pad>
             <ActionForm action={changePassword} className="space-y-3">
-              <input className="input" type="password" name="current" placeholder="Aktuelles Passwort" autoComplete="current-password" required />
-              <input className="input" type="password" name="next" placeholder="Neues Passwort (mind. 8 Zeichen)" autoComplete="new-password" required />
-              <SubmitButton className="btn-secondary">Passwort ändern</SubmitButton>
+              <input className="input" type="password" name="current" placeholder={t('Aktuelles Passwort')} autoComplete="current-password" required />
+              <input className="input" type="password" name="next" placeholder={t('Neues Passwort (mind. 8 Zeichen)')} autoComplete="new-password" required />
+              <SubmitButton className="btn-secondary">{t('Passwort ändern')}</SubmitButton>
             </ActionForm>
           </Section>
 
-          <Section title="Konto löschen" pad>
+          <Section title={t('Konto löschen')} pad>
             <ActionForm action={deleteAccount} className="space-y-3">
-              <p className="text-sm text-muted">Löscht Guthaben, Freunde und Tickets endgültig.</p>
-              <input className="input" type="password" name="password" placeholder="Passwort zur Bestätigung" required />
-              <SubmitButton className="btn-danger">Endgültig löschen</SubmitButton>
+              <p className="text-sm text-muted">{t('Löscht Guthaben, Freunde und Tickets endgültig.')}</p>
+              <input className="input" type="password" name="password" placeholder={t('Passwort zur Bestätigung')} required />
+              <SubmitButton className="btn-danger">{t('Endgültig löschen')}</SubmitButton>
             </ActionForm>
           </Section>
         </div>

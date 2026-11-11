@@ -9,6 +9,7 @@ import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound } from './sound';
 import { useCue } from './useCue';
+import { useT } from '@/components/I18n';
 
 type Winner = { userId: string; username: string; win: number; pot: number; chance: number };
 type State = {
@@ -24,6 +25,7 @@ const COLORS = ['#2f7fd1', '#8b5cf6', '#e4c06a', '#4ade80', '#f87171', '#22b8cf'
 const pct = (n: number) => `${n.toLocaleString('de-DE', { maximumFractionDigits: 1 })} %`;
 
 export function Jackpot() {
+  const t = useT();
   const { call, me, balance } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [amount, setAmount] = useState(100);
@@ -49,7 +51,7 @@ export function Jackpot() {
 
   const seconds = state.endsAt === null ? null : Math.max(0, Math.ceil((state.endsAt - now) / 1000));
   const open = state.phase === 'open' && (state.endsAt === null || state.endsAt - now >= JACKPOT_CLOSE_MS);
-  const status = state.phase === 'drawing' ? 'Ziehung …' : seconds === null ? 'Wartet auf einen zweiten Spieler' : open ? `Ziehung in ${seconds}s` : 'Einzahlungen geschlossen';
+  const status = state.phase === 'drawing' ? t('Ziehung …') : seconds === null ? t('Wartet auf einen zweiten Spieler') : open ? t('Ziehung in {n}s', { n: seconds }) : t('Einzahlungen geschlossen');
 
   const stage = (
     <div className="panel space-y-5 p-4 sm:p-6">
@@ -59,7 +61,7 @@ export function Jackpot() {
         <p className="mt-1 text-sm text-muted">{status}</p>
         {highlight && (
           <p className="mt-3 text-sm">
-            <span className="font-semibold text-win">{highlight.username}</span> gewinnt <span className="num font-semibold text-gold">{coins(highlight.win)}</span> mit {pct(highlight.chance)} Chance
+            <span className="font-semibold text-win">{highlight.username}</span> {t('gewinnt')} <span className="num font-semibold text-gold">{coins(highlight.win)}</span> {t('mit {p} Chance', { p: pct(highlight.chance) })}
           </p>
         )}
       </div>
@@ -71,7 +73,7 @@ export function Jackpot() {
         </div>
       )}
       {state.players.length === 0 ? (
-        <Empty>Noch keine Einzahlungen in dieser Runde.</Empty>
+        <Empty>{t('Noch keine Einzahlungen in dieser Runde.')}</Empty>
       ) : (
         <ul className="space-y-2">
           {state.players.map((p, i) => (
@@ -96,19 +98,19 @@ export function Jackpot() {
     <div className="card space-y-4">
       <BetInput value={amount} onChange={setAmount} balance={balance} />
       <button className="btn-primary w-full" onClick={() => void call('jackpot:deposit', { amount })} disabled={!open || amount < 1}>
-        Einzahlen
+        {t('Einzahlen')}
       </button>
       <p className="text-xs text-muted">
-        Gewinnchance proportional zur Einzahlung. Der Gewinner bekommt den Pot abzüglich {JACKPOT_FEE * 100} % Gebühr. Die Runde startet ab zwei Spielern.
+        {t('Gewinnchance proportional zur Einzahlung. Der Gewinner bekommt den Pot abzüglich {fee} % Gebühr. Die Runde startet ab zwei Spielern.', { fee: JACKPOT_FEE * 100 })}
       </p>
     </div>
   );
 
   const extra = (
     <div className="panel">
-      <p className="border-b border-line px-4 py-3 text-sm font-semibold">Letzte Gewinner</p>
+      <p className="border-b border-line px-4 py-3 text-sm font-semibold">{t('Letzte Gewinner')}</p>
       {state.history.length === 0 ? (
-        <Empty>Noch keine Ziehung.</Empty>
+        <Empty>{t('Noch keine Ziehung.')}</Empty>
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.history.map((w, i) => (
@@ -124,5 +126,5 @@ export function Jackpot() {
     </div>
   );
 
-  return <GameFrame title="Jackpot" subtitle="Gemeinsamer Pot · einer gewinnt alles" stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Jackpot" subtitle={t('Gemeinsamer Pot · einer gewinnt alles')} stage={stage} controls={controls} extra={extra} />;
 }

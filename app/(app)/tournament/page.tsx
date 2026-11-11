@@ -3,12 +3,16 @@ import { requireUser } from '@/lib/auth';
 import { coins } from '@/lib/format';
 import { kindOf, msLeftThisWeek, paidWinners, standings, TOURNAMENT_KINDS, TOURNAMENT_PRIZES } from '@/lib/tournament';
 import { startOfWeek } from '@/lib/wallet';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Turnier' };
+export async function generateMetadata() {
+  return { title: (await getT())('Turnier') };
+}
 
 const WEEK = 7 * 86_400_000;
 
 export default async function TournamentPage() {
+  const t = await getT();
   const me = await requireUser();
   const week = startOfWeek();
   const lastWeek = new Date(week.getTime() - WEEK);
@@ -27,25 +31,25 @@ export default async function TournamentPage() {
       <section className="panel mb-4 overflow-hidden">
         <div className="bg-[radial-gradient(80%_120%_at_0%_0%,rgba(228,192,106,.18),transparent)] p-5 sm:p-6">
           <p className="eyebrow">Diese Woche</p>
-          <h2 className="mt-1 text-2xl font-semibold tracking-tight">{kind.label}</h2>
-          <p className="mt-1 text-sm text-muted">{kind.description}</p>
+          <h2 className="mt-1 text-2xl font-semibold tracking-tight">{t(kind.label)}</h2>
+          <p className="mt-1 text-sm text-muted">{t(kind.description)}</p>
           <div className="mt-5 grid gap-2 sm:grid-cols-4">
             {TOURNAMENT_PRIZES.map((p, i) => (
               <div key={i} className="rounded-xl border border-line bg-bg/60 px-3 py-2.5">
-                <p className="text-[11px] text-muted">{i + 1}. Platz</p>
+                <p className="text-[11px] text-muted">{t('{n}. Platz', { n: i + 1 })}</p>
                 <p className="num font-semibold text-gold">{coins(p)} NVC</p>
               </div>
             ))}
             <div className="rounded-xl border border-line bg-bg/60 px-3 py-2.5">
               <p className="text-[11px] text-muted">Endet in</p>
-              <p className="num font-semibold">{days} T {hours} Std</p>
+              <p className="num font-semibold">{t('{d} T {h} Std', { d: days, h: hours })}</p>
             </div>
           </div>
           <p className="mt-4 text-sm">
             {myPlace >= 0 ? (
-              <>Du bist auf <span className="font-semibold text-accent">Platz {myPlace + 1}</span> mit <span className="num">{coins(everyone[myPlace].score)}</span> {kind.unit}.</>
+              <>{t('Du bist auf')} <span className="font-semibold text-accent">{t('Platz {n}', { n: myPlace + 1 })}</span> {t('mit')} <span className="num">{coins(everyone[myPlace].score)}</span> {t(kind.unit)}.</>
             ) : (
-              <span className="text-muted">Du bist noch nicht dabei – spiel eine Runde, um einzusteigen.</span>
+              <span className="text-muted">{t('Du bist noch nicht dabei – spiel eine Runde, um einzusteigen.')}</span>
             )}
           </p>
         </div>
@@ -62,7 +66,7 @@ export default async function TournamentPage() {
                   <UserLink name={r.username} />
                 </span>
                 <span className="num text-muted">
-                  {coins(r.score)} <span className="text-xs text-faint">{kind.unit}</span>
+                  {coins(r.score)} <span className="text-xs text-faint">{t(kind.unit)}</span>
                 </span>
               </li>
             ))}
@@ -81,8 +85,8 @@ export default async function TournamentPage() {
             </ul>
           </Section>
           <Section title="Nächste Woche" pad>
-            <p className="font-medium">{next.label}</p>
-            <p className="text-sm text-muted">{next.description}</p>
+            <p className="font-medium">{t(next.label)}</p>
+            <p className="text-sm text-muted">{t(next.description)}</p>
           </Section>
         </div>
       </div>

@@ -7,6 +7,7 @@ import { io, type Socket } from 'socket.io-client';
 
 import { GAME_NAMES } from '@/lib/format';
 import type { FxName } from '@/lib/fx';
+import { tPage } from '@/lib/i18n';
 import type { ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
 import { runFx } from './fx';
 
@@ -111,10 +112,10 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
         setDmUnread((n) => n + 1);
         toast(`✉️ ${m.from}: ${m.text.length > 60 ? `${m.text.slice(0, 60)}…` : m.text}`, { duration: 6000 });
       },
-      toast: (msg: string) => toast(msg),
+      toast: (msg: string) => toast(tPage(msg)),
       announcement: (a: { message: string; from: string }) => toast(`${a.from}: ${a.message}`, { duration: 10_000 }),
       notification: (n: { title: string; message: string }) => {
-        toast(`${n.title}: ${n.message}`);
+        toast(`${tPage(n.title)}: ${tPage(n.message)}`);
         router.refresh();
       },
       tickets: () => router.refresh(),
@@ -144,8 +145,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       new Promise<T | null>((resolve) => {
         if (!socket) return resolve(null);
         socket.timeout(10_000).emit(name, data ?? {}, (err: Error | null, res: { ok: boolean; error?: string } & T) => {
-          if (err) toast.error('Keine Antwort vom Server.');
-          else if (!res.ok) toast.error(res.error ?? 'Fehler');
+          if (err) toast.error(tPage('Keine Antwort vom Server.'));
+          else if (!res.ok) toast.error(tPage(res.error ?? 'Fehler'));
           resolve(err || !res.ok ? null : res);
         });
       }),

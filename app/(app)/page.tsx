@@ -8,6 +8,7 @@ import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { dailyStatus } from '@/lib/daily';
 import { netProfitSince, startOfDay } from '@/lib/wallet';
+import { getT } from '@/lib/i18nServer';
 
 const BIG_WIN = 5_000;
 
@@ -28,6 +29,7 @@ const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint:
 ];
 
 export default async function Lobby() {
+  const t = await getT();
   const user = await requireUser();
   const [today, daily, bigWins] = await Promise.all([
     netProfitSince(startOfDay(), 5),
@@ -57,8 +59,8 @@ export default async function Lobby() {
               <span className="grid h-10 w-10 place-items-center rounded-lg" style={{ background: `${tint}1a`, color: tint }}>
                 <Icon size={20} />
               </span>
-              <h3 className="mt-6 font-semibold sm:mt-8">{name}</h3>
-              <p className="text-xs text-muted sm:text-sm">{text}</p>
+              <h3 className="mt-6 font-semibold sm:mt-8">{t(name)}</h3>
+              <p className="text-xs text-muted sm:text-sm">{t(text)}</p>
             </Link>
           ))}
         </div>
@@ -67,7 +69,7 @@ export default async function Lobby() {
       <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="panel">
           <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
-            <h2 className="text-sm font-semibold">Heute vorne</h2>
+            <h2 className="text-sm font-semibold">{t('Heute vorne')}</h2>
             {king && (
               <span className="flex items-center gap-1.5 text-xs text-gold">
                 <Crown size={14} /> {king.username}
@@ -92,7 +94,7 @@ export default async function Lobby() {
         </section>
 
         <section className="panel">
-          <h2 className="border-b border-line px-5 py-3.5 text-sm font-semibold">Große Gewinne</h2>
+          <h2 className="border-b border-line px-5 py-3.5 text-sm font-semibold">{t('Große Gewinne')}</h2>
           {bigWins.length === 0 ? (
             <Empty>Noch keine großen Gewinne – sei der Erste.</Empty>
           ) : (
@@ -101,7 +103,7 @@ export default async function Lobby() {
                 <li key={w.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                   <span className="min-w-0 truncate">
                     <Link href={`/profile/${w.user.username}`} className="hover:text-accent">{w.user.username}</Link>
-                    <span className="text-faint"> · {GAME_NAMES[w.game ?? ''] ?? w.game} · {timeAgo(w.createdAt)}</span>
+                    <span className="text-faint"> · {t(GAME_NAMES[w.game ?? ''] ?? w.game ?? '')} · {t(timeAgo(w.createdAt))}</span>
                   </span>
                   <span className="num shrink-0 text-gold">+{coins(w.amount)}</span>
                 </li>

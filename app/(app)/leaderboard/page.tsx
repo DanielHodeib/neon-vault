@@ -4,8 +4,11 @@ import { coins } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { netProfitSince, startOfDay, startOfWeek } from '@/lib/wallet';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Bestenliste' };
+export async function generateMetadata() {
+  return { title: (await getT())('Bestenliste') };
+}
 
 function Board({ title, rows, tone }: { title: string; rows: { name: string; value: string; positive?: boolean }[]; tone?: boolean }) {
   return (
@@ -30,6 +33,7 @@ const profit = (rows: { username: string; profit: number }[]) =>
   rows.map((t) => ({ name: t.username, value: `${t.profit >= 0 ? '+' : ''}${coins(t.profit)}`, positive: t.profit >= 0 }));
 
 export default async function LeaderboardPage() {
+  const t = await getT();
   await requireUser();
   const [rich, xp, today, week] = await Promise.all([
     db.user.findMany({ orderBy: { balance: 'desc' }, take: 10, select: { username: true, balance: true } }),
@@ -44,7 +48,7 @@ export default async function LeaderboardPage() {
         <Board title="Heute" rows={profit(today)} tone />
         <Board title="Diese Woche" rows={profit(week)} tone />
         <Board title="Guthaben" rows={rich.map((u) => ({ name: u.username, value: coins(u.balance) }))} />
-        <Board title="Level" rows={xp.map((u) => ({ name: u.username, value: `Level ${levelOf(u.xp)}` }))} />
+        <Board title="Level" rows={xp.map((u) => ({ name: u.username, value: t('Level {n}', { n: levelOf(u.xp) }) }))} />
       </div>
     </>
   );

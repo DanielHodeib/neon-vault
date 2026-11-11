@@ -4,44 +4,48 @@ import { login } from '@/app/actions/auth';
 import { createGuestTicket } from '@/app/actions/support';
 import { ActionForm, SubmitButton } from '@/components/ui';
 import { TICKET_CATEGORIES } from '@/lib/format';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Anmelden' };
+export async function generateMetadata() {
+  return { title: (await getT())('Anmelden') };
+}
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  const t = await getT();
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Anmelden</h1>
-      <p className="mt-1 text-sm text-muted">Spiel mit deinen Freunden – nur mit Spielgeld.</p>
+      <h1 className="text-2xl font-semibold tracking-tight">{t('Anmelden')}</h1>
+      <p className="mt-1 text-sm text-muted">{t('Spiel mit deinen Freunden – nur mit Spielgeld.')}</p>
 
       <ActionForm action={login} className="mt-8 space-y-3">
         <div>
-          <label className="label" htmlFor="username">Benutzername</label>
+          <label className="label" htmlFor="username">{t('Benutzername')}</label>
           <input id="username" className="input" name="username" autoComplete="username" autoCapitalize="off" required />
         </div>
         <div>
-          <label className="label" htmlFor="password">Passwort</label>
+          <label className="label" htmlFor="password">{t('Passwort')}</label>
           <input id="password" className="input" name="password" type="password" autoComplete="current-password" required />
         </div>
-        <SubmitButton className="btn-primary mt-2 w-full">Anmelden</SubmitButton>
+        <SubmitButton className="btn-primary mt-2 w-full">{t('Anmelden')}</SubmitButton>
       </ActionForm>
 
       <p className="mt-6 text-sm text-muted">
-        Noch kein Konto? <Link href="/register" className="font-medium text-fg underline-offset-4 hover:underline">Registrieren</Link>
+        {t('Noch kein Konto?')} <Link href="/register" className="font-medium text-fg underline-offset-4 hover:underline">{t('Registrieren')}</Link>
       </p>
 
       <details className="group mt-10 border-t border-line pt-6">
-        <summary className="cursor-pointer list-none text-sm text-muted hover:text-fg">Probleme beim Anmelden? Support kontaktieren</summary>
+        <summary className="cursor-pointer list-none text-sm text-muted hover:text-fg">{t('Probleme beim Anmelden? Support kontaktieren')}</summary>
         <ActionForm action={createGuestTicket} className="mt-4 space-y-3">
           <div className="grid grid-cols-2 gap-2">
-            <input className="input" name="guestName" placeholder="Benutzername" required />
+            <input className="input" name="guestName" placeholder={t('Benutzername')} required />
             <select className="input" name="category">
-              {TICKET_CATEGORIES.map((c) => <option key={c}>{c}</option>)}
+              {TICKET_CATEGORIES.map((c) => <option key={c} value={c}>{t(c)}</option>)}
             </select>
           </div>
-          <input className="input" name="guestContact" placeholder="E-Mail oder Discord für die Antwort" required />
-          <input className="input" name="subject" placeholder="Betreff" required />
-          <textarea className="input h-auto py-2" name="message" rows={4} placeholder="Was ist passiert?" required />
-          <SubmitButton className="btn-secondary w-full">Ticket senden</SubmitButton>
+          <input className="input" name="guestContact" placeholder={t('E-Mail oder Discord für die Antwort')} required />
+          <input className="input" name="subject" placeholder={t('Betreff')} required />
+          <textarea className="input h-auto py-2" name="message" rows={4} placeholder={t('Was ist passiert?')} required />
+          <SubmitButton className="btn-secondary w-full">{t('Ticket senden')}</SubmitButton>
         </ActionForm>
       </details>
     </>

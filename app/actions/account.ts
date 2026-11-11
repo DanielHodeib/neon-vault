@@ -2,6 +2,7 @@
 
 import bcrypt from 'bcryptjs';
 import { refresh } from 'next/cache';
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
@@ -14,6 +15,7 @@ import { THEMES } from '@/lib/format';
 import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 import { changeLimit } from '@/lib/limits';
+import { isLang, LANG_COOKIE } from '@/lib/i18n';
 
 const optionalUrl = z.union([z.literal(''), z.string().trim().max(500).regex(IMAGE_URL, 'Bild-URL muss mit https:// beginnen.')]);
 const checkbox = z.literal('on').optional().transform(Boolean);
@@ -134,4 +136,11 @@ export async function setTheme(theme: string) {
   const user = await requireUser();
   if (!(THEMES as readonly string[]).includes(theme)) return;
   await db.user.update({ where: { id: user.id }, data: { theme } });
+}
+
+/** Language switch: stored in a cookie so it also works on the login page. */
+export async function setLang(lang: string) {
+  if (!isLang(lang)) return;
+  (await cookies()).set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' });
+  refresh();
 }

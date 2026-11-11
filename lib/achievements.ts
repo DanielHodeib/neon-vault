@@ -2,7 +2,7 @@ import { GAME_NAMES } from './format';
 
 export type PlayerStats = { bets: number; biggestWin: number; level: number; friends: number; gamesPlayed: number };
 
-const ALL_GAMES = Object.keys(GAME_NAMES).length;
+export const ALL_GAMES = Object.keys(GAME_NAMES).length;
 
 /** Badges derived from stats the ledger already has, so there is nothing to store or backfill. */
 export const achievements = (s: PlayerStats) => [
@@ -13,5 +13,5 @@ export const achievements = (s: PlayerStats) => [
   { key: 'win-100k', title: 'Volltreffer', description: 'Ein Einzelgewinn ab 100.000 NVC.', done: s.biggestWin >= 100_000 },
   { key: 'level-10', title: 'Aufsteiger', description: 'Level 10 erreicht.', done: s.level >= 10 },
   { key: 'friends-5', title: 'Gesellig', description: '5 Freunde.', done: s.friends >= 5 },
-  { key: 'all-games', title: 'Allrounder', description: `Alle ${ALL_GAMES} Spiele ausprobiert.`, done: s.gamesPlayed >= ALL_GAMES },
+  { key: 'all-games', title: 'Allrounder', description: 'Alle {n} Spiele ausprobiert.', done: s.gamesPlayed >= ALL_GAMES },
 ];

@@ -8,6 +8,7 @@ import toast from 'react-hot-toast';
 import { dailySpinAction } from '@/app/actions/account';
 import { coins } from '@/lib/format';
 import { DAILY_SEGMENTS, streakMultiplier } from '@/lib/games';
+import { useT } from './I18n';
 
 const SEG = 360 / DAILY_SEGMENTS.length;
 const SPIN_MS = 4200;
@@ -18,6 +19,7 @@ const factor = (m: number) => `×${m.toFixed(1).replace('.', ',')}`;
 
 export function DailySpin({ username, claimedToday, streak }: { username: string; claimedToday: boolean; streak: number }) {
   const router = useRouter();
+  const t = useT();
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [done, setDone] = useState(claimedToday);
@@ -26,14 +28,14 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
     setSpinning(true);
     const res = await dailySpinAction();
     if (!res.ok) {
-      toast.error(res.error);
+      toast.error(t(res.error));
       setSpinning(false);
       return;
     }
     // Land the winning segment under the pointer at the top.
     setRotation((r) => r - (r % 360) + 360 * 5 + (360 - res.index * SEG - SEG / 2));
     setTimeout(() => {
-      toast.success(`+${coins(res.reward)} NVC · Tag ${res.streak} (${factor(res.multiplier)})`);
+      toast.success(`+${coins(res.reward)} NVC · ${t('Tag {n}', { n: res.streak })} (${factor(res.multiplier)})`);
       setSpinning(false);
       setDone(true);
       router.refresh();
@@ -48,14 +50,14 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
     <section className="panel grid gap-6 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
       <div className="space-y-4">
         <div>
-          <p className="eyebrow">Willkommen zurück</p>
+          <p className="eyebrow">{t('Willkommen zurück')}</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">{username}</h1>
         </div>
         <div>
           <p className="flex items-center gap-2 text-sm">
             <Flame size={16} className={shown > 1 ? 'text-gold' : 'text-faint'} />
             <span>
-              Serie: <span className="num font-semibold">{shown}</span> {shown === 1 ? 'Tag' : 'Tage'}
+              {t('Serie:')} <span className="num font-semibold">{shown}</span> {shown === 1 ? t('Tag') : t('Tage')}
             </span>
             <span className="text-muted">· Bonus {factor(streakMultiplier(shown))}</span>
           </p>
@@ -65,7 +67,7 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
             ))}
           </div>
           <p className="mt-2 text-xs text-faint">
-            {done ? `Morgen wieder drehen – dann Tag ${next} mit ${factor(streakMultiplier(next))}.` : 'Jeden Tag drehen: +10 % pro Tag in Folge, bis ×1,9.'}
+            {done ? t('Morgen wieder drehen – dann Tag {n} mit {f}.', { n: next, f: factor(streakMultiplier(next)) }) : t('Jeden Tag drehen: +10 % pro Tag in Folge, bis ×1,9.')}
           </p>
         </div>
       </div>
@@ -90,7 +92,7 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
           <div className="absolute inset-0 m-auto h-10 w-10 rounded-full border border-line bg-surface" />
         </div>
         <button className="btn-primary w-44" onClick={spin} disabled={spinning || done}>
-          {spinning ? 'Dreht …' : done ? 'Morgen wieder' : 'Daily Spin'}
+          {spinning ? t('Dreht …') : done ? t('Morgen wieder') : 'Daily Spin'}
         </button>
       </div>
     </section>

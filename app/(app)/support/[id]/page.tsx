@@ -10,8 +10,10 @@ import { requireUser } from '@/lib/auth';
 import { TICKET_STATUS as STATUS } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { atLeast } from '@/lib/roles';
+import { getT } from '@/lib/i18nServer';
 
 export default async function TicketPage({ params }: PageProps<'/support/[id]'>) {
+  const t = await getT();
   const user = await requireUser();
   const isStaff = atLeast(user.role, 'SUPPORT');
   const ticket = await db.ticket.findUnique({
@@ -22,10 +24,10 @@ export default async function TicketPage({ params }: PageProps<'/support/[id]'>)
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href="/support" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ChevronLeft size={16} /> Alle Tickets</Link>
+      <Link href="/support" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ChevronLeft size={16} /> {t('Alle Tickets')}</Link>
       <PageHeader
         title={ticket.subject}
-        subtitle={`${ticket.category} · ${STATUS[ticket.status]} · ${ticket.user?.username ?? `Gast ${ticket.guestName} (${ticket.guestContact})`}`}
+        subtitle={`${t(ticket.category)} · ${t(STATUS[ticket.status])} · ${ticket.user?.username ?? `${t('Gast')} ${ticket.guestName} (${ticket.guestContact})`}`}
       />
       {isStaff && (
         <div className="-mt-2 mb-5 flex flex-wrap gap-2">
@@ -50,11 +52,11 @@ export default async function TicketPage({ params }: PageProps<'/support/[id]'>)
       {ticket.status !== 'CLOSED' ? (
         <ActionForm action={replyTicket} className="mt-5 space-y-3">
           <input type="hidden" name="ticketId" value={ticket.id} />
-          <textarea className="input h-auto py-2" name="content" rows={3} placeholder="Antwort schreiben …" required />
-          <div className="flex justify-end"><SubmitButton>Antworten</SubmitButton></div>
+          <textarea className="input h-auto py-2" name="content" rows={3} placeholder={t('Antwort schreiben …')} required />
+          <div className="flex justify-end"><SubmitButton>{t('Antworten')}</SubmitButton></div>
         </ActionForm>
       ) : (
-        <p className="mt-5 text-center text-sm text-faint">Dieses Ticket ist geschlossen.</p>
+        <p className="mt-5 text-center text-sm text-faint">{t('Dieses Ticket ist geschlossen.')}</p>
       )}
     </div>
   );

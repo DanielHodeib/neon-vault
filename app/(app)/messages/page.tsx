@@ -1,7 +1,10 @@
 import { Messages } from '@/components/Messages';
 import { PageHeader } from '@/components/ui';
+import { getT } from '@/lib/i18nServer';
 
-export const metadata = { title: 'Nachrichten' };
+export async function generateMetadata() {
+  return { title: (await getT())('Nachrichten') };
+}
 
 export default async function MessagesPage({ searchParams }: PageProps<'/messages'>) {
   const { u } = await searchParams;
