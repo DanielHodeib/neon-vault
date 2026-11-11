@@ -12,10 +12,11 @@ export const QUESTS: Quest[] = [
   { key: 'weekly_slots', weekly: true, title: 'Mega-Reeler', description: '180 Slots-Spins in dieser Woche.', target: 180, reward: 350_000, count: 'slots' },
 ];
 
-const WHERE = {
-  bets: { kind: 'BET' },
-  wins: { kind: 'WIN' },
-  slots: { kind: 'BET', game: 'slots' },
+// Cancelled bets are subtracted so bet-and-cancel can't farm quests.
+const COUNT = {
+  bets: [{ kind: 'BET' }, { kind: 'CANCEL' }],
+  wins: [{ kind: 'WIN' }, null],
+  slots: [{ kind: 'BET', game: 'slots' }, { kind: 'CANCEL', game: 'slots' }],
 } as const;
 
 // Progress is derived from the ledger, so there is nothing to reset or increment.
@@ -26,7 +27,9 @@ export async function questStatus(userId: string) {
   return Promise.all(
     QUESTS.map(async (q) => {
       const periodStart = q.weekly ? week : day;
-      const progress = await db.ledgerEntry.count({ where: { userId, createdAt: { gte: periodStart }, ...WHERE[q.count] } });
+      const [plus, minus] = COUNT[q.count];
+      const count = (where: object | null) => (where ? db.ledgerEntry.count({ where: { userId, createdAt: { gte: periodStart }, ...where } }) : 0);
+      const progress = Math.max(0, (await count(plus)) - (await count(minus)));
       const claimed = claims.some((c) => c.questKey === q.key && c.periodStart.getTime() === periodStart.getTime());
       return { ...q, progress: Math.min(progress, q.target), claimed, periodStart };
     }),

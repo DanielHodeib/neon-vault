@@ -3,8 +3,7 @@ import { createServer } from 'node:http';
 import next from 'next';
 import { Server } from 'socket.io';
 
-import { setupRealtime } from './game';
-import { refundPokerStacks } from './game/poker';
+import { closeAndRefund, setupRealtime } from './game';
 import { loadMaintenance, startEventScheduler } from './lib/events';
 import { db } from './lib/hub';
 
@@ -25,14 +24,25 @@ async function main() {
     if (!req.url?.startsWith('/socket.io/')) void handleRequest(req, res);
   });
 
-  setupRealtime(new Server(httpServer, { destroyUpgrade: false }));
+  const io = new Server(httpServer, {
+    destroyUpgrade: false,
+    // Browsers always send Origin; only our own pages may open a socket with the session cookie.
+    allowRequest: (req, done) => {
+      const origin = req.headers.origin;
+      done(null, !origin || new URL(origin).host === (req.headers['x-forwarded-host'] ?? req.headers.host));
+    },
+  });
+  setupRealtime(io);
   startEventScheduler();
   httpServer.listen(port, () => console.log(`> Neon Vault läuft auf http://localhost:${port}`));
 }
 
+let shuttingDown = false;
 const shutdown = async () => {
-  console.log('> Fahre herunter, gebe Poker-Stacks zurück …');
-  await refundPokerStacks().catch(console.error);
+  if (shuttingDown) return; // a second Ctrl+C must not refund twice
+  shuttingDown = true;
+  console.log('> Fahre herunter, gebe offene Einsätze zurück …');
+  await closeAndRefund().catch(console.error);
   await db.$disconnect();
   process.exit(0);
 };

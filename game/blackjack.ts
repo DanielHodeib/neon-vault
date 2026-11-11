@@ -2,7 +2,7 @@ import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { UserError } from '@/lib/hub';
-import { payout, placeBet } from '@/lib/wallet';
+import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { bjTotal, isBlackjack, newDeck, rankValue } from './cards';
 import { id as newId, randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
@@ -79,7 +79,7 @@ export function registerBlackjack(io: Server): Register {
       if (hi >= 0) {
         t.turn = { seat: si, hand: hi };
         if (!s.userId) return schedule(t, 900, () => botMove(t));
-        schedule(t, TURN_MS, () => act(t, si, 'stand'));
+        schedule(t, TURN_MS, () => void act(t, si, 'stand').catch(console.error));
         return emit(t);
       }
     }
@@ -88,7 +88,7 @@ export function registerBlackjack(io: Server): Register {
 
   const botMove = (t: Table) => {
     const { seat } = t.turn!;
-    act(t, seat, bjTotal(t.seats[seat].hands[t.turn!.hand].cards) < 17 ? 'hit' : 'stand');
+    void act(t, seat, bjTotal(t.seats[seat].hands[t.turn!.hand].cards) < 17 ? 'hit' : 'stand').catch(console.error);
   };
 
   const dealerPlay = (t: Table) => {
@@ -218,8 +218,13 @@ export function registerBlackjack(io: Server): Register {
         const t = myTable();
         const seat = t.seats.find((s) => s.userId === user.id)!;
         if (t.phase !== 'betting' || seat.bet) throw new UserError('Einsatz gerade nicht möglich.');
-        await placeBet(user.id, amount, 'blackjack');
-        seat.bet = amount;
+        seat.bet = amount; // reserve before the await so a second bet is rejected
+        try {
+          await placeBet(user.id, amount, 'blackjack');
+        } catch (err) {
+          Object.assign(seat, { bet: 0, hands: [] });
+          throw err;
+        }
         const humans = t.seats.filter((s) => s.userId);
         if (humans.every((s) => s.bet)) deal(t);
         else {
@@ -242,4 +247,17 @@ export function registerBlackjack(io: Server): Register {
       }, 5_000);
     });
   };
+}
+
+/** Shutdown: unsettled stakes (bets, doubles, splits, insurance) go back. */
+export async function refundBlackjack() {
+  for (const t of tables.values()) {
+    clearTimeout(t.timer);
+    if (t.phase === 'result') continue;
+    for (const s of t.seats) {
+      const staked = (s.hands.length ? s.hands.reduce((sum, h) => sum + h.bet, 0) : s.bet) + s.insurance;
+      if (s.userId && staked > 0) await cancelBet(s.userId, staked, 'blackjack').catch(console.error);
+    }
+  }
+  tables.clear();
 }

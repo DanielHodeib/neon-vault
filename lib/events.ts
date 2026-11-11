@@ -34,7 +34,7 @@ export function startEvent(type: GlobalEvent['type'], minutes = 5 + randomInt(6)
   broadcast('event', hub.event);
   systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
   timers.eventEnd = setTimeout(stopEvent, minutes * 60_000);
-  if (type === 'RAIN') timers.rainDrops = setInterval(rainDrop, 45_000);
+  if (type === 'RAIN') timers.rainDrops = setInterval(() => void rainDrop().catch(console.error), 45_000);
   return true;
 }
 
@@ -78,7 +78,10 @@ export function startRain(amount: number, seconds: number, players: number, by: 
     hub.rainActive = false;
     broadcast('rain', null);
     const since = Date.now() - 10 * 60_000;
-    const winners = shuffle([...hub.chatActive].filter(([, at]) => at >= since).map(([id]) => id)).slice(0, players);
+    const active = [...hub.chatActive].filter(([, at]) => at >= since).map(([id]) => id);
+    // Only accounts that still exist; a deleted user would abort the whole payout.
+    const existing = (await db.user.findMany({ where: { id: { in: active } }, select: { id: true } })).map((u) => u.id);
+    const winners = shuffle(existing).slice(0, players);
     const share = Math.floor(amount / Math.max(1, winners.length));
     if (!winners.length || share < 1) return systemMessage('Rain vorbei – niemand war im Chat aktiv.');
     await applyLedger(winners.map((userId) => ({ userId, amount: share, kind: 'RAIN' as const, note: `Rain von ${by}` })));

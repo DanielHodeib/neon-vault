@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { systemMessage } from '@/lib/events';
 import { REDS, WHEEL } from '@/lib/games';
 import { UserError } from '@/lib/hub';
-import { payout, placeBet } from '@/lib/wallet';
+import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
 
@@ -104,7 +104,7 @@ export const registerRoulette: Register = (io, socket) => {
       await placeBet(user.id, total, 'roulette');
       if (table.phase !== 'betting') {
         // The spin started while we were debiting; give the stake back.
-        await payout(user.id, total, 'roulette', 'REFUND');
+        await cancelBet(user.id, total, 'roulette');
         throw new UserError('Einsätze sind geschlossen.');
       }
       const player: Player = table.players.get(user.id) ?? { username: user.username, bets: [] };
@@ -115,3 +115,11 @@ export const registerRoulette: Register = (io, socket) => {
     { play: true },
   );
 };
+
+/** Shutdown: bets of a round that has not been settled yet go back. */
+export async function refundRoulette() {
+  if (table.phase === 'result') return; // settlement already paying out
+  const players = [...table.players];
+  table.players.clear();
+  for (const [userId, p] of players) await cancelBet(userId, p.bets.reduce((s, b) => s + b.amount, 0), 'roulette').catch(console.error);
+}

@@ -3,7 +3,8 @@ import { createHash, randomBytes } from 'node:crypto';
 import { db } from './hub';
 
 // Framework-free session logic, shared by Next (lib/auth.ts) and the socket server.
-export const SESSION_COOKIE = 'nv_session';
+// __Host- binds the cookie to this exact host over HTTPS; plain http (local dev) can't use the prefix.
+export const SESSION_COOKIE = process.env.NODE_ENV === 'production' ? '__Host-nv_session' : 'nv_session';
 export const SESSION_DAYS = 30;
 
 export const hashToken = (token: string) => createHash('sha256').update(token).digest('hex');

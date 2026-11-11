@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { cashback, systemMessage, winBoost } from '@/lib/events';
 import { UserError } from '@/lib/hub';
-import { payout, placeBet } from '@/lib/wallet';
+import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { id as newId, randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
 
@@ -43,7 +43,7 @@ export const registerCoinflip: Register = (io, socket) => {
     if (!lobby || lobby.userId !== user.id) throw new UserError('Lobby nicht gefunden.');
     lobbies.delete(id);
     emit();
-    await payout(user.id, lobby.amount, 'coinflip', 'REFUND');
+    await cancelBet(user.id, lobby.amount, 'coinflip');
   });
 
   handle(
@@ -75,3 +75,10 @@ export const registerCoinflip: Register = (io, socket) => {
     { play: true },
   );
 };
+
+/** Shutdown: open lobbies are cancelled and refunded. */
+export async function refundCoinflip() {
+  const open = [...lobbies.values()];
+  lobbies.clear();
+  for (const l of open) await cancelBet(l.userId, l.amount, 'coinflip').catch(console.error);
+}

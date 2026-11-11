@@ -39,7 +39,8 @@ export const registerSlots: Register = (_io, socket) => {
         await db.freeSpins.upsert({
           where: { userId: user.id },
           create: { userId: user.id, machine: key, bet: BigInt(bet), spins: result.freeSpins },
-          update: { machine: key, bet: BigInt(bet), spins: { increment: result.freeSpins } },
+          // Leftover spins keep their machine and stake, so a big scatter can't upgrade cheap spins.
+          update: free ? { spins: { increment: result.freeSpins } } : { machine: key, bet: BigInt(bet), spins: result.freeSpins },
         });
       }
       await payout(user.id, win, 'slots');

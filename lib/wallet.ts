@@ -1,6 +1,8 @@
 import { db, emitToUser, UserError } from './hub';
 
-export type LedgerKind = 'BET' | 'WIN' | 'REFUND' | 'FAUCET' | 'QUEST' | 'TRANSFER' | 'RAIN' | 'ADMIN';
+// BET/WIN: a played round. CANCEL: a stake handed back unplayed (undoes the bet's XP and quest
+// credit). REFUND: cashback. BUYIN/CASHOUT: poker chips, which are not bets themselves.
+export type LedgerKind = 'BET' | 'WIN' | 'CANCEL' | 'REFUND' | 'BUYIN' | 'CASHOUT' | 'FAUCET' | 'QUEST' | 'TRANSFER' | 'RAIN' | 'ADMIN';
 
 export type Entry = {
   userId: string;
@@ -30,7 +32,7 @@ export async function applyLedger(entries: Entry[]) {
     for (const e of entries) {
       if (!Number.isSafeInteger(e.amount)) throw new Error(`non-integer ledger amount ${e.amount}`);
       const amount = BigInt(e.amount);
-      const xp = e.kind === 'BET' ? XP_PER_BET : 0;
+      const xp = e.kind === 'BET' ? XP_PER_BET : e.kind === 'CANCEL' ? -XP_PER_BET : 0;
       const { count } = await tx.user.updateMany({
         where: { id: e.userId, ...(amount < 0n ? { balance: { gte: -amount } } : {}) },
         data: { balance: { increment: amount }, xp: { increment: xp } },
@@ -56,6 +58,9 @@ export async function payout(userId: string, amount: number, game: string, kind:
   if (coins > 0) await applyLedger([{ userId, amount: coins, kind, game }]);
 }
 
+/** Gives back a stake that was never played (cancelled bet, closed table, shutdown). */
+export const cancelBet = (userId: string, amount: number, game: string) => payout(userId, amount, game, 'CANCEL');
+
 export const startOfDay = (d = new Date()) => new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 
 export function startOfWeek(d = new Date()) {
@@ -68,7 +73,7 @@ export function startOfWeek(d = new Date()) {
 export async function netProfitSince(since: Date, take = 10) {
   const rows = await db.ledgerEntry.groupBy({
     by: ['userId'],
-    where: { createdAt: { gte: since }, kind: { in: ['BET', 'WIN', 'REFUND'] } },
+    where: { createdAt: { gte: since }, kind: { in: ['BET', 'WIN', 'CANCEL', 'REFUND', 'BUYIN', 'CASHOUT'] } },
     _sum: { amount: true },
   });
   const top = rows

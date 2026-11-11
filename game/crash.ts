@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { cashback, systemMessage, winBoost } from '@/lib/events';
 import { multiplierAt } from '@/lib/games';
 import { UserError } from '@/lib/hub';
-import { payout, placeBet } from '@/lib/wallet';
+import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { rand } from './rng';
 import { amount, empty, handle, type Register } from './socket';
 
@@ -117,7 +117,7 @@ export const registerCrash: Register = (io, socket) => {
     const bet = round.bets.get(user.id);
     if (!bet?.paid || round.phase !== 'waiting') throw new UserError('Nichts zu stornieren.');
     round.bets.delete(user.id);
-    await payout(user.id, bet.amount, 'crash', 'REFUND');
+    await cancelBet(user.id, bet.amount, 'crash');
     io.to('crash').emit('crash:state', crashState());
   });
 
@@ -127,3 +127,11 @@ export const registerCrash: Register = (io, socket) => {
     return { win: await cashOut(io, bet, round.multiplier) };
   });
 };
+
+/** Shutdown: stakes still riding in an unfinished round go back to their owners. */
+export async function refundCrash() {
+  if (round.phase === 'crashed') return;
+  const open = [...round.bets.values()].filter((b) => b.paid && !b.cashedAt);
+  round.bets.clear();
+  for (const b of open) await cancelBet(b.userId, b.amount, 'crash').catch(console.error);
+}

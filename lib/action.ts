@@ -36,6 +36,7 @@ export async function rateLimit(name: string, max: number, windowMs: number) {
   const now = Date.now();
   const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
   if (recent.length >= max) throw new UserError('Zu viele Versuche – bitte kurz warten.');
+  if (hits.size > 10_000) hits.clear(); // keep memory bounded
   hits.set(key, [...recent, now]);
 }
 

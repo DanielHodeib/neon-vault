@@ -6,7 +6,7 @@ import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
 import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
-import { endSession, requireUser } from '@/lib/auth';
+import { endSession, requireUser, startSession } from '@/lib/auth';
 import { db, disconnectUser, UserError } from '@/lib/hub';
 import { claimQuest } from '@/lib/quests';
 import { THEMES } from '@/lib/format';
@@ -65,8 +65,9 @@ export async function changePassword(_: ActionState, form: FormData) {
     const user = await requireUser();
     const { current, next } = parse(z.object({ current: z.string(), next: passwordSchema }), form);
     if (!(await bcrypt.compare(current, user.passwordHash))) throw new UserError('Aktuelles Passwort ist falsch.');
-    await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10) } });
-    return 'Passwort geändert.';
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessions: { deleteMany: {} } } });
+    await startSession(user.id); // every other device is signed out, this one stays in
+    return 'Passwort geändert. Andere Geräte wurden abgemeldet.';
   });
 }
 

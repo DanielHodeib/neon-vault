@@ -5,12 +5,12 @@ import { db, hub, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { atLeast } from '@/lib/roles';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
-import { registerBlackjack } from './blackjack';
-import { registerCoinflip } from './coinflip';
-import { registerCrash, startCrash } from './crash';
-import { registerPoker } from './poker';
+import { refundBlackjack, registerBlackjack } from './blackjack';
+import { refundCoinflip, registerCoinflip } from './coinflip';
+import { refundCrash, registerCrash, startCrash } from './crash';
+import { refundPoker, registerPoker } from './poker';
 import { id } from './rng';
-import { registerRoulette, startRoulette } from './roulette';
+import { refundRoulette, registerRoulette, startRoulette } from './roulette';
 import { registerSlots } from './slotsHandler';
 import { handle, type GameSocket } from './socket';
 
@@ -77,4 +77,10 @@ export function setupRealtime(io: Server) {
       io.emit('online', onlineList());
     });
   });
+}
+
+/** Shutdown: closes all sockets first (no new actions), then returns every open stake once. */
+export async function closeAndRefund() {
+  await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
+  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundBlackjack, refundPoker]) await refund();
 }
