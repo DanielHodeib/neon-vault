@@ -73,7 +73,7 @@ ssh -i ~/Downloads/ssh-key.key ubuntu@141.147.12.34 "sudo systemctl stop neon-va
 ```
 
 ```bash
-scp -i ~/Downloads/ssh-key.key prisma/dev.db ubuntu@141.147.12.34:neon-vault/prisma/dev.db
+scp -i ~/Downloads/ssh-key.key prisma/dev.db ubuntu@141.147.12.34:neon-data/dev.db
 ```
 
 ```bash
@@ -88,7 +88,7 @@ Ab jetzt läuft alles auf dem Server. Den Mac-Server und Tailscale Funnel brauch
 
 ## Später: Updates einspielen
 
-Passiert automatisch: Der Server schaut alle 2 Minuten auf GitHub nach. Nach einem `git push origin main` ist die neue Version also spätestens nach etwa 5 Minuten live. Vorher laufen die Tests; schlagen sie fehl, bleibt die alte Version online.
+Passiert automatisch: Der Server schaut alle 2 Minuten auf GitHub nach. Nach einem `git push origin main` ist die neue Version also spätestens nach etwa 5 Minuten live. Die neue Version wird neben der laufenden gebaut und getestet. Schlagen die Tests fehl, bleibt die alte Version online. Danach sehen alle 60 Sekunden lang einen Countdown, dann wird umgeschaltet (wenige Sekunden Pause). Die vorherige Version bleibt als `~/neon-vault.old` liegen.
 
 Sofort von Hand aktualisieren:
 
@@ -98,6 +98,8 @@ ssh -i ~/Downloads/ssh-key.key ubuntu@141.147.12.34 "cd neon-vault && bash deplo
 
 Was die automatischen Updates gemacht haben: `journalctl -u neon-vault-update -n 50` (auf dem Server).
 
+Die Datenbank liegt auf dem Server in `~/neon-data/dev.db`, also außerhalb des Programmordners.
+
 ## Nützliche Befehle (auf dem Server)
 
 | Befehl | Was er tut |
@@ -105,13 +107,13 @@ Was die automatischen Updates gemacht haben: `journalctl -u neon-vault-update -n
 | `journalctl -u neon-vault -f` | Live-Logs der App (beenden mit `Ctrl + C`) |
 | `sudo systemctl restart neon-vault` | App neu starten |
 | `sudo systemctl status neon-vault` | Läuft die App? |
-| `ls ~/neon-vault/backups` | Tägliche Datenbank-Backups (14 Tage) |
+| `ls ~/neon-data/backups` | Tägliche Datenbank-Backups (14 Tage) |
 | `cd neon-vault && npm run set-role -- Name OWNER` | Rolle vergeben |
 
 ## Backup auf den Mac holen
 
 ```bash
-scp -i ~/Downloads/ssh-key.key "ubuntu@141.147.12.34:neon-vault/backups/*" ~/Desktop/
+scp -i ~/Downloads/ssh-key.key "ubuntu@141.147.12.34:neon-data/backups/*" ~/Desktop/
 ```
 
 ## Probleme

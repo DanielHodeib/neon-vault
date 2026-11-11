@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { io, type Socket } from 'socket.io-client';
 
 import { GAME_NAMES } from '@/lib/format';
-import type { ChatMessage, GlobalEvent } from '@/lib/hub';
+import type { ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
 
 type Online = { id: string; username: string; activity: string };
 type Ctx = {
@@ -16,6 +16,7 @@ type Ctx = {
   online: Online[];
   chat: ChatMessage[];
   event: GlobalEvent | null;
+  countdown: Countdown | null;
   rain: { amount: number; endsAt: number; players: number; by: string } | null;
   call: <T = Record<string, unknown>>(event: string, data?: unknown) => Promise<T | null>;
   /** Unread private messages; the messages page resets it. */
@@ -73,6 +74,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [online, setOnline] = useState<Online[]>([]);
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [event, setEvent] = useState<GlobalEvent | null>(null);
+  const [countdown, setCountdown] = useState<Countdown | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
   const [dmUnread, setDmUnread] = useState(0);
   const held = useRef(0);
@@ -82,10 +84,11 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     if (!socket) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- socket.io listener signature
     const handlers: Record<string, (...args: any[]) => void> = {
-      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null }) => {
+      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null; countdown: Countdown | null }) => {
         setChat(d.chat);
         setOnline(d.online);
         setEvent(d.event);
+        setCountdown(d.countdown);
       },
       balance: (b: number) => {
         if (held.current > 0) pending.current = b;
@@ -97,6 +100,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
         if (me.soundEnabled && m.userId !== me.id && m.text.includes(`@${me.username}`)) beep();
       },
       event: setEvent,
+      countdown: setCountdown,
       rain: setRain,
       dm: (m: { from: string; text: string }) => {
         if (m.from === me.username || window.location.pathname.startsWith('/messages')) return;
@@ -160,8 +164,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   }, []);
 
   const value = useMemo(
-    () => ({ socket, me, balance, online, chat, event, rain, call, holdBalance, dmUnread, setDmUnread }),
-    [socket, me, balance, online, chat, event, rain, call, holdBalance, dmUnread],
+    () => ({ socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread, setDmUnread }),
+    [socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread],
   );
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
 }

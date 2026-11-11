@@ -11,6 +11,9 @@ export type GlobalEvent = {
   endsAt: number;
 };
 
+/** Global countdown banner: a server restart or scheduled maintenance. */
+export type Countdown = { kind: 'restart' | 'maintenance'; at: number; minutes?: number };
+
 export type OnlineUser = { id: string; username: string; activity: string; sockets: number };
 
 export type ChatMessage = {
@@ -32,6 +35,7 @@ type Hub = {
   io: Server | null;
   event: GlobalEvent | null;
   maintenance: { on: boolean; endsAt: number | null };
+  countdown: Countdown | null;
   online: Map<string, OnlineUser>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
@@ -47,6 +51,7 @@ export const hub: Hub = (g.__neonHub ??= {
   io: null,
   event: null,
   maintenance: { on: false, endsAt: null },
+  countdown: null,
   online: new Map(),
   chat: [],
   chatActive: new Map(),

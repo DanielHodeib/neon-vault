@@ -45,9 +45,23 @@ for port in 80 443; do
 done
 sudo netfilter-persistent save
 
-echo "==> App bauen"
+# Database and backups live outside the code folder, so updates can swap the folder freely.
+DATA_DIR="$HOME/neon-data"
+mkdir -p "$DATA_DIR/backups"
 cd "$APP_DIR"
-[[ -f .env ]] || cp .env.example .env
+if [[ ! -f .env ]]; then
+  printf 'DATABASE_URL="file:%s/dev.db?connection_limit=1"\nPORT=3000\n' "$DATA_DIR" > .env
+fi
+# Older installs kept the data inside the app folder: move it out once.
+if [[ -f prisma/dev.db && ! -f "$DATA_DIR/dev.db" ]]; then
+  echo "==> Datenbank nach $DATA_DIR verschieben"
+  sudo systemctl stop neon-vault 2>/dev/null || true
+  mv prisma/dev.db "$DATA_DIR/dev.db"
+  [[ -d backups ]] && mv backups/* "$DATA_DIR/backups/" 2>/dev/null || true
+  printf 'DATABASE_URL="file:%s/dev.db?connection_limit=1"\nPORT=3000\n' "$DATA_DIR" > .env
+fi
+
+echo "==> App bauen"
 npm ci
 npm run build
 
@@ -62,6 +76,7 @@ User=$APP_USER
 WorkingDirectory=$APP_DIR
 # Only Caddy talks to the app; port 3000 is never reachable from outside.
 Environment=HOST=127.0.0.1
+Environment=BACKUP_DIR=$DATA_DIR/backups
 ExecStart=/usr/bin/npm start
 Restart=always
 RestartSec=3
@@ -73,7 +88,8 @@ TimeoutStopSec=30
 WantedBy=multi-user.target
 UNIT
 sudo systemctl daemon-reload
-sudo systemctl enable --now neon-vault
+sudo systemctl enable neon-vault
+sudo systemctl restart neon-vault
 
 echo "==> Automatische Updates (alle 2 Minuten von GitHub)"
 sudo tee /etc/systemd/system/neon-vault-update.service >/dev/null <<UNIT

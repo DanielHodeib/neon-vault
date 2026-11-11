@@ -1,7 +1,7 @@
 import { randomInt } from 'node:crypto';
 
 import { shuffle } from '../game/rng';
-import { broadcast, db, hub, notify, type ChatMessage, type GlobalEvent } from './hub';
+import { broadcast, db, hub, notify, type ChatMessage, type Countdown, type GlobalEvent } from './hub';
 import { applyLedger, netProfitSince, payout, startOfDay } from './wallet';
 
 // Global events, rain, maintenance and announcements. Called from game code
@@ -141,4 +141,36 @@ export async function announce(message: string, from: string, persist: boolean) 
   if (!persist) return;
   const users = await db.user.findMany({ select: { id: true } });
   await Promise.all(users.map((u) => notify(u.id, `Ankündigung von ${from}`, message)));
+}
+
+const mmss = (seconds: number) => `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+
+/**
+ * Shows everyone a countdown banner. `restart`: the process is stopped from outside (update
+ * script) or by `onDone`. `maintenance`: maintenance switches on when the time is up.
+ */
+export function startCountdown(kind: Countdown['kind'], seconds: number, { minutes, onDone }: { minutes?: number; onDone?: () => void } = {}) {
+  clearTimeout(timers.countdown);
+  hub.countdown = { kind, at: Date.now() + seconds * 1000, ...(minutes ? { minutes } : {}) };
+  broadcast('countdown', hub.countdown);
+  systemMessage(
+    kind === 'restart'
+      ? `🔄 Der Server startet in ${mmss(seconds)} neu. Laufende Einsätze werden zurückgebucht.`
+      : `🛠️ Wartung in ${mmss(seconds)}${minutes ? ` für etwa ${minutes} Minuten` : ''}. Laufende Einsätze werden zurückgebucht.`,
+  );
+  timers.countdown = setTimeout(() => {
+    hub.countdown = null;
+    broadcast('countdown', null);
+    if (kind === 'maintenance') void setMaintenance(true, minutes ? new Date(Date.now() + minutes * 60_000) : null).catch(console.error);
+    onDone?.();
+  }, seconds * 1000);
+}
+
+export function cancelCountdown() {
+  if (!hub.countdown) return false;
+  clearTimeout(timers.countdown);
+  systemMessage(hub.countdown.kind === 'restart' ? 'Neustart abgesagt.' : 'Geplante Wartung abgesagt.');
+  hub.countdown = null;
+  broadcast('countdown', null);
+  return true;
 }

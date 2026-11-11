@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
 import { requireRole } from '@/lib/auth';
-import { announce, EVENT_TYPES, setMaintenance, startEvent, startRain, stopEvent } from '@/lib/events';
+import { announce, cancelCountdown, EVENT_TYPES, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
 import { db, disconnectUser, notify, UserError } from '@/lib/hub';
 import { canEditSelf, canManage, ROLES } from '@/lib/roles';
 import { applyLedger } from '@/lib/wallet';
@@ -102,7 +102,19 @@ export async function deleteUser(userId: string) {
 export async function setMaintenanceAction(_: ActionState, form: FormData) {
   return run(async () => {
     await requireRole('ADMIN');
-    const { on, minutes } = parse(z.object({ on: z.enum(['true', 'false']), minutes: z.coerce.number().int().min(0).max(10_080).default(0) }), form);
+    const { on, minutes, delay } = parse(
+      z.object({
+        on: z.enum(['true', 'false']),
+        minutes: z.coerce.number().int().min(0).max(10_080).default(0),
+        delay: z.coerce.number().int().min(0).max(120).default(0), // minutes of warning countdown
+      }),
+      form,
+    );
+    if (on === 'true' && delay > 0) {
+      startCountdown('maintenance', delay * 60, { minutes });
+      return `Wartung startet in ${delay} Min. – alle sehen den Countdown.`;
+    }
+    cancelCountdown();
     await setMaintenance(on === 'true', on === 'true' && minutes ? new Date(Date.now() + minutes * 60_000) : null);
     refresh();
     return on === 'true' ? 'Wartungsmodus aktiv.' : 'Wartungsmodus beendet.';
@@ -143,3 +155,21 @@ export async function rainAction(_: ActionState, form: FormData) {
   });
 }
 
+
+export async function cancelCountdownAction() {
+  return run(async () => {
+    await requireRole('ADMIN');
+    if (!cancelCountdown()) throw new UserError('Es läuft kein Countdown.');
+    return 'Countdown abgesagt.';
+  });
+}
+
+/** Restarts the app after a countdown. On the server systemd starts it again right away. */
+export async function restartAction(seconds: number) {
+  return run(async () => {
+    await requireRole('OWNER');
+    if (![30, 60, 120, 300].includes(seconds)) throw new UserError('Ungültige Zeit.');
+    startCountdown('restart', seconds, { onDone: () => process.kill(process.pid, 'SIGINT') });
+    return `Neustart in ${seconds} Sekunden angekündigt.`;
+  });
+}

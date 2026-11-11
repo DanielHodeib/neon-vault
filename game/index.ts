@@ -54,7 +54,7 @@ export function setupRealtime(io: Server) {
     hub.online.set(user.id, entry);
     io.emit('online', onlineList());
 
-    socket.emit('hello', { chat: hub.chat, online: onlineList(), event: hub.event, maintenance: hub.maintenance });
+    socket.emit('hello', { chat: hub.chat, online: onlineList(), event: hub.event, maintenance: hub.maintenance, countdown: hub.countdown });
 
     handle(socket, 'presence', z.object({ activity: z.string().max(40) }), ({ activity }) => {
       entry.activity = activity;

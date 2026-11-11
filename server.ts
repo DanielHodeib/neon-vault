@@ -1,3 +1,4 @@
+import { readFile, unlink } from 'node:fs/promises';
 import { createServer } from 'node:http';
 
 import next from 'next';
@@ -6,7 +7,7 @@ import { Server } from 'socket.io';
 import { closeAndRefund, setupRealtime } from './game';
 import { startBackups } from './lib/backup';
 import { startTournaments } from './lib/tournament';
-import { loadMaintenance, startEventScheduler } from './lib/events';
+import { loadMaintenance, startCountdown, startEventScheduler } from './lib/events';
 import { db } from './lib/hub';
 
 // One process serves the Next app and Socket.IO, so both share the DB client and game state.
@@ -39,8 +40,24 @@ async function main() {
   startEventScheduler();
   startBackups();
   startTournaments();
+  watchRestartRequests();
   // HOST=127.0.0.1 on a server behind Caddy keeps the port private; unset listens everywhere.
   httpServer.listen(port, process.env.HOST, () => console.log(`> Neon Vault läuft auf http://localhost:${port}`));
+}
+
+/**
+ * The update script asks for a restart countdown by writing the seconds into this file;
+ * a file on the server's own disk needs no password or open port.
+ */
+const RESTART_FILE = process.env.RESTART_FILE ?? 'restart-request';
+function watchRestartRequests() {
+  setInterval(async () => {
+    const text = await readFile(RESTART_FILE, 'utf8').catch(() => null);
+    if (text === null) return;
+    await unlink(RESTART_FILE).catch(() => {});
+    const seconds = Math.min(600, Math.max(5, Number.parseInt(text, 10) || 60));
+    startCountdown('restart', seconds);
+  }, 2000).unref();
 }
 
 let shuttingDown = false;

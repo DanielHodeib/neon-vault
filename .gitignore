@@ -23,3 +23,6 @@ npm-debug.log*
 
 # project memory (Obsidian vault), local only
 /.vault/
+
+# restart countdown request from deploy/update.sh
+/restart-request
