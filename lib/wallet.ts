@@ -24,11 +24,27 @@ export function assertAmount(amount: number, min = 1) {
   }
 }
 
+// Bookings still running. Shutdown waits for them, so a stake debited while the server stops
+// is in its game's state (and gets refunded) instead of being lost.
+const inflight = new Set<Promise<unknown>>();
+
+export async function settleInflight() {
+  await Promise.allSettled([...inflight]);
+  await new Promise((r) => setTimeout(r, 50)); // let the callers' code after the await run too
+}
+
 /**
  * The only way balances change. All entries apply atomically; a debit that
  * would go below zero aborts everything. Returns the new balances.
  */
-export async function applyLedger(entries: Entry[]) {
+export function applyLedger(entries: Entry[]) {
+  const booking = book(entries);
+  inflight.add(booking);
+  booking.finally(() => inflight.delete(booking)).catch(() => {});
+  return booking;
+}
+
+async function book(entries: Entry[]) {
   const touched = [...new Set(entries.map((e) => e.userId))];
   // Happy Hour adds XP on wins (not bets), so bet-and-cancel can't keep the bonus.
   const happyHour = hub.event?.type === 'HAPPY_HOUR';

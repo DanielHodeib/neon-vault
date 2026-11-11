@@ -6,7 +6,7 @@ import { db, hub, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { shopItem } from '@/lib/shop';
 import { atLeast } from '@/lib/roles';
-import { applyLedger, assertAmount } from '@/lib/wallet';
+import { applyLedger, assertAmount, settleInflight } from '@/lib/wallet';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
 import { refundBlackjack, registerBlackjack } from './blackjack';
 import { refundCoinflip, registerCoinflip } from './coinflip';
@@ -107,6 +107,7 @@ export function setupRealtime(io: Server) {
 /** Shutdown: closes all sockets first (no new actions), then returns every open stake once. */
 export async function closeAndRefund() {
   await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
+  await settleInflight();
   for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundHilo, refundWheel, refundJackpot, refundRace, refundBlackjack, refundPoker]) await refund();
 }
 
