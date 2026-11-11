@@ -111,9 +111,12 @@ export function Slots() {
     setExpand(undefined);
     setStrips(Array.from({ length: m.cols }, () => Array.from({ length: STRIP }, () => m.symbols[Math.floor(Math.random() * m.symbols.length)].icon)));
     setStopped(0);
+    sound.pull();
+    const stopRattle = sound.reelLoop();
     const started = Date.now();
     const release = holdBalance(); // the meter shows the new balance once the reels are done
     const res = await call<Result>('slots:spin', { machine: key, amount });
+    if (!alive.current || !res) stopRattle();
     if (!alive.current) return release();
     if (!res) {
       setStopped(m.cols);
@@ -130,11 +133,12 @@ export function Slots() {
     for (let c = 0; c < m.cols; c++) {
       const teasing = !turbo && !!scatter && first.grid.slice(0, c).flat().filter((i) => i === scatter).length >= 2;
       setTease(teasing);
-      if (teasing) sound.tease();
+      if (teasing) sound.drumroll(0.7);
       await sleep(c === 0 ? 0 : teasing ? 700 : turbo ? 60 : 190);
       setStopped(c + 1);
-      sound.stop();
+      sound.reelStop(c);
     }
+    stopRattle();
     setTease(false);
     setPhase('showing');
 
@@ -147,6 +151,7 @@ export function Slots() {
       if (i < res.steps.length - 1) {
         await sleep(turbo ? 450 : 900);
         setVanish(new Set(st.wins.flatMap((w) => w.cells.map(cellKey))));
+        sound.pop();
         await sleep(300);
         setVanish(null);
       }

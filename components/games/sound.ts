@@ -31,11 +31,43 @@ function tone(freq: number, dur: number, { type = 'triangle' as OscillatorType, 
   }
 }
 
+/** Reel rattle while slot reels spin: random clicks over a rising hum. Returns a stop function. */
+function reelLoop(): () => void {
+  if (muted) return () => {};
+  let osc: OscillatorNode | null = null;
+  let amp: GainNode | null = null;
+  try {
+    ctx ??= new AudioContext();
+    if (ctx.state === 'suspended') void ctx.resume();
+    const t = ctx.currentTime;
+    osc = ctx.createOscillator();
+    amp = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(70, t);
+    osc.frequency.linearRampToValueAtTime(140, t + 1.2);
+    amp.gain.setValueAtTime(0.0001, t);
+    amp.gain.exponentialRampToValueAtTime(0.012, t + 0.15);
+    osc.connect(amp).connect(ctx.destination);
+    osc.start(t);
+  } catch {
+    // no audio: clicks below stay silent as well
+  }
+  const clicks = setInterval(() => tone(500 + Math.random() * 700, 0.025, { type: 'square', gain: 0.008 }), 55);
+  return () => {
+    clearInterval(clicks);
+    if (!ctx || !osc || !amp) return;
+    const t = ctx.currentTime;
+    amp.gain.cancelScheduledValues(t);
+    amp.gain.setValueAtTime(amp.gain.value, t);
+    amp.gain.exponentialRampToValueAtTime(0.0001, t + 0.12);
+    osc.stop(t + 0.15);
+  };
+}
+
 const arpeggio = (notes: number[], step: number, opts?: Parameters<typeof tone>[2]) => notes.forEach((f, i) => tone(f, step * 2, { ...opts, at: i * step }));
 
 export const sound = {
   stop: () => tone(170, 0.07, { gain: 0.09 }),
-  tease: () => tone(330, 0.35, { type: 'sawtooth', gain: 0.02 }),
   /** `level` 0–2: small, medium, nice win. */
   win: (level: number) => arpeggio([523, 659, 784, 1047].slice(0, 2 + level), 0.08),
   big: () => arpeggio([523, 659, 784, 1047, 784, 1047, 1319, 1568], 0.11, { type: 'square', gain: 0.03 }),
@@ -57,6 +89,20 @@ export const sound = {
     }
   },
   airhorn: () => [0, 0.32, 0.64].forEach((at) => [415, 440, 466].forEach((f) => tone(f, 0.28, { type: 'sawtooth', gain: 0.05, at }))),
+  /** Lever pull: quick rising swoosh. */
+  pull: () => arpeggio([180, 260, 380, 560, 820], 0.025, { type: 'sawtooth', gain: 0.025 }),
+  reelLoop,
+  /** Reel `i` locks in: a thunk plus a click that climbs reel by reel. */
+  reelStop: (i: number) => {
+    tone(120, 0.09, { type: 'sine', gain: 0.12 });
+    tone(520 + i * 110, 0.05, { type: 'square', gain: 0.02 });
+  },
+  /** Tension drumroll while a bonus may still land. */
+  drumroll: (seconds: number) => {
+    for (let at = 0; at < seconds; at += 0.06) tone(90 + at * 60, 0.05, { type: 'triangle', gain: 0.03 + at * 0.03, at });
+  },
+  /** Winning symbols pop away (tumbling machines). */
+  pop: () => arpeggio([1200, 1600, 2100], 0.03, { type: 'sine', gain: 0.03 }),
   turn: () => arpeggio([660, 880], 0.08, { type: 'sine', gain: 0.05 }),
 };
 
