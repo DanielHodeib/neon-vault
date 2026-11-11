@@ -222,7 +222,9 @@ export function registerBlackjack(io: Server): Register {
         try {
           await placeBet(user.id, amount, 'blackjack');
         } catch (err) {
-          Object.assign(seat, { bet: 0, hands: [] });
+          // If the deal already happened, sit the hand out at zero stake instead of removing it.
+          seat.bet = 0;
+          for (const h of seat.hands) Object.assign(h, { bet: 0, done: true });
           throw err;
         }
         const humans = t.seats.filter((s) => s.userId);

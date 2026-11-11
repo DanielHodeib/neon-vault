@@ -28,8 +28,9 @@ async function main() {
     destroyUpgrade: false,
     // Browsers always send Origin; only our own pages may open a socket with the session cookie.
     allowRequest: (req, done) => {
+      // Must never throw: engine.io calls this without a try/catch ("Origin: null" is not a URL).
       const origin = req.headers.origin;
-      done(null, !origin || new URL(origin).host === (req.headers['x-forwarded-host'] ?? req.headers.host));
+      done(null, !origin || URL.parse(origin)?.host === (req.headers['x-forwarded-host'] ?? req.headers.host));
     },
   });
   setupRealtime(io);

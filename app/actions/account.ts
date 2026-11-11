@@ -66,6 +66,7 @@ export async function changePassword(_: ActionState, form: FormData) {
     const { current, next } = parse(z.object({ current: z.string(), next: passwordSchema }), form);
     if (!(await bcrypt.compare(current, user.passwordHash))) throw new UserError('Aktuelles Passwort ist falsch.');
     await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessions: { deleteMany: {} } } });
+    disconnectUser(user.id);
     await startSession(user.id); // every other device is signed out, this one stays in
     return 'Passwort geändert. Andere Geräte wurden abgemeldet.';
   });
