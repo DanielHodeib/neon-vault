@@ -1,5 +1,6 @@
 // English translations, keyed by the German text. Missing keys fall back to German.
 export const EN: Record<string, string> = {
+  '+{xp} Extra-XP für jeden Gewinn.': '+{xp} extra XP for every win.',
   '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.': '1.2× payout on Crash and Coinflip wins.',
   '1. Reihe': '1st column',
   '1.000 Einsätze.': '1,000 bets.',
@@ -33,6 +34,7 @@ export const EN: Record<string, string> = {
   'Aktuelles Passwort ist falsch.': 'Current password is wrong.',
   'Alle': 'All',
   'Alle Farben auf einmal.': 'All colours at once.',
+  'Alle Online-Spieler bekommen alle {every} Sekunden {min}–{max} NVC.': 'All online players get {min}–{max} NVC every {every} seconds.',
   'Alle Online-Spieler bekommen regelmäßig NVC-Drops.': 'All online players get regular NVC drops.',
   'Alle Spieler setzen auf dieselbe Kugel.': 'Everyone bets on the same ball.',
   'Alle Tickets': 'All tickets',
@@ -113,6 +115,7 @@ export const EN: Record<string, string> = {
   'Clan-Tag': 'Clan tag',
   'Code an Freunde schicken': 'Send the code to friends',
   'Coinflip ohne 5 % Gebühr.': 'Coinflip without the 5 % fee.',
+  'Coinflip-Duelle mit nur {fee} % Gebühr statt 5 %.': 'Coinflip duels with only a {fee} % fee instead of 5 %.',
   'Community': 'Community',
   'Crash-Sprinter': 'Crash sprinter',
   'Daneben!': 'Missed!',
@@ -120,6 +123,7 @@ export const EN: Record<string, string> = {
   'Das Buch ist Wild und Scatter': 'The book is wild and scatter',
   'Das Rad dreht sich': 'The wheel is spinning',
   'Das Rennen läuft!': 'The race is on!',
+  'Das beste Symbol jedes Slot-Automaten zahlt {factor}×.': 'The top symbol of every slot machine pays {factor}×.',
   'Das bist du selbst.': 'That\'s you.',
   'Das gewinnt immer – wähle die andere Richtung oder tausche die Karte.': 'That always wins – pick the other direction or swap the card.',
   'Das hast du schon.': 'You already have that.',
@@ -567,9 +571,11 @@ export const EN: Record<string, string> = {
   'Wenig Treffer, riesige Gewinne': 'Few hits, huge wins',
   'Wenn jemand @deinName im Chat schreibt': 'When someone writes @yourname in the chat',
   'Wer den King of Today im Coinflip schlägt, bekommt 10.000 NVC.': 'Whoever beats the King of Today in Coinflip gets 10,000 NVC.',
+  'Wer den King of Today im Coinflip schlägt, bekommt {bonus} NVC.': 'Whoever beats the King of Today in Coinflip gets {bonus} NVC.',
   'Wer setzt insgesamt am meisten ein?': 'Who bets the most in total?',
   'Wer sich über deinen Link registriert, bekommt mit dir je 2.500 NVC – und ihr seid direkt befreundet.': 'Whoever signs up with your link gets 2,500 NVC, and so do you – and you are friends right away.',
   'Wer während des Events den höchsten Netto-Gewinn macht, bekommt 25.000 NVC Bonus.': 'Whoever makes the highest net profit during the event gets a 25,000 NVC bonus.',
+  'Wer während des Events den höchsten Netto-Gewinn macht, bekommt {bonus} NVC Bonus.': 'Whoever makes the highest net profit during the event gets a {bonus} NVC bonus.',
   'Werte pro Weg. Mehrere gleiche Symbole auf einer Walze multiplizieren die Wege.': 'Values per way. Several equal symbols on a reel multiply the ways.',
   'Wetten dieser Runde': 'Bets this round',
   'Wild – ersetzt alle Symbole': 'Wild – replaces every symbol',
@@ -619,6 +625,7 @@ export const EN: Record<string, string> = {
   'z. B. k3x9ab': 'e.g. k3x9ab',
   'zeigt {n}': 'shows {n}',
   '{d} T {h} Std': '{d} d {h} h',
+  '{factor}× Auszahlung auf Crash- und Coinflip-Gewinne.': '{factor}× payout on Crash and Coinflip wins.',
   '{item} für {n} NVC kaufen?': 'Buy {item} for {n} NVC?',
   '{name} blockieren?': 'Block {name}?',
   '{name} entfernen?': 'Remove {name}?',
@@ -634,6 +641,7 @@ export const EN: Record<string, string> = {
   '{n} richtig · aktuell': '{n} correct · now',
   '{n} von 30 Feldern': '{n} of 30 segments',
   '{n}. Platz': 'Place {n}',
+  '{percent} % Cashback auf verlorene Crash- und Coinflip-Einsätze.': '{percent} % cashback on lost Crash and Coinflip bets.',
   'Öffentliches Profil': 'Public profile',
   'Über': 'Over',
   'Über mich': 'About me',
@@ -683,6 +691,7 @@ export const EN_PATTERNS: [RegExp, string | ((g: string[], t: (s: string) => str
   [/^kauft ([\d.]+) nach$/, 'buys $1 more chips'],
   [/^(.+) gewinnt ([\d.]+) mit (.+)$/, ([who, n, hand], t) => `${who} wins ${n} with ${t(hand)}`],
   [/^(.+) gewinnt ([\d.]+)$/, '$1 wins $2'],
-  // poker log lines "Name: action" (last, so more specific patterns win)
-  [/^([^:]+): (.+)$/, ([who, what], t) => `${who}: ${t(what)}`],
 ];
+
+/** Tried after everything else: poker log lines "Name: action". */
+export const EN_LAST_PATTERNS: typeof EN_PATTERNS = [[/^([^:]+): (.+)$/, ([who, what], t) => `${who}: ${t(what)}`]];

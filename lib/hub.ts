@@ -1,12 +1,15 @@
 import { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 
+import type { EventParams, EventType } from './eventTypes';
+
 // server.ts (tsx) and Next's bundled code load separate copies of this module,
 // so anything shared between them lives on globalThis.
 export type GlobalEvent = {
-  type: 'CASHBACK' | 'BOOST' | 'RAIN' | 'HAPPY_HOUR' | 'JACKPOT_RUSH' | 'DUEL' | 'KING' | 'BOUNTY';
+  type: EventType;
   label: string;
-  description: string;
+  description: string; // German, with the event's values filled in
+  params: EventParams;
   startedAt: number;
   endsAt: number;
 };
@@ -42,6 +45,8 @@ type Hub = {
   muted: Map<string, number>; // userId -> chat muted until (ms)
   timers: Record<string, NodeJS.Timeout | undefined>;
   rainActive: boolean;
+  autoEvents: boolean; // server starts random events by itself
+  nextAutoAt: number | null;
   bountyPaid: boolean; // Bounty event pays out once
 };
 
@@ -59,6 +64,8 @@ export const hub: Hub = (g.__neonHub ??= {
   muted: new Map(),
   timers: {},
   rainActive: false,
+  autoEvents: true,
+  nextAutoAt: null,
   bountyPaid: false,
 });
 

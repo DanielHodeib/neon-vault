@@ -7,7 +7,8 @@ import { z } from 'zod';
 
 import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
 import { requireRole } from '@/lib/auth';
-import { announce, cancelCountdown, systemMessage, EVENT_TYPES, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
+import { announce, cancelCountdown, systemMessage, setMaintenance, startCountdown, startEvent, startRain, stopEvent } from '@/lib/events';
+import { EVENT_INFO, EVENT_KEYS, type EventType } from '@/lib/eventTypes';
 import { backupNow } from '@/lib/backup';
 import { FX } from '@/lib/fx';
 import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } from '@/lib/hub';
@@ -134,29 +135,47 @@ export async function announceAction(_: ActionState, form: FormData) {
 
 export async function eventAction(_: ActionState, form: FormData) {
   return run(async () => {
-    await requireRole('ADMIN');
-    const { type, minutes } = parse(
-      z.object({ type: z.enum(['STOP', ...(Object.keys(EVENT_TYPES) as [keyof typeof EVENT_TYPES])]), minutes: z.coerce.number().int().min(1).max(180) }),
-      form,
-    );
-    if (type === 'STOP') return stopEvent() ? 'Event gestoppt.' : 'Kein Event aktiv.';
-    if (!startEvent(type, minutes)) throw new UserError('Es läuft schon ein Event.');
-    return 'Event gestartet.';
-  });
-}
-
-export async function rainAction(_: ActionState, form: FormData) {
-  return run(async () => {
     const actor = await requireRole('ADMIN');
-    const { amount, seconds, players } = parse(
-      z.object({ amount: z.coerce.number().int().min(1).max(10_000_000), seconds: z.coerce.number().int().min(5).max(600), players: z.coerce.number().int().min(1).max(100) }),
-      form,
-    );
-    if (!startRain(amount, seconds, players, actor.username)) throw new UserError('Es regnet schon.');
-    return 'Rain gestartet.';
+    const data = Object.fromEntries(form);
+    const num = (key: string) => (data[key] === undefined || data[key] === '' ? undefined : Number(data[key]));
+    const type = String(data.type);
+
+    if (type === 'CHAT_RAIN') {
+      const { amount, seconds, players } = parse(
+        z.object({ amount: z.number().int().min(1).max(10_000_000), seconds: z.number().int().min(5).max(600), players: z.number().int().min(1).max(100) }),
+        { amount: num('p_amount'), seconds: num('p_seconds'), players: num('p_players') },
+      );
+      if (!startRain(amount, seconds, players, actor.username)) throw new UserError('Es regnet schon.');
+      return 'Chat-Rain gestartet.';
+    }
+
+    if (!(EVENT_KEYS as string[]).includes(type)) throw new UserError('Unbekanntes Event.');
+    const key = type as EventType;
+    const { minutes } = parse(z.object({ minutes: z.number().int().min(1).max(180) }), { minutes: num('minutes') ?? EVENT_INFO[key].minutes });
+    // Each setting is clamped to its own range in startEvent.
+    const params = Object.fromEntries(EVENT_INFO[key].params.map((p) => [p.key, num(`p_${p.key}`) ?? p.def]));
+    if (!startEvent(key, minutes, params)) throw new UserError('Es läuft schon ein Event – erst stoppen.');
+    return `${EVENT_INFO[key].label} gestartet.`;
   });
 }
 
+export async function stopEventAction() {
+  return run(async () => {
+    await requireRole('ADMIN');
+    if (!stopEvent()) throw new UserError('Kein Event aktiv.');
+    return 'Event gestoppt.';
+  });
+}
+
+/** Switches the server's random events on or off (until the next restart, then on again). */
+export async function toggleAutoEvents() {
+  return run(async () => {
+    await requireRole('ADMIN');
+    hub.autoEvents = !hub.autoEvents;
+    refresh();
+    return hub.autoEvents ? 'Automatische Events an.' : 'Automatische Events aus.';
+  });
+}
 
 export async function cancelCountdownAction() {
   return run(async () => {

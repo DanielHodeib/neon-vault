@@ -48,14 +48,14 @@ export function applyLedger(entries: Entry[]) {
 async function book(entries: Entry[]) {
   const touched = [...new Set(entries.map((e) => e.userId))];
   // Happy Hour adds XP on wins (not bets), so bet-and-cancel can't keep the bonus.
-  const happyHour = hub.event?.type === 'HAPPY_HOUR';
+  const happyHourXp = hub.event?.type === 'HAPPY_HOUR' ? (hub.event.params.xp ?? XP_PER_BET) : 0;
   const xpGained = new Map<string, number>();
   const levelUps: { userId: string; level: number; reward: number }[] = [];
   const balances = await db.$transaction(async (tx) => {
     for (const e of entries) {
       if (!Number.isSafeInteger(e.amount)) throw new Error(`non-integer ledger amount ${e.amount}`);
       const amount = BigInt(e.amount);
-      const xp = e.kind === 'BET' ? XP_PER_BET : e.kind === 'CANCEL' ? -XP_PER_BET : e.kind === 'WIN' && happyHour ? XP_PER_BET : 0;
+      const xp = e.kind === 'BET' ? XP_PER_BET : e.kind === 'CANCEL' ? -XP_PER_BET : e.kind === 'WIN' ? happyHourXp : 0;
       if (amount < 0n && (e.kind === 'BET' || e.kind === 'BUYIN')) await checkLimit(tx, e.userId, -amount);
       xpGained.set(e.userId, (xpGained.get(e.userId) ?? 0) + xp);
       const { count } = await tx.user.updateMany({

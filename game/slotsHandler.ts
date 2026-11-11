@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { eventActive, systemMessage } from '@/lib/events';
+import { eventParam, systemMessage } from '@/lib/events';
 import { db, UserError } from '@/lib/hub';
 import { payout, placeBet } from '@/lib/wallet';
 import { MACHINES, pickSpecial, spin } from './slots';
@@ -39,7 +39,7 @@ export const registerSlots: Register = (_io, socket) => {
       // Old rows from before expanding symbols existed get one picked now.
       const special = isFree ? (free.special ?? (machine.freeSpins?.expanding ? pickSpecial(machine) : undefined)) : undefined;
       if (isFree && special && !free.special) await db.freeSpins.updateMany({ where: { userId: user.id }, data: { special } });
-      const result = spin(machine, { free: isFree, special, rush: eventActive('JACKPOT_RUSH') });
+      const result = spin(machine, { free: isFree, special, rush: eventParam('JACKPOT_RUSH', 'factor') ?? 1 });
       const win = Math.floor(bet * result.multiplier);
       if (result.freeSpins) {
         const round = result.special ?? special ?? null;

@@ -11,10 +11,8 @@ import {
   cancelCountdownAction,
   clearChatAction,
   deleteUser,
-  eventAction,
   giftUser,
   muteUser,
-  rainAction,
   resetUser,
   restartAction,
   setMaintenanceAction,
@@ -23,9 +21,9 @@ import {
   unbanUser,
 } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
+import { EventForm } from './EventForm';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
-import { EVENT_TYPES } from '@/lib/events';
 import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
 import { FX } from '@/lib/fx';
 import { db, hub, isMuted } from '@/lib/hub';
@@ -355,37 +353,11 @@ export function LiveTab({ actor }: { actor: User }) {
 
       {isAdmin && (
         <>
-          <Section title={hub.event ? `Event · läuft: ${hub.event.label}` : 'Globales Event'} pad>
-            <ActionForm action={eventAction} className="space-y-3">
-              <div className="grid grid-cols-[1fr_6rem] gap-2">
-                <select className="input" name="type">
-                  {Object.entries(EVENT_TYPES).map(([type, e]) => (
-                    <option key={type} value={type}>{e.label}</option>
-                  ))}
-                  <option value="STOP">Event stoppen</option>
-                </select>
-                <input className="input num" name="minutes" type="number" defaultValue={10} min={1} max={180} aria-label="Minuten" />
-              </div>
-              <ul className="space-y-1 text-xs text-faint">
-                {Object.values(EVENT_TYPES).map((e) => <li key={e.label}><span className="text-muted">{e.label}:</span> {e.description}</li>)}
-              </ul>
-              <SubmitButton className="btn-secondary">Ausführen</SubmitButton>
-            </ActionForm>
-          </Section>
-
-          <Section title="Rain" pad>
-            <ActionForm action={rainAction} className="space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                {[['amount', 'NVC', 10_000], ['seconds', 'Sekunden', 60], ['players', 'Gewinner', 10]].map(([name, label, value]) => (
-                  <div key={name}>
-                    <label className="label">{label}</label>
-                    <input className="input num" name={String(name)} type="number" defaultValue={value} />
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-faint">Wird unter den Spielern verteilt, die in den letzten 10 Minuten im Chat geschrieben haben.</p>
-              <SubmitButton className="btn-secondary">Regnen lassen</SubmitButton>
-            </ActionForm>
+          <Section title="Globales Event" pad className="lg:col-span-2">
+            <EventForm
+              running={hub.event && { label: hub.event.label, description: hub.event.description, endsAt: hub.event.endsAt }}
+              auto={{ on: hub.autoEvents, nextAt: hub.nextAutoAt }}
+            />
           </Section>
         </>
       )}

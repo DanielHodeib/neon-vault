@@ -29,11 +29,11 @@ const bySymbol = (m: Machine) => new Map(m.symbols.map((s) => [s.icon, s]));
 const newColumn = (m: Machine) => Array.from({ length: m.rows }, () => draw(m).icon);
 
 /** Line or ways wins of one grid, as multiples of the stake. */
-function evaluate(m: Machine, grid: string[][], rush: boolean): Win[] {
+function evaluate(m: Machine, grid: string[][], rush: number): Win[] {
   const sym = bySymbol(m);
   const top = topSymbol(m);
   const isWild = (icon: string) => !!sym.get(icon)?.wild;
-  const payOf = (s: Sym, count: number) => (s.pays?.[count as 2] ?? 0) * (rush && s.icon === top ? 3 : 1);
+  const payOf = (s: Sym, count: number) => (s.pays?.[count as 2] ?? 0) * (s.icon === top ? rush : 1);
   const wins: Win[] = [];
 
   if (m.lines) {
@@ -77,9 +77,9 @@ const sum = (wins: Win[]) => wins.reduce((s, w) => s + w.amount, 0);
 
 /**
  * One spin. `free` marks a free spin (machine bonus applies), `special` is the expanding symbol of
- * the running free spin round, `rush` (Jackpot-Rush event) pays the top symbol triple.
+ * the running free spin round, `rush` (Jackpot-Rush event) multiplies what the top symbol pays.
  */
-export function spin(m: Machine, { free = false, special, rush = false }: { free?: boolean; special?: string; rush?: boolean } = {}): SpinResult {
+export function spin(m: Machine, { free = false, special, rush = 1 }: { free?: boolean; special?: string; rush?: number } = {}): SpinResult {
   const features: string[] = [];
   const sym = bySymbol(m);
   let grid = Array.from({ length: m.cols }, () => newColumn(m));
