@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { adjustUser, announceAction, banUser, deleteUser, eventAction, rainAction, resetUser, setMaintenanceAction, setRole, unbanUser } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
 import { ActionForm, Coins, Empty, PageHeader, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
+import { adminStats } from '@/lib/adminStats';
 import { requireRole } from '@/lib/auth';
 import { EVENT_TYPES } from '@/lib/events';
-import { coins, compact } from '@/lib/format';
+import { coins, compact, GAME_NAMES } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast, canEditSelf, canManage, ROLES } from '@/lib/roles';
@@ -20,13 +21,14 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
   const { q = '', user: selectedId } = (await searchParams) as { q?: string; user?: string };
   const isAdmin = atLeast(actor.role, 'ADMIN');
 
-  const [userCount, openTickets, totals, betsToday, users, selected] = await Promise.all([
+  const [userCount, openTickets, totals, betsToday, users, selected, week] = await Promise.all([
     db.user.count(),
     db.ticket.count({ where: { status: { in: ['OPEN', 'IN_PROGRESS'] } } }),
     db.user.aggregate({ _sum: { balance: true } }),
     db.ledgerEntry.count({ where: { kind: 'BET', createdAt: { gte: startOfDay() } } }),
     db.user.findMany({ where: q ? { username: { contains: q } } : {}, orderBy: { createdAt: 'desc' }, take: 30 }),
     selectedId ? db.user.findUnique({ where: { id: selectedId } }) : null,
+    adminStats(7),
   ]);
   const manageable = !!selected && canManage(actor.role, selected.role);
   const selfEdit = selected?.id === actor.id && canEditSelf(actor.role);
@@ -41,6 +43,49 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
         <Stat label="Einsätze heute"><span className="num">{betsToday}</span></Stat>
         <Stat label="NVC im Umlauf"><span className="num text-gold">{compact(totals._sum.balance ?? 0)}</span></Stat>
       </div>
+
+      <Section title="Letzte 7 Tage" className="mb-4">
+        <div className="grid grid-cols-2 gap-px bg-line sm:grid-cols-5">
+          {[
+            ['Aktive Spieler', String(week.activePlayers)],
+            ['Neue Spieler', String(week.newUsers)],
+            ['Runden', coins(week.rounds)],
+            ['Eingesetzt', compact(week.staked)],
+            ['Hausergebnis', `${week.house >= 0 ? '+' : ''}${compact(week.house)}`],
+          ].map(([label, value]) => (
+            <div key={label} className="bg-surface px-4 py-3">
+              <p className="text-[11px] text-muted">{label}</p>
+              <p className={`num font-semibold ${label === 'Hausergebnis' ? (week.house >= 0 ? 'text-win' : 'text-loss') : ''}`}>{value}</p>
+            </div>
+          ))}
+        </div>
+        {week.games.length === 0 ? (
+          <Empty>Diese Woche wurde noch nicht gespielt.</Empty>
+        ) : (
+          <div className="overflow-x-auto border-t border-line">
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted">
+                <tr>
+                  <th className="px-4 py-2 font-medium">Spiel</th>
+                  <th className="px-4 py-2 text-right font-medium">Runden</th>
+                  <th className="px-4 py-2 text-right font-medium">Eingesetzt</th>
+                  <th className="px-4 py-2 text-right font-medium">Haus</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-line">
+                {week.games.map((g) => (
+                  <tr key={g.game}>
+                    <td className="px-4 py-2">{GAME_NAMES[g.game] ?? g.game}</td>
+                    <td className="num px-4 py-2 text-right">{coins(g.rounds)}</td>
+                    <td className="num px-4 py-2 text-right">{compact(g.staked)}</td>
+                    <td className={`num px-4 py-2 text-right ${g.house >= 0 ? 'text-win' : 'text-loss'}`}>{compact(g.house)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
 
       {/* Phones: selected player → list → tools. Laptops: list left, the rest right. */}
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
