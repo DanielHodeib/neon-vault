@@ -64,6 +64,11 @@ export function Chat({ onClose }: { onClose: () => void }) {
       setClearedAt(Date.now());
       return change('');
     }
+    const dm = /^\/msg\s+(\S+)\s+(.+)$/i.exec(msg);
+    if (dm) {
+      if (await call('dm:send', { to: dm[1].replace(/^@/, ''), text: dm[2] })) change('');
+      return;
+    }
     const profile = /^\/profil\s+(\S+)$/i.exec(msg);
     if (profile) {
       router.push(`/profile/${encodeURIComponent(profile[1])}`);

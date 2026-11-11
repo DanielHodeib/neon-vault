@@ -1,4 +1,5 @@
 import { headers } from 'next/headers';
+import Link from 'next/link';
 
 import { removeFriend, respondFriend, sendFriendRequest, sendMoney, setBlocked } from '@/app/actions/social';
 import { CopyLink } from '@/components/CopyLink';
@@ -70,6 +71,7 @@ export default async function FriendsPage() {
                       <span className="truncate text-xs text-faint">{online ? online.activity : 'offline'}</span>
                     </span>
                     <div className="flex gap-1">
+                      <Link href={`/messages?u=${encodeURIComponent(u.username)}`} className="btn-ghost h-8 text-xs">Nachricht</Link>
                       <FormButton action={removeFriend.bind(null, u.id)} confirm={`${u.username} entfernen?`} className="btn-ghost h-8 text-xs">Entfernen</FormButton>
                       <FormButton action={setBlocked.bind(null, u.id, true)} confirm={`${u.username} blockieren?`} className="btn-ghost h-8 text-xs">Blockieren</FormButton>
                     </div>

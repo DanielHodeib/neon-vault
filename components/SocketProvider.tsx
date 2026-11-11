@@ -18,6 +18,9 @@ type Ctx = {
   event: GlobalEvent | null;
   rain: { amount: number; endsAt: number; players: number; by: string } | null;
   call: <T = Record<string, unknown>>(event: string, data?: unknown) => Promise<T | null>;
+  /** Unread private messages; the messages page resets it. */
+  dmUnread: number;
+  setDmUnread: (n: number) => void;
   /** Freezes the shown balance until the returned release() runs, so it can't spoil an animation. */
   holdBalance: () => () => void;
 };
@@ -71,6 +74,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [chat, setChat] = useState<ChatMessage[]>([]);
   const [event, setEvent] = useState<GlobalEvent | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
+  const [dmUnread, setDmUnread] = useState(0);
   const held = useRef(0);
   const pending = useRef<number | null>(null);
 
@@ -94,6 +98,11 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       },
       event: setEvent,
       rain: setRain,
+      dm: (m: { from: string; text: string }) => {
+        if (m.from === me.username || window.location.pathname.startsWith('/messages')) return;
+        setDmUnread((n) => n + 1);
+        toast(`✉️ ${m.from}: ${m.text.length > 60 ? `${m.text.slice(0, 60)}…` : m.text}`, { duration: 6000 });
+      },
       toast: (msg: string) => toast(msg),
       announcement: (a: { message: string; from: string }) => toast(`${a.from}: ${a.message}`, { duration: 10_000 }),
       notification: (n: { title: string; message: string }) => {
@@ -106,9 +115,13 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       disconnect: (reason: string) => reason === 'io server disconnect' && router.refresh(),
     };
     for (const [name, fn] of Object.entries(handlers)) socket.on(name, fn);
+    // Unread private messages, fetched again after every reconnect.
+    const loadUnread = () => socket.emit('dm:unread', {}, (r: { ok: boolean; unread?: number }) => r.ok && setDmUnread(r.unread ?? 0));
+    socket.on('connect', loadUnread);
     socket.connect();
     return () => {
       for (const [name, fn] of Object.entries(handlers)) socket.off(name, fn);
+      socket.off('connect', loadUnread);
       socket.disconnect();
     };
   }, [socket, me.id, me.username, me.soundEnabled, router]);
@@ -147,8 +160,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   }, []);
 
   const value = useMemo(
-    () => ({ socket, me, balance, online, chat, event, rain, call, holdBalance }),
-    [socket, me, balance, online, chat, event, rain, call, holdBalance],
+    () => ({ socket, me, balance, online, chat, event, rain, call, holdBalance, dmUnread, setDmUnread }),
+    [socket, me, balance, online, chat, event, rain, call, holdBalance, dmUnread],
   );
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;
 }

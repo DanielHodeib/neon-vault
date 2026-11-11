@@ -2,6 +2,7 @@
 
 export const CHAT_COMMANDS = [
   { name: 'tip', args: 'Name Betrag', description: 'Einem Freund NVC schenken', takesName: true },
+  { name: 'msg', args: 'Name Text', description: 'Private Nachricht an einen Freund', takesName: true },
   { name: 'profil', args: 'Name', description: 'Profil eines Spielers öffnen', takesName: true },
   { name: 'clear', args: '', description: 'Chatverlauf bei dir ausblenden', takesName: false },
 ] as const;

@@ -6,7 +6,7 @@ import { suggest } from './chatSuggest';
 const names = ['Daniel', 'dana', 'Max'];
 
 test('slash lists commands and filters by prefix', () => {
-  assert.deepEqual(suggest('/', names).map((s) => s.key), ['tip', 'profil', 'clear']);
+  assert.deepEqual(suggest('/', names).map((s) => s.key), ['tip', 'msg', 'profil', 'clear']);
   assert.deepEqual(suggest('/ti', names).map((s) => s.text), ['/tip ']);
   assert.deepEqual(suggest('/x', names), []);
 });

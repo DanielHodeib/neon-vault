@@ -23,6 +23,7 @@ import {
   Headphones,
   House,
   LogOut,
+  Mail,
   Menu,
   MessageSquare,
   Rocket,
@@ -72,7 +73,7 @@ type User = { username: string; avatarUrl: string | null; level: number; role: R
 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
   const pathname = usePathname();
-  const { balance, event, rain } = useLive();
+  const { balance, event, rain, dmUnread } = useLive();
   // null = default (docked on wide screens, closed elsewhere)
   const [chat, setChat] = useState<boolean | null>(null);
   const [sheet, setSheet] = useState<'games' | 'more' | null>(null);
@@ -89,6 +90,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
 
   const community: NavItem[] = [
     { href: '/friends', label: 'Freunde', icon: Users },
+    { href: '/messages', label: dmUnread ? `Nachrichten (${dmUnread})` : 'Nachrichten', icon: Mail },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
     { href: '/quests', label: 'Quests', icon: Target },
     { href: '/stats', label: 'Statistik', icon: ChartColumn },
