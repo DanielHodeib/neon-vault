@@ -2,17 +2,13 @@ generator client {
   provider = "prisma-client-js"
 }
 
+// SQLite is enough: one server process writes, transactions serialize.
 datasource db {
   provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
-enum FriendshipStatus {
-  pending
-  accepted
-}
-
-enum UserRole {
+enum Role {
   OWNER
   ADMIN
   MODERATOR
@@ -27,211 +23,144 @@ enum TicketStatus {
   CLOSED
 }
 
-enum QuestPeriod {
-  DAILY
-  WEEKLY
-}
-
-enum NotificationType {
-  SUPPORT_REPLY
-  MONEY_RECEIVED
-  QUEST_COMPLETED
-  SYSTEM
-  VIP_UPGRADE
-}
-
-model SystemSettings {
-  id                 Int      @id @default(1)
-  isMaintenanceMode  Boolean  @default(false) @map("is_maintenance_mode")
-  maintenanceEndTime DateTime? @map("maintenance_end_time")
-  updatedAt          DateTime @updatedAt @map("updated_at")
-
-  @@map("system_settings")
-}
-
 model User {
-  id                  String       @id @default(cuid())
-  username            String       @unique
-  passwordHash        String
-  role                UserRole     @default(USER)
-  clanTag             String?      @map("clan_tag")
-  isBanned            Boolean      @default(false) @map("is_banned")
-  banExpiresAt        DateTime?    @map("ban_expires_at")
-  banReason           String?      @map("ban_reason")
-  avatarUrl           String?      @map("avatar_url")
-  bannerUrl           String?      @map("banner_url")
-  bio                 String?      @map("bio")
-  chatColor           String?      @map("chat_color")
-  balance             String       @default("10000.00")
-  xp                  Int          @default(0)
-  dailyStatsDate      String       @default("") @map("daily_stats_date")
-  dailyBets           Int          @default(0) @map("daily_bets")
-  dailyWins           Int          @default(0) @map("daily_wins")
-  dailyFaucetClaimed  Boolean      @default(false) @map("daily_faucet_claimed")
-  dailyQuestClaimed   Boolean      @default(false) @map("daily_quest_claimed")
-  createdAt           DateTime     @default(now())
-  settings            Settings?
-  friendshipsSent     Friendship[] @relation("FriendshipsSent")
-  friendshipsReceived Friendship[] @relation("FriendshipsReceived")
-  blocksSent          Block[]      @relation("BlocksSent")
-  blocksReceived      Block[]      @relation("BlocksReceived")
-  transactionsSent    Transaction[] @relation("TransactionsSent")
-  transactionsReceived Transaction[] @relation("TransactionsReceived")
-  tickets             Ticket[]
-  ticketMessagesSent  TicketMessage[] @relation("TicketMessagesSent")
-  userQuests          UserQuest[]
-  notifications       Notification[]
+  id           String    @id @default(cuid())
+  username     String    @unique
+  passwordHash String
+  role         Role      @default(USER)
+  balance      BigInt    @default(10000)
+  xp           Int       @default(0)
+  createdAt    DateTime  @default(now())
 
-  @@map("users")
+  bannedUntil  DateTime?
+  banReason    String?
+
+  // profile
+  avatarUrl    String?
+  bannerUrl    String?
+  bio          String    @default("")
+  clanTag      String?
+  chatColor    String?
+  rankTag      String    @default("BRONZE")
+
+  // settings
+  soundEnabled  Boolean  @default(true)
+  theme         String   @default("neon")
+  publicProfile Boolean  @default(true)
+  showBalance   Boolean  @default(false)
+  showHistory   Boolean  @default(false)
+
+  sessions      Session[]
+  ledger        LedgerEntry[]    @relation("LedgerOwner")
+  questClaims   QuestClaim[]
+  notifications Notification[]
+  friendsOut    Friendship[]     @relation("FriendshipFrom")
+  friendsIn     Friendship[]     @relation("FriendshipTo")
+  blocksOut     Block[]          @relation("BlockFrom")
+  blocksIn      Block[]          @relation("BlockTo")
+  tickets       Ticket[]
+  ticketMessages TicketMessage[]
+}
+
+model Session {
+  id        String   @id // sha256 of the cookie token
+  userId    String
+  expiresAt DateTime
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// Every balance change is one row. Balance on User is the running total.
+model LedgerEntry {
+  id             String   @id @default(cuid())
+  userId         String
+  amount         BigInt   // signed
+  kind           String   // BET | WIN | REFUND | FAUCET | QUEST | TRANSFER | RAIN | ADMIN
+  game           String?
+  note           String?
+  counterpartyId String?
+  createdAt      DateTime @default(now())
+  user           User     @relation("LedgerOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([kind, createdAt])
+}
+
+model QuestClaim {
+  userId      String
+  questKey    String
+  periodStart DateTime
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, questKey, periodStart])
 }
 
 model Notification {
-  id        String           @id @default(uuid())
-  userId    String           @map("user_id")
-  type      NotificationType
+  id        String   @id @default(cuid())
+  userId    String
   title     String
   message   String
-  isRead    Boolean          @default(false) @map("is_read")
-  createdAt DateTime         @default(now()) @map("created_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])
-  @@index([userId, isRead])
-  @@map("notifications")
-}
-
-model UserQuest {
-  id          String      @id @default(cuid())
-  userId      String      @map("user_id")
-  period      QuestPeriod
-  questKey    String      @map("quest_key")
-  title       String
-  description String
-  progress    Int         @default(0)
-  target      Int
-  reward      String      @default("0")
-  claimed     Boolean     @default(false)
-  lastResetAt DateTime    @default(now()) @map("last_reset_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, period, questKey])
-  @@index([userId, period])
-  @@map("user_quests")
-}
-
-model Block {
-  id            String   @id @default(cuid())
-  userId        String   @map("user_id")
-  blockedUserId String   @map("blocked_user_id")
-  createdAt     DateTime @default(now())
-
-  user        User @relation("BlocksSent", fields: [userId], references: [id], onDelete: Cascade)
-  blockedUser User @relation("BlocksReceived", fields: [blockedUserId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, blockedUserId])
-  @@index([blockedUserId])
-  @@map("blocks")
 }
 
 model Friendship {
-  id        String           @id @default(cuid())
-  userId    String           @map("user_id")
-  friendId  String           @map("friend_id")
-  status    FriendshipStatus @default(pending)
-  createdAt DateTime         @default(now())
+  fromId    String
+  toId      String
+  accepted  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  from      User     @relation("FriendshipFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to        User     @relation("FriendshipTo", fields: [toId], references: [id], onDelete: Cascade)
 
-  user   User @relation("FriendshipsSent", fields: [userId], references: [id], onDelete: Cascade)
-  friend User @relation("FriendshipsReceived", fields: [friendId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, friendId])
-  @@index([friendId])
-  @@map("friendships")
+  @@id([fromId, toId])
+  @@index([toId])
 }
 
-model Settings {
-  id           String   @id @default(cuid())
-  userId       String   @unique @map("user_id")
-  soundEnabled Boolean  @default(true)
-  theme        String   @default("slate")
-  selectedRankTag String @default("BRONZE") @map("selected_rank_tag")
-  publicProfile Boolean @default(true) @map("public_profile")
-  bio          String   @default("")
-  favoriteGame String   @default("Unknown") @map("favorite_game")
-  privacyShowBalance Boolean @default(false) @map("privacy_show_balance")
-  publicGameHistory Boolean  @default(false) @map("public_game_history")
-  updatedAt    DateTime @updatedAt
+model Block {
+  fromId String
+  toId   String
+  from   User   @relation("BlockFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to     User   @relation("BlockTo", fields: [toId], references: [id], onDelete: Cascade)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("settings")
-}
-
-model QuestProgress {
-  userId            String   @id @map("user_id")
-  dailyDate         String   @map("daily_date")
-  dailySlotsRounds  Int      @default(0) @map("daily_slots_rounds")
-  dailyClaimed      Int      @default(0) @map("daily_claimed")
-  weeklyDate        String   @map("weekly_date")
-  weeklySlotsRounds Int      @default(0) @map("weekly_slots_rounds")
-  weeklyBetActions  Int      @default(0) @map("weekly_bet_actions")
-  weeklyWinActions  Int      @default(0) @map("weekly_win_actions")
-  weeklyClaimed     Int      @default(0) @map("weekly_claimed")
-  updatedAt         String   @default("") @map("updated_at")
-
-  @@map("quest_progress")
-}
-
-model Transaction {
-  id         String   @id @default(cuid())
-  senderId   String   @map("sender_id")
-  receiverId String   @map("receiver_id")
-  amount     String
-  message    String   @default("")
-  createdAt  DateTime @default(now())
-
-  sender   User @relation("TransactionsSent", fields: [senderId], references: [id], onDelete: Cascade)
-  receiver User @relation("TransactionsReceived", fields: [receiverId], references: [id], onDelete: Cascade)
-
-  @@index([senderId])
-  @@index([receiverId])
-  @@map("transactions")
+  @@id([fromId, toId])
 }
 
 model Ticket {
-  id        String       @id @default(uuid())
-  userId    String?      @map("user_id")
-  guestContact String?   @map("guest_contact")
-  guestUsername String?  @map("guest_username")
-  content   String?
-  subject   String
-  category  String
-  status    TicketStatus @default(OPEN)
-  createdAt DateTime     @default(now()) @map("created_at")
-  updatedAt DateTime     @updatedAt @map("updated_at")
+  id           String          @id @default(cuid())
+  userId       String?
+  guestName    String?
+  guestContact String?
+  subject      String
+  category     String
+  status       TicketStatus    @default(OPEN)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  user         User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages     TicketMessage[]
 
-  user     User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  messages TicketMessage[]
-
-  @@index([userId])
   @@index([status])
-  @@map("tickets")
+  @@index([userId])
 }
 
 model TicketMessage {
-  id           String   @id @default(uuid())
-  ticketId     String   @map("ticket_id")
-  senderId     String   @map("sender_id")
-  content      String
-  isStaffReply Boolean  @default(false) @map("is_staff_reply")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
-  sender User   @relation("TicketMessagesSent", fields: [senderId], references: [id], onDelete: Cascade)
+  id        String   @id @default(cuid())
+  ticketId  String
+  senderId  String?  // null = guest
+  isStaff   Boolean  @default(false)
+  content   String
+  createdAt DateTime @default(now())
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  sender    User?    @relation(fields: [senderId], references: [id], onDelete: SetNull)
 
   @@index([ticketId])
-  @@index([senderId])
-  @@map("ticket_messages")
+}
+
+model SystemSettings {
+  id                 Int       @id @default(1)
+  maintenance        Boolean   @default(false)
+  maintenanceEndsAt  DateTime?
 }

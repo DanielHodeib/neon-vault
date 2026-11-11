@@ -51,3 +51,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+!.env.example
+
+# local tool state
+/.omc/
+*.db
+*.db-journal
