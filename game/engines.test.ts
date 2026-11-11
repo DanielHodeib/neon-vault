@@ -31,12 +31,16 @@ test('every slot machine pays back 88–100 %, free spin rounds included', () =>
     let bets = 0;
     let freeLeft = 0;
     let special: string | undefined;
+    let hits = 0;
+    let features = 0;
     for (let i = 0; i < 300_000 || freeLeft > 0; i++) {
       const free = freeLeft > 0;
       if (free) freeLeft--;
       else bets++;
       const r = spin(machine, { free, special: free ? special : undefined });
       if (r.special) special = r.special;
+      if (!free && r.multiplier > 0) hits++;
+      if (!free && r.freeSpins) features++;
       paid += r.multiplier;
       freeLeft += r.freeSpins;
       assert.equal(r.steps[0].grid.length, machine.cols);
@@ -44,6 +48,9 @@ test('every slot machine pays back 88–100 %, free spin rounds included', () =>
     }
     const rtp = paid / bets;
     assert.ok(rtp > 0.88 && rtp < 1, `${key} RTP ${rtp.toFixed(3)}`);
+    // The odds shown in the UI must match what the engine does.
+    assert.ok(Math.abs((hits / bets) * 100 - machine.odds.hit) < 1, `${key} hit rate ${((hits / bets) * 100).toFixed(1)}`);
+    if (machine.odds.feature) assert.ok(Math.abs(bets / features / machine.odds.feature - 1) < 0.2, `${key} feature 1/${Math.round(bets / features)}`);
   }
 });
 

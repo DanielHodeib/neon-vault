@@ -4,7 +4,7 @@ import { Gift, Square, Volume2, VolumeX, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 
 import { coins } from '@/lib/format';
-import { BIG_WIN, lineCount, MACHINES, topSymbol, type Machine } from '@/lib/slots';
+import { BIG_WIN, lineCount, MACHINES, SLOT_MAX_WIN, topSymbol, type Machine } from '@/lib/slots';
 import { useJoin, useLive } from '../SocketProvider';
 import { BetInput, Section } from '../ui';
 import { GameFrame } from './GameFrame';
@@ -217,6 +217,7 @@ export function Slots() {
   const line = focused?.line !== undefined ? machine.lines?.[focused.line] : undefined;
   const autoRunning = auto > 0 || (freeHere > 0 && autoFree && !!result);
   const lineBet = amount / lineCount(machine);
+  const totalWeight = machine.symbols.reduce((sum, x) => sum + x.weight, 0);
   const shownWin = useCountUp(result?.win ?? 0);
 
   const cabinet = (
@@ -234,7 +235,8 @@ export function Slots() {
         </p>
       </div>
 
-      <div className="relative rounded-xl bg-black/45 p-1.5 shadow-[inset_0_2px_12px_rgba(0,0,0,.6)] sm:p-2">
+      {/* Reels keep a fixed size per reel so a 3×3 machine does not fill a wide screen. */}
+      <div className="relative mx-auto rounded-xl bg-black/45 p-1.5 shadow-[inset_0_2px_12px_rgba(0,0,0,.6)] sm:p-2" style={{ maxWidth: `${machine.cols * 6.5}rem` }}>
         <div className="relative grid gap-1.5 sm:gap-2" style={{ gridTemplateColumns: `repeat(${machine.cols}, minmax(0, 1fr))` }}>
           {grid.map((col, c) => {
             const spinning = c >= stopped;
@@ -362,6 +364,16 @@ export function Slots() {
         ))}
       </div>
       {cabinet}
+      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Odd label="Auszahlungsquote" value={`${pct(machine.odds.rtp)} %`} hint="langfristig zurück" />
+        <Odd label="Trefferquote" value={`${pct(machine.odds.hit)} %`} hint={`etwa jeder ${Math.round(100 / machine.odds.hit)}. Spin`} />
+        <Odd
+          label={machine.freeSpins ? 'Free Spins' : 'Feature'}
+          value={machine.odds.feature ? `1 : ${machine.odds.feature}` : featureShort(machine)}
+          hint={machine.odds.feature ? 'Chance pro Spin' : 'bei jedem Spin aktiv'}
+        />
+        <Odd label="Max. Gewinn" value={`${coins(SLOT_MAX_WIN)}×`} hint={coins(SLOT_MAX_WIN * amount) + ' NVC'} />
+      </dl>
     </div>
   );
 
@@ -423,10 +435,12 @@ export function Slots() {
     <>
       <Section title="Gewinntabelle" action={<span className="text-xs text-muted">bei {coins(amount)} NVC Einsatz</span>} pad>
         <p className="mb-3 text-sm text-muted">{machine.feature}</p>
+        <p className="mb-2 text-[11px] text-faint">Prozent = Chance, dass ein Feld dieses Symbol zeigt.</p>
         <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
           {[...machine.symbols].reverse().map((s) => (
             <li key={s.icon} className="flex items-center gap-3 text-sm">
               <span className="w-8 text-center text-2xl">{s.icon}</span>
+              <span className="num w-12 shrink-0 text-right text-[11px] text-faint" title="Chance pro Feld">{pct((s.weight / totalWeight) * 100)} %</span>
               <span className="min-w-0 flex-1 text-xs text-muted">
                 {s.mystery ? 'Mystery – alle werden zum selben Symbol' : s.wild && !s.pays ? 'Wild – ersetzt alle Symbole' : (
                   <>
@@ -492,6 +506,20 @@ const Meter = ({ label, value }: { label: string; value: string }) => (
 );
 
 const Badge = ({ children }: { children: ReactNode }) => <span className="pop-in rounded-full bg-gold/15 px-2.5 py-1 font-medium text-gold">{children}</span>;
+
+const pct = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+
+/** Short feature name for machines without a triggered bonus. */
+const featureShort = (m: Machine) =>
+  m.tumble ? 'Kaskaden' : m.chaos ? 'Chaos-Multiplikator' : m.wildMult ? `Wild ×${m.wildMult}` : m.symbols.some((s) => s.mystery) ? 'Mystery' : m.symbols.some((s) => s.pays?.[2]) ? 'Paare zahlen' : 'Hohe Gewinne';
+
+const Odd = ({ label, value, hint }: { label: string; value: string; hint: string }) => (
+  <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
+    <dt className="text-[11px] text-muted">{label}</dt>
+    <dd className="num text-base font-semibold">{value}</dd>
+    <dd className="truncate text-[11px] text-faint">{hint}</dd>
+  </div>
+);
 
 const Stat = ({ label, value }: { label: string; value: string }) => (
   <div>

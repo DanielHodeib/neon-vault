@@ -1,4 +1,4 @@
-import { MACHINES, topSymbol, type Machine, type Sym } from '@/lib/slots';
+import { MACHINES, SLOT_MAX_WIN, topSymbol, type Machine, type Sym } from '@/lib/slots';
 import { pick, rand } from './rng';
 
 export { MACHINES };
@@ -17,7 +17,6 @@ export type SpinResult = {
   expand?: { symbol: string; cols: number[]; amount: number };
 };
 
-const MAX_WIN = 5000; // × stake
 const MAX_TUMBLES = 20;
 
 function draw(m: Machine, pool = m.symbols): Sym {
@@ -144,7 +143,7 @@ export function spin(m: Machine, { free = false, special, rush = false }: { free
 
   return {
     steps,
-    multiplier: Math.round(Math.min(total, MAX_WIN) * 10_000) / 10_000,
+    multiplier: Math.round(Math.min(total, SLOT_MAX_WIN) * 10_000) / 10_000,
     features,
     freeSpins,
     ...(newSpecial ? { special: newSpecial } : {}),

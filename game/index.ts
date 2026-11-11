@@ -19,7 +19,7 @@ import { refundJackpot, registerJackpot } from './jackpot';
 import { refundMines, registerMines } from './mines';
 import { registerPlinko } from './plinko';
 import { refundWheel, registerWheel, startWheel } from './wheel';
-import { handle, type GameSocket } from './socket';
+import { empty, handle, type GameSocket } from './socket';
 
 const onlineList = () => [...hub.online.values()].map(({ id, username, activity }) => ({ id, username, activity }));
 
@@ -77,6 +77,15 @@ export function setupRealtime(io: Server) {
       hub.chat = [...hub.chat.slice(-49), msg];
       hub.chatActive.set(u.id, msg.at);
       io.emit('chat', msg);
+    });
+
+    // Names for chat autocomplete: the user's friends (online players come from the presence list).
+    handle(socket, 'chat:names', empty, async () => {
+      const links = await db.friendship.findMany({
+        where: { accepted: true, OR: [{ fromId: user.id }, { toId: user.id }] },
+        select: { from: { select: { username: true } }, to: { select: { username: true } } },
+      });
+      return { names: links.map((l) => (l.from.username === user.username ? l.to.username : l.from.username)) };
     });
 
     for (const register of handlers) register(io, socket);

@@ -2,25 +2,74 @@
 
 import { Send, X } from 'lucide-react';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-import { useLive } from './SocketProvider';
+import { suggest } from '@/lib/chatSuggest';
+import { useJoin, useLive } from './SocketProvider';
 import { RankTag, RoleBadge } from './ui';
 
 export function Chat({ onClose }: { onClose: () => void }) {
   const { chat, online, call, me } = useLive();
   const [text, setText] = useState('');
   const [tab, setTab] = useState<'chat' | 'online'>('chat');
+  const [pick, setPick] = useState(0);
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const [clearedAt, setClearedAt] = useState(0);
   const bottom = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  const [friends, setFriends] = useState<string[]>([]);
+  useJoin<{ names: string[] }>('chat:names', useCallback((r) => setFriends(r.names), []));
+
+  // Names to complete: friends, who is online and who wrote recently, without me.
+  const names = useMemo(
+    () => [...new Set([...friends, ...online.map((u) => u.username), ...chat.flatMap((m) => (m.userId ? [m.username] : []))])].filter((n) => n !== me.username).sort((a, b) => a.localeCompare(b)),
+    [friends, online, chat, me.username],
+  );
+  const items = dismissed === text ? [] : suggest(text, names);
+  const active = Math.min(pick, items.length - 1);
+  const shown = chat.filter((m) => m.at > clearedAt);
+
+  const change = (value: string) => {
+    setText(value);
+    setPick(0);
+    setDismissed(null);
+  };
+  const choose = (i: number) => change(items[i].text);
+
+  const onKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setPick((active + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length);
+    } else if (e.key === 'Tab' || (e.key === 'Enter' && items[active].text !== text)) {
+      e.preventDefault();
+      choose(active);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setDismissed(text);
+    }
+  };
 
   useEffect(() => {
     bottom.current?.scrollIntoView({ block: 'end' });
-  }, [chat, tab]);
+  }, [chat, tab, clearedAt]);
 
   const send = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    if (await call('chat:send', { text })) setText('');
+    const msg = text.trim();
+    if (!msg) return;
+    // Commands handled right here; everything else (incl. /tip) goes to the server.
+    if (msg === '/clear') {
+      setClearedAt(Date.now());
+      return change('');
+    }
+    const profile = /^\/profil\s+(\S+)$/i.exec(msg);
+    if (profile) {
+      router.push(`/profile/${encodeURIComponent(profile[1])}`);
+      return change('');
+    }
+    if (await call('chat:send', { text })) change('');
   };
 
   return (
@@ -38,7 +87,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
 
       <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3 text-sm">
         {tab === 'chat'
-          ? chat.map((m) =>
+          ? shown.map((m) =>
               m.userId ? (
                 <div key={m.id}>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -67,8 +116,40 @@ export function Chat({ onClose }: { onClose: () => void }) {
       </div>
 
       {tab === 'chat' && (
-        <form onSubmit={send} className="flex shrink-0 gap-2 border-t border-line p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <input className="input" value={text} maxLength={300} onChange={(e) => setText(e.target.value)} placeholder="Nachricht … (/tip Name 100)" enterKeyHint="send" />
+        <form onSubmit={send} className="relative flex shrink-0 gap-2 border-t border-line p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          {items.length > 0 && (
+            <ul id="chat-suggest" role="listbox" className="absolute inset-x-3 bottom-full z-20 mb-1 overflow-hidden rounded-lg border border-line-strong bg-raised py-1 shadow-xl">
+              {items.map((it, i) => (
+                <li key={it.key} role="option" aria-selected={i === active}>
+                  <button
+                    type="button"
+                    // mousedown keeps the focus in the input
+                    onMouseDown={(e) => e.preventDefault()}
+                    onMouseEnter={() => setPick(i)}
+                    onClick={() => choose(i)}
+                    className={`flex w-full items-baseline gap-2 px-3 py-1.5 text-left text-sm ${i === active ? 'bg-accent/15 text-fg' : 'text-muted'}`}
+                  >
+                    <span className="shrink-0 font-medium text-fg">{it.label}</span>
+                    {it.hint && <span className="truncate text-xs text-faint">{it.hint}</span>}
+                  </button>
+                </li>
+              ))}
+              <li className="border-t border-line px-3 pt-1.5 pb-1 text-[10px] text-faint">↑↓ wählen · Tab/Enter übernehmen · Esc schließen</li>
+            </ul>
+          )}
+          <input
+            className="input"
+            value={text}
+            maxLength={300}
+            onChange={(e) => change(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Nachricht … ( / für Befehle, @ für Namen)"
+            enterKeyHint="send"
+            role="combobox"
+            aria-expanded={items.length > 0}
+            aria-controls="chat-suggest"
+            aria-autocomplete="list"
+          />
           <button className="btn-primary w-10 px-0" aria-label="Senden" disabled={!text.trim()}>
             <Send size={16} />
           </button>
