@@ -53,8 +53,25 @@ Damit der Mac beim Spielen nicht einschläft, lässt du nebenbei `caffeinate -d`
 | `npm run set-role -- Name ROLLE` | Rolle vergeben (OWNER, ADMIN, MODERATOR, SUPPORT, USER) |
 | `npm run db:migrate` | Neue Migration nach einer Schema-Änderung |
 | `npm run db:studio` | Datenbank im Browser ansehen |
+| `npm run backup` | Sofort ein Datenbank-Backup in `backups/` |
 
-Die Datenbank ist die Datei `prisma/dev.db`. Ein Backup ist eine Kopie dieser Datei.
+Die Datenbank ist die Datei `prisma/dev.db`.
+
+## Backups
+
+Der Server legt beim Start und danach einmal täglich eine Kopie der Datenbank in `backups/` ab (die letzten 14 Tage bleiben). Von Hand geht es mit `npm run backup`. Anderer Ordner, z. B. auf einem USB-Stick: `BACKUP_DIR=/Volumes/Stick/neon-backups` in die `.env`.
+
+Wiederherstellen: Server stoppen, gewünschte Datei als `prisma/dev.db` kopieren, Server starten.
+
+## Projekt außerhalb von iCloud
+
+iCloud legt Kopien wie „datei 2.ts“ an und kann die Datenbank beschädigen. Darum gehört das Projekt in einen normalen Ordner:
+
+```bash
+mkdir -p ~/Projects && mv ~/Documents/Neon-Vault/neon-vault ~/Projects/neon-vault
+```
+
+Vorher den Server stoppen. Danach im neuen Ordner `npm run build && npm start`.
 
 ## Aufbau
 

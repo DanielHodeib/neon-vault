@@ -9,6 +9,7 @@
     "test": "tsx --test game/*.test.ts lib/*.test.ts",
     "check": "tsc --noEmit && eslint . && npm test",
     "db:migrate": "prisma migrate dev",
+    "backup": "tsx -e \"import('./lib/backup').then((b) => b.backupNow()).then(() => process.exit(0))\"",
     "db:studio": "prisma studio",
     "set-role": "tsx scripts/set-role.ts",
     "share": "tailscale funnel 3000"

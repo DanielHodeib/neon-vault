@@ -9,6 +9,7 @@ next-env.d.ts
 !.env.example
 *.db
 *.db-journal
+/backups/
 
 # editor, OS and tool state
 .DS_Store
