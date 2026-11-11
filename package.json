@@ -11,7 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "set-role": "tsx scripts/set-role.ts",
-    "share": "cloudflared tunnel --url http://localhost:3000"
+    "share": "tailscale funnel 3000"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",

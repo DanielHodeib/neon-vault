@@ -1,62 +1,63 @@
 # Mit Freunden spielen
 
-Zwei Wege, je nachdem ob es schnell oder dauerhaft sein soll.
+## Empfohlen: vom eigenen Mac mit Tailscale Funnel
 
-## A) Sofort, vom eigenen Laptop (Cloudflare-Tunnel)
+Kostenlos, mit HTTPS und einer **festen Adresse**, die sich nie ändert (z. B. `https://dein-mac.tailXXXX.ts.net`). Deine Freunde brauchen nichts zu installieren, sie öffnen einfach den Link. Läuft, solange dein Mac an ist.
 
-Kostenlos, ohne Domain, ohne Server. Läuft nur, solange dein Laptop an ist, und die Adresse ändert sich bei jedem Start.
+### Einmalig
 
-```bash
-brew install cloudflared
-```
-
-```bash
-npm run build && npm start
-```
-
-In einem zweiten Terminal:
-
-```bash
-npm run share
-```
-
-cloudflared zeigt eine Adresse wie `https://irgendwas.trycloudflare.com`. Die schickst du deinen Freunden. Sie registrieren sich dort und spielen mit.
-
-## B) Dauerhaft: eigener Server + Gratis-Domain mit HTTPS
-
-Deine Domain `daniel-hodeib-vault.chickenkiller.com` (FreeDNS) bleibt bestehen. Caddy holt und erneuert das HTTPS-Zertifikat automatisch.
-
-1. **Server**: Die bestehende AWS-EC2-Instanz in Frankfurt reicht. Alternativ geht jeder kleine Linux-Server mit Docker; Oracle Cloud Free Tier ist dauerhaft kostenlos.
-2. **Ports**: In der Security Group nur `22`, `80` und `443` öffnen. `3000` und `5000` werden nicht mehr gebraucht.
-3. **DNS**: Auf freedns.afraid.org den A-Record der Domain auf die öffentliche IP des Servers setzen. Eine Elastic IP verhindert, dass sie sich beim Neustart ändert.
-4. **Altes Deployment stoppen** (falls es noch läuft):
+1. Die **Tailscale**-App öffnen und dich anmelden. Das Icon in der Menüleiste zeigt dann „Connected“.
+2. Im Projektordner:
    ```bash
-   docker compose -f docker-compose.deploy.yml down
-   ```
-5. **Neu starten**:
-   ```bash
-   git pull
+   npm install
    ```
    ```bash
    cp .env.example .env
    ```
    ```bash
-   docker compose up -d --build
-   ```
-6. Nach etwa einer Minute ist `https://daniel-hodeib-vault.chickenkiller.com` erreichbar. Danach registrierst du dich und machst dich zum Admin:
-   ```bash
-   docker compose exec app npm run set-role -- DeinName OWNER
+   npx prisma migrate deploy
    ```
 
-**Updates einspielen:** `git pull && docker compose up -d --build`
+### Jedes Mal zum Spielen
 
-**Backup:** Die Datenbank liegt im Docker-Volume `data`:
+Terminal 1 (offen lassen):
 
 ```bash
-docker compose cp app:/data/neon.db ./backup-$(date +%F).db
+npm run build && npm start
 ```
 
-### Hinweise
+Terminal 2 (offen lassen):
 
-- Die alte Datenbank vom vorherigen Deployment passt nicht zum neuen Schema. Der neue Stand startet mit einer leeren Datenbank.
-- Wenn Login oder Formulare hinter einem anderen Proxy mit „Invalid Server Actions request“ scheitern, reicht der Proxy den `Host`-Header nicht durch. Caddy und cloudflared tun das von selbst.
+```bash
+npm run share
+```
+
+Beim allerersten Mal zeigt Tailscale einen Link, über den du **Funnel** für dein Konto freischaltest. Den Link einmal öffnen und bestätigen, dann `npm run share` erneut starten. Danach steht die Adresse da (`https://….ts.net`). Die schickst du deinen Freunden; sie bleibt immer gleich.
+
+Wenn du nach dem Registrieren Admin werden willst, in einem dritten Terminal:
+
+```bash
+npm run set-role -- DeinName OWNER
+```
+
+### Tipps
+
+- Damit der Mac beim Spielen nicht einschläft: Systemeinstellungen → Batterie → „Ruhezustand verhindern, wenn das Display aus ist“ (am Netzteil), oder im Terminal `caffeinate -d` laufen lassen.
+- Beenden: in beiden Terminals `Ctrl + C`. Offene Einsätze werden dabei automatisch zurückgebucht.
+- Die Datenbank ist die Datei `prisma/dev.db`. Ein Backup ist einfach eine Kopie dieser Datei.
+
+## Optional: 24/7 auf einem eigenen Server (Docker)
+
+Nur nötig, wenn das Spiel auch laufen soll, während dein Mac aus ist. Du brauchst dafür einen Linux-Server mit Docker und eine Domain, deren A-Record auf den Server zeigt. Die Ports 80 und 443 müssen offen sein.
+
+```bash
+cp .env.example .env
+```
+
+In `.env` setzt du `DOMAIN` auf deine Domain. Dann:
+
+```bash
+docker compose up -d --build
+```
+
+Caddy holt das HTTPS-Zertifikat automatisch.

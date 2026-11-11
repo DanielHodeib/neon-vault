@@ -27,11 +27,11 @@ npm run set-role -- DeinName OWNER
 | `npm run build && npm start` | Produktion |
 | `npm run db:migrate` | Neue Migration nach Schema-Änderung |
 | `npm run db:studio` | Datenbank im Browser ansehen |
-| `npm run share` | Öffentliche Adresse per Cloudflare-Tunnel |
+| `npm run share` | Feste öffentliche HTTPS-Adresse per Tailscale Funnel |
 
 ## Mit Freunden spielen
 
-Sofort vom Laptop per Cloudflare-Tunnel (`npm run share`) oder dauerhaft auf einem Server mit Gratis-Domain und automatischem HTTPS (`docker compose up -d --build`). Die Schritte stehen in [docs/HOSTING.md](docs/HOSTING.md).
+Am einfachsten vom eigenen Mac mit fester, kostenloser HTTPS-Adresse über Tailscale Funnel (`npm run share`). Für 24/7-Betrieb gibt es die Docker-Variante mit eigenem Server. Die Schritte stehen in [docs/HOSTING.md](docs/HOSTING.md).
 
 ## Aufbau
 
