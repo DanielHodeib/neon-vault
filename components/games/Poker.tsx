@@ -64,7 +64,17 @@ export function Poker() {
   const myTurn = state.toAct === meIndex;
   const toCall = state.currentBet - mySeat.bet;
   const seconds = Math.max(0, Math.ceil((state.deadline - now) / 1000));
-  const raiseTo = raise ?? state.currentBet + state.minRaise;
+  // Raise sizes are "raise to" amounts: at least a min-raise, at most everything the player has.
+  const maxTo = mySeat.bet + mySeat.stack;
+  const minTo = Math.min(state.currentBet + state.minRaise, maxTo);
+  const clampTo = (v: number) => Math.max(minTo, Math.min(maxTo, Math.round(v / 50) * 50));
+  const raiseTo = clampTo(raise ?? minTo);
+  const presets: [string, number][] = [
+    ['Min', minTo],
+    ['½ Pot', clampTo(state.currentBet + state.pot / 2)],
+    ['Pot', clampTo(state.currentBet + state.pot)],
+    ['All-in', maxTo],
+  ];
   const between = state.phase === 'showdown' || state.phase === 'waiting';
   const broke = mySeat.stack < 100; // can't post a big blind any more
   const act = (type: string, to?: number) => {
@@ -116,19 +126,44 @@ export function Poker() {
             <p className="text-center text-xs text-muted">
               {mySeat.hand && <span className="text-accent">{mySeat.hand} · </span>}Du bist dran · <span className="num">{seconds}s</span>
             </p>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <button className="btn-secondary" onClick={() => act('fold')}>Fold</button>
+            <div className="grid grid-cols-2 gap-2">
+              <button className="btn-secondary h-12" onClick={() => act('fold')}>Fold</button>
               {toCall === 0 ? (
-                <button className="btn-primary" onClick={() => act('check')}>Check</button>
+                <button className="btn-primary h-12" onClick={() => act('check')}>Check</button>
               ) : (
-                <button className="btn-primary" onClick={() => act('call')}>Call <span className="num">{coins(Math.min(toCall, mySeat.stack))}</span></button>
+                <button className="btn-primary h-12" onClick={() => act('call')}>
+                  Call <span className="num">{coins(Math.min(toCall, mySeat.stack))}</span>
+                </button>
               )}
-              <button className="btn-danger col-span-2 sm:col-span-1 sm:order-last" onClick={() => act('allin')}>All-in</button>
-              <div className="col-span-2 flex rounded-lg border border-line bg-bg sm:col-span-1">
-                <input className="num h-10 w-full min-w-0 bg-transparent px-3 text-sm outline-none" type="number" inputMode="numeric" value={raiseTo} onChange={(e) => setRaise(Math.floor(Number(e.target.value)))} />
-                <button className="border-l border-line px-3 text-sm font-medium" onClick={() => act('raise', raiseTo)}>Raise</button>
-              </div>
             </div>
+            {maxTo > state.currentBet && (
+              <div className="space-y-2 rounded-lg border border-line p-3">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted">Raise auf</span>
+                  <span className="num font-semibold">{coins(raiseTo)}</span>
+                </div>
+                <input
+                  type="range"
+                  className="w-full accent-[var(--accent)]"
+                  min={Math.min(minTo, maxTo)}
+                  max={maxTo}
+                  step={50}
+                  value={raiseTo}
+                  onChange={(e) => setRaise(Number(e.target.value))}
+                  aria-label="Raise-Betrag"
+                />
+                <div className="grid grid-cols-4 gap-1.5">
+                  {presets.map(([label, value]) => (
+                    <button key={label} className={raiseTo === value ? 'chip-active justify-center' : 'chip justify-center'} onClick={() => setRaise(value)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button className="btn-secondary h-11 w-full" onClick={() => (raiseTo >= maxTo ? act('allin') : act('raise', raiseTo))}>
+                  {raiseTo >= maxTo ? 'All-in' : <>Raise auf <span className="num">{coins(raiseTo)}</span></>}
+                </button>
+              </div>
+            )}
           </div>
         ) : between ? (
           <div className="space-y-3 text-center">

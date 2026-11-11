@@ -89,7 +89,7 @@ const publicView = (t: Table, viewerId: string | null) => ({
   seats: t.seats.map((s) => ({
     name: s.name,
     isBot: !s.userId,
-    isMe: !!viewerId && s.userId === viewerId,
+    isMe: !!viewerId && s.userId === viewerId && !s.away,
     stack: s.stack,
     bet: s.bet,
     folded: s.folded,
@@ -285,12 +285,22 @@ export function registerPoker(io: Server): Register {
     const index = t.seats.findIndex((s) => s.userId === userId);
     if (index < 0) return;
     const seat = t.seats[index];
+    // Stop this user's browser tabs from receiving the table, or they would jump back in.
+    io.in(`user:${userId}`).socketsLeave(`poker:${t.id}`);
     if (t.phase === 'waiting') await cashOut(t, seat);
     else {
-      // Removing a seat mid-hand would shift every index, so fold and cash out after the hand.
+      // The seat stays until the hand ends (removing it would shift every index), but it folds now
+      // and everything not already in the pot is paid out right away.
       seat.away = true;
       if (t.toAct === index && canAct(seat)) await act(t, index, { type: 'fold' });
-      else seat.folded = true;
+      else if (inHand(seat)) {
+        seat.folded = true;
+        say(t, seat, 'Fold (aufgestanden)');
+        if (t.phase !== 'showdown' && t.seats.filter(inHand).length === 1) finish(t);
+      }
+      const chips = seat.stack;
+      seat.stack = 0;
+      if (chips > 0) await applyLedger([{ userId, amount: chips, kind: 'CASHOUT', game: 'poker' }]);
     }
 
     if (!t.seats.some((s) => s.userId && !s.away)) {

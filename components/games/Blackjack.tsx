@@ -7,9 +7,11 @@ import { useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput } from '../ui';
 import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
 
-type Hand = { cards: string[]; total: number; bet: number; done: boolean; result?: string; won?: number };
-type Seat = { userId: string | null; name: string; isBot: boolean; bet: number; hands: Hand[]; insurance: number };
-type State = { id: string; isPrivate: boolean; phase: 'betting' | 'playing' | 'result'; deadline: number; turn: { seat: number; hand: number } | null; seats: Seat[]; dealer: string[]; dealerTotal: number | null };
+type Hand = { cards: string[]; total: number; soft: boolean; bet: number; done: boolean; result?: string; won?: number };
+type Seat = { userId: string | null; name: string; isBot: boolean; bet: number; hands: Hand[]; insurance: number; net: number | null };
+type State = { id: string; isPrivate: boolean; phase: 'betting' | 'insurance' | 'playing' | 'result'; deadline: number; turn: { seat: number; hand: number } | null; seats: Seat[]; dealer: string[]; dealerTotal: number | null };
+
+const CHIPS = [50, 100, 500, 1000, 5000];
 
 const RESULT: Record<string, string> = { blackjack: 'Blackjack', win: 'Gewonnen', push: 'Push', lose: 'Verloren' };
 
@@ -56,7 +58,9 @@ export function Blackjack() {
 
       <Felt>
         <div className="text-center">
-          <p className="eyebrow text-white/50">Dealer {state.dealerTotal !== null && <span className="num">· {state.dealerTotal}</span>}</p>
+          <p className="eyebrow text-white/50">
+            Dealer {state.dealerTotal !== null && <span className="num">· {state.dealer.includes('??') ? `zeigt ${state.dealerTotal}` : state.dealerTotal}</span>}
+          </p>
           <div className="mt-2 flex min-h-[clamp(3rem,10vw,4.6rem)] justify-center gap-1.5">{state.dealer.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
         </div>
 
@@ -75,12 +79,18 @@ export function Blackjack() {
                 <div key={hi} className="mt-2">
                   <div className="flex justify-center -space-x-3 sm:-space-x-2">{h.cards.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
                   <p className="mt-1 text-xs">
-                    <span className="num text-white/70">{h.total}</span>
+                    <span className="num text-white/70">{h.soft && h.total < 21 ? `Soft ${h.total}` : h.total}</span>
                     {h.result && <span className={h.result === 'lose' ? ' text-loss' : h.result === 'push' ? ' text-white/60' : ' text-win'}> · {RESULT[h.result]}{h.won ? ` +${coins(h.won)}` : ''}</span>}
                   </p>
                 </div>
               ))}
               {s.insurance > 0 && <p className="mt-1 text-[11px] text-white/50">Versichert {coins(s.insurance)}</p>}
+              {s.net !== null && state.phase === 'result' && (
+                <p className={`num mt-1 text-xs font-semibold ${s.net > 0 ? 'text-win' : s.net < 0 ? 'text-loss' : 'text-white/60'}`}>
+                  {s.net > 0 ? '+' : ''}
+                  {coins(s.net)}
+                </p>
+              )}
             </div>
           ))}
         </div>
@@ -88,9 +98,27 @@ export function Blackjack() {
 
       <div className="card mt-4">
         {state.phase === 'betting' && !mySeat?.bet && (
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
-            <BetInput value={amount} onChange={setAmount} balance={balance} />
-            <button className="btn-primary h-10 px-8" onClick={() => call('bj:bet', { amount })}>Setzen</button>
+          <div className="space-y-3">
+            <div className="flex flex-wrap gap-1.5">
+              {CHIPS.map((c) => (
+                <button key={c} className={amount === c ? 'chip-active' : 'chip'} onClick={() => setAmount(c)}>{coins(c)}</button>
+              ))}
+            </div>
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+              <BetInput value={amount} onChange={setAmount} balance={balance} />
+              <button className="btn-primary h-10 px-8" onClick={() => call('bj:bet', { amount })}>Setzen</button>
+            </div>
+          </div>
+        )}
+        {state.phase === 'insurance' && (
+          <div className="space-y-3 text-center">
+            <p className="text-sm">
+              Der Dealer zeigt ein Ass. {mySeat?.hands.length ? (mySeat.insurance ? 'Du bist versichert.' : `Versichern für ${coins(Math.floor(mySeat.hands[0].bet / 2))}?`) : ''}
+              <span className="num text-muted"> · {seconds}s</span>
+            </p>
+            {mySeat?.hands.length > 0 && !mySeat.insurance && (
+              <button className="btn-secondary" onClick={() => call('bj:insurance')}>Versichern (zahlt 2:1 bei Dealer-Blackjack)</button>
+            )}
           </div>
         )}
         {state.phase === 'betting' && mySeat?.bet > 0 && <p className="text-center text-sm text-muted">Warte auf die anderen Spieler{state.deadline > 0 && ` · ${seconds}s`}</p>}
@@ -103,11 +131,19 @@ export function Blackjack() {
               <button className="btn-secondary" onClick={() => act('stand')}>Halten</button>
               {myHand.cards.length === 2 && <button className="btn-secondary" onClick={() => act('double')}>Verdoppeln</button>}
               {myHand.cards.length === 2 && mySeat.hands.length === 1 && <button className="btn-secondary" onClick={() => act('split')}>Teilen</button>}
-              {myHand.cards.length === 2 && state.dealer[0]?.[0] === 'A' && !mySeat.insurance && <button className="btn-secondary" onClick={() => act('insurance')}>Versichern</button>}
             </div>
           </div>
         )}
-        {state.phase === 'result' && <p className="text-center text-sm text-muted">Nächste Runde in <span className="num">{seconds}s</span></p>}
+        {state.phase === 'result' && (
+          <p className="text-center text-sm text-muted">
+            {mySeat?.net != null && (
+              <span className={`num mr-2 font-semibold ${mySeat.net > 0 ? 'text-win' : mySeat.net < 0 ? 'text-loss' : ''}`}>
+                {mySeat.net > 0 ? `Gewonnen +${coins(mySeat.net)}` : mySeat.net < 0 ? `Verloren ${coins(mySeat.net)}` : 'Unentschieden'} ·
+              </span>
+            )}
+            Nächste Runde in <span className="num">{seconds}s</span>
+          </p>
+        )}
       </div>
     </div>
   );
