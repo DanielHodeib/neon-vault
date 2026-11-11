@@ -53,6 +53,7 @@ model User {
   sessions      Session[]
   ledger        LedgerEntry[]    @relation("LedgerOwner")
   questClaims   QuestClaim[]
+  freeSpins     FreeSpins?
   notifications Notification[]
   friendsOut    Friendship[]     @relation("FriendshipFrom")
   friendsIn     Friendship[]     @relation("FriendshipTo")
@@ -94,6 +95,15 @@ model QuestClaim {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, questKey, periodStart])
+}
+
+// Won free spins, playable on the machine they were won on at the winning stake.
+model FreeSpins {
+  userId  String @id
+  machine String
+  bet     BigInt
+  spins   Int
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Notification {

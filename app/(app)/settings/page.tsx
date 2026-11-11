@@ -1,11 +1,32 @@
 import { changePassword, deleteAccount, updateProfile, updateSettings } from '@/app/actions/account';
-import { ActionForm, SubmitButton } from '@/components/ui';
+import { ActionForm, PageHeader, Section, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { THEMES } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 
-const THEME_NAMES: Record<string, string> = { neon: 'Neon', steel: 'Stahl', sunset: 'Sunset', ocean: 'Ozean', matrix: 'Matrix' };
+export const metadata = { title: 'Einstellungen' };
+
+const THEME_NAMES: Record<string, [string, string]> = {
+  neon: ['Mint', '#3ddc97'],
+  steel: ['Stahl', '#a5b4c8'],
+  sunset: ['Sunset', '#ff8a4c'],
+  ocean: ['Ozean', '#4cc2ff'],
+  matrix: ['Lime', '#b4f04a'],
+};
+
+function Toggle({ name, label, hint, checked }: { name: string; label: string; hint?: string; checked: boolean }) {
+  return (
+    <label className="flex cursor-pointer items-center justify-between gap-4 py-3">
+      <span>
+        <span className="block text-sm">{label}</span>
+        {hint && <span className="block text-xs text-faint">{hint}</span>}
+      </span>
+      <input type="checkbox" name={name} defaultChecked={checked} className="peer sr-only" />
+      <span className="relative h-6 w-10 shrink-0 rounded-full bg-line-strong transition peer-checked:bg-accent after:absolute after:top-1 after:left-1 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition peer-checked:after:translate-x-4 peer-focus-visible:ring-2 peer-focus-visible:ring-accent/50" />
+    </label>
+  );
+}
 
 export default async function SettingsPage() {
   const user = await requireUser();
@@ -14,77 +35,88 @@ export default async function SettingsPage() {
   })) > 0;
   const ranks = RANKS.filter((r) => rankAllowed(r, user.xp, Number(user.balance), ownerFriend));
 
-  const toggle = (name: string, label: string, checked: boolean) => (
-    <label className="flex items-center justify-between gap-2 text-sm">
-      {label} <input type="checkbox" name={name} defaultChecked={checked} className="h-4 w-4" />
-    </label>
-  );
-
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 lg:grid-cols-2">
-      <ActionForm action={updateProfile} className="card space-y-3">
-        <h2 className="font-bold">Profil</h2>
-        <div>
-          <label className="label">Avatar-URL</label>
-          <input className="input" name="avatarUrl" defaultValue={user.avatarUrl ?? ''} placeholder="https://…" />
-        </div>
-        <div>
-          <label className="label">Banner-URL</label>
-          <input className="input" name="bannerUrl" defaultValue={user.bannerUrl ?? ''} placeholder="https://…" />
-        </div>
-        <div>
-          <label className="label">Bio</label>
-          <textarea className="input" name="bio" maxLength={240} rows={3} defaultValue={user.bio} />
-        </div>
-        <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="label">Clan-Tag</label>
-            <input className="input uppercase" name="clanTag" maxLength={5} defaultValue={user.clanTag ?? ''} />
-          </div>
-          <div>
-            <label className="label">Chat-Farbe</label>
-            <input className="input h-10 p-1" type="color" name="chatColor" defaultValue={user.chatColor ?? '#e2e8f0'} />
-          </div>
-          <div>
-            <label className="label">Rang</label>
-            <select className="input" name="rankTag" defaultValue={user.rankTag}>
-              {ranks.map((r) => <option key={r.tag} value={r.tag}>{r.tag.replace(/_/g, ' ')}</option>)}
-            </select>
-          </div>
-        </div>
-        <SubmitButton>Speichern</SubmitButton>
-      </ActionForm>
+    <>
+      <PageHeader title="Einstellungen" />
+      <div className="grid items-start gap-4 lg:grid-cols-2">
+        <Section title="Profil" pad>
+          <ActionForm action={updateProfile} className="space-y-4">
+            <div>
+              <label className="label">Avatar-URL</label>
+              <input className="input" name="avatarUrl" defaultValue={user.avatarUrl ?? ''} placeholder="https://…" inputMode="url" />
+            </div>
+            <div>
+              <label className="label">Banner-URL</label>
+              <input className="input" name="bannerUrl" defaultValue={user.bannerUrl ?? ''} placeholder="https://…" inputMode="url" />
+            </div>
+            <div>
+              <label className="label">Über mich</label>
+              <textarea className="input h-auto py-2" name="bio" maxLength={240} rows={3} defaultValue={user.bio} />
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr]">
+              <div>
+                <label className="label">Clan-Tag</label>
+                <input className="input uppercase" name="clanTag" maxLength={5} defaultValue={user.clanTag ?? ''} />
+              </div>
+              <div>
+                <label className="label">Chat-Farbe</label>
+                <input className="h-10 w-full cursor-pointer rounded-lg border border-line bg-bg p-1 sm:w-14" type="color" name="chatColor" defaultValue={user.chatColor ?? '#e8eaed'} />
+              </div>
+              <div className="col-span-2 sm:col-span-1">
+                <label className="label">Angezeigter Rang</label>
+                <select className="input" name="rankTag" defaultValue={user.rankTag}>
+                  {ranks.map((r) => <option key={r.tag} value={r.tag}>{r.tag.replace(/_/g, ' ')}</option>)}
+                </select>
+              </div>
+            </div>
+            <SubmitButton>Profil speichern</SubmitButton>
+          </ActionForm>
+        </Section>
 
-      <div className="space-y-4">
-        <ActionForm action={updateSettings} className="card space-y-3">
-          <h2 className="font-bold">Einstellungen</h2>
-          <div>
-            <label className="label">Farbschema</label>
-            <select className="input" name="theme" defaultValue={user.theme}>
-              {THEMES.map((t) => <option key={t} value={t}>{THEME_NAMES[t]}</option>)}
-            </select>
-          </div>
-          {toggle('soundEnabled', 'Ton bei Erwähnungen', user.soundEnabled)}
-          {toggle('publicProfile', 'Profil öffentlich', user.publicProfile)}
-          {toggle('showBalance', 'Guthaben im Profil zeigen', user.showBalance)}
-          {toggle('showHistory', 'Spielverlauf im Profil zeigen', user.showHistory)}
-          <SubmitButton>Speichern</SubmitButton>
-        </ActionForm>
+        <div className="space-y-4">
+          <Section title="Darstellung & Privatsphäre" pad>
+            <ActionForm action={updateSettings} className="space-y-4">
+              <div>
+                <label className="label">Akzentfarbe</label>
+                <div className="flex flex-wrap gap-2">
+                  {THEMES.map((t) => (
+                    <label key={t} className="cursor-pointer">
+                      <input type="radio" name="theme" value={t} defaultChecked={user.theme === t} className="peer sr-only" />
+                      <span className="chip gap-2 peer-checked:border-accent peer-checked:text-fg">
+                        <span className="h-3 w-3 rounded-full" style={{ background: THEME_NAMES[t][1] }} />
+                        {THEME_NAMES[t][0]}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="divide-y divide-line border-y border-line">
+                <Toggle name="soundEnabled" label="Ton bei Erwähnungen" hint="Wenn jemand @deinName im Chat schreibt" checked={user.soundEnabled} />
+                <Toggle name="publicProfile" label="Öffentliches Profil" checked={user.publicProfile} />
+                <Toggle name="showBalance" label="Guthaben im Profil zeigen" checked={user.showBalance} />
+                <Toggle name="showHistory" label="Letzte Spiele im Profil zeigen" checked={user.showHistory} />
+              </div>
+              <SubmitButton>Speichern</SubmitButton>
+            </ActionForm>
+          </Section>
 
-        <ActionForm action={changePassword} className="card space-y-3">
-          <h2 className="font-bold">Passwort ändern</h2>
-          <input className="input" type="password" name="current" placeholder="Aktuelles Passwort" autoComplete="current-password" required />
-          <input className="input" type="password" name="next" placeholder="Neues Passwort (min. 8)" autoComplete="new-password" required />
-          <SubmitButton>Ändern</SubmitButton>
-        </ActionForm>
+          <Section title="Passwort ändern" pad>
+            <ActionForm action={changePassword} className="space-y-3">
+              <input className="input" type="password" name="current" placeholder="Aktuelles Passwort" autoComplete="current-password" required />
+              <input className="input" type="password" name="next" placeholder="Neues Passwort (mind. 8 Zeichen)" autoComplete="new-password" required />
+              <SubmitButton className="btn-secondary">Passwort ändern</SubmitButton>
+            </ActionForm>
+          </Section>
 
-        <ActionForm action={deleteAccount} className="card space-y-3 border-red-500/30">
-          <h2 className="font-bold text-red-300">Konto löschen</h2>
-          <p className="text-sm text-muted">Löscht dein Konto mit Guthaben, Freunden und Tickets. Das kann nicht rückgängig gemacht werden.</p>
-          <input className="input" type="password" name="password" placeholder="Passwort zur Bestätigung" required />
-          <SubmitButton className="btn-danger">Endgültig löschen</SubmitButton>
-        </ActionForm>
+          <Section title="Konto löschen" pad>
+            <ActionForm action={deleteAccount} className="space-y-3">
+              <p className="text-sm text-muted">Löscht Guthaben, Freunde und Tickets endgültig.</p>
+              <input className="input" type="password" name="password" placeholder="Passwort zur Bestätigung" required />
+              <SubmitButton className="btn-danger">Endgültig löschen</SubmitButton>
+            </ActionForm>
+          </Section>
+        </div>
       </div>
-    </div>
+    </>
   );
 }

@@ -1,3 +1,4 @@
+import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
@@ -38,14 +39,14 @@ export default async function LegalPage({ params }: PageProps<'/[page]'>) {
   const page = PAGES[(await params).page];
   if (!page) notFound();
   return (
-    <main className="mx-auto max-w-3xl px-4 py-12">
-      <Link href="/" className="text-sm text-accent">← Zurück</Link>
-      <h1 className="mt-4 text-3xl font-black">{page.title}</h1>
-      <div className="mt-8 space-y-6">
+    <main className="mx-auto max-w-2xl px-4 py-10 sm:py-16">
+      <Link href="/" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ChevronLeft size={16} /> Zurück</Link>
+      <h1 className="mt-6 text-2xl font-semibold tracking-tight sm:text-3xl">{page.title}</h1>
+      <div className="mt-8 divide-y divide-line border-y border-line">
         {page.sections.map(([heading, text]) => (
-          <section key={heading}>
-            <h2 className="font-bold text-accent">{heading}</h2>
-            <p className="mt-1 text-sm leading-relaxed text-slate-300">{text}</p>
+          <section key={heading} className="py-5">
+            <h2 className="text-sm font-semibold">{heading}</h2>
+            <p className="mt-1.5 text-sm leading-relaxed text-muted">{text}</p>
           </section>
         ))}
       </div>

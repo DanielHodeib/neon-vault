@@ -30,7 +30,6 @@ type Hub = {
   event: GlobalEvent | null;
   maintenance: { on: boolean; endsAt: number | null };
   online: Map<string, OnlineUser>;
-  freeSpins: Map<string, { spins: number; bet: number; machine: string }>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
   timers: Record<string, NodeJS.Timeout | undefined>;
@@ -45,7 +44,6 @@ export const hub: Hub = (g.__neonHub ??= {
   event: null,
   maintenance: { on: false, endsAt: null },
   online: new Map(),
-  freeSpins: new Map(),
   chat: [],
   chatActive: new Map(),
   timers: {},

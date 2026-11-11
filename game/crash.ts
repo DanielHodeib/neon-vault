@@ -47,7 +47,7 @@ async function cashOut(io: Server, bet: Bet, at: number) {
   io.to('crash').emit('crash:state', crashState());
   const win = Math.floor(bet.amount * at * winBoost('crash'));
   await payout(bet.userId, win, 'crash');
-  if (win >= 50_000) systemMessage(`🚀 ${bet.username} hat bei ${at.toFixed(2)}× ${win.toLocaleString('de-DE')} NVC in Crash gewonnen!`);
+  if (win >= 50_000) systemMessage(`${bet.username} hat bei ${at.toFixed(2)}× ${win.toLocaleString('de-DE')} NVC in Crash gewonnen!`);
   return win;
 }
 

@@ -1,28 +1,33 @@
-import { UserLink } from '@/components/ui';
+import { Empty, PageHeader, Section, UserLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { netProfitSince, startOfDay, startOfWeek } from '@/lib/wallet';
 
-function Board({ title, rows }: { title: string; rows: { name: string; value: string }[] }) {
+export const metadata = { title: 'Bestenliste' };
+
+function Board({ title, rows, tone }: { title: string; rows: { name: string; value: string; positive?: boolean }[]; tone?: boolean }) {
   return (
-    <div className="card">
-      <h2 className="mb-3 font-bold">{title}</h2>
-      {rows.length === 0 && <p className="text-sm text-muted">Noch keine Daten.</p>}
-      <ol className="space-y-1 text-sm">
+    <Section title={title}>
+      {rows.length === 0 && <Empty>Noch keine Daten.</Empty>}
+      <ol className="divide-y divide-line">
         {rows.map((r, i) => (
-          <li key={r.name} className="flex justify-between">
-            <span>{['🥇', '🥈', '🥉'][i] ?? `${i + 1}.`} <UserLink name={r.name} /></span>
-            <span className="font-mono">{r.value}</span>
+          <li key={r.name} className="flex items-center justify-between px-4 py-2.5 text-sm">
+            <span className="flex items-center gap-3">
+              <span className={`num w-5 text-center text-xs ${i < 3 ? 'font-semibold text-gold' : 'text-faint'}`}>{i + 1}</span>
+              <UserLink name={r.name} />
+            </span>
+            <span className={`num ${tone ? (r.positive ? 'text-win' : 'text-loss') : 'text-muted'}`}>{r.value}</span>
           </li>
         ))}
       </ol>
-    </div>
+    </Section>
   );
 }
 
-const profit = (p: number) => `${p >= 0 ? '+' : ''}${coins(p)}`;
+const profit = (rows: { username: string; profit: number }[]) =>
+  rows.map((t) => ({ name: t.username, value: `${t.profit >= 0 ? '+' : ''}${coins(t.profit)}`, positive: t.profit >= 0 }));
 
 export default async function LeaderboardPage() {
   await requireUser();
@@ -33,11 +38,14 @@ export default async function LeaderboardPage() {
     netProfitSince(startOfWeek()),
   ]);
   return (
-    <div className="mx-auto grid max-w-5xl gap-4 md:grid-cols-2">
-      <Board title="💰 Reichste Spieler" rows={rich.map((u) => ({ name: u.username, value: coins(u.balance) }))} />
-      <Board title="⭐ Höchstes Level" rows={xp.map((u) => ({ name: u.username, value: `Lvl ${levelOf(u.xp)}` }))} />
-      <Board title="👑 Heute (Gewinn)" rows={today.map((t) => ({ name: t.username, value: profit(t.profit) }))} />
-      <Board title="📅 Diese Woche (Gewinn)" rows={week.map((t) => ({ name: t.username, value: profit(t.profit) }))} />
-    </div>
+    <>
+      <PageHeader title="Bestenliste" subtitle="Gewinn zählt Einsätze und Auszahlungen aus allen Spielen." />
+      <div className="grid gap-4 md:grid-cols-2">
+        <Board title="Heute" rows={profit(today)} tone />
+        <Board title="Diese Woche" rows={profit(week)} tone />
+        <Board title="Guthaben" rows={rich.map((u) => ({ name: u.username, value: coins(u.balance) }))} />
+        <Board title="Level" rows={xp.map((u) => ({ name: u.username, value: `Level ${levelOf(u.xp)}` }))} />
+      </div>
+    </>
   );
 }

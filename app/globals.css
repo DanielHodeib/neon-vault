@@ -1,34 +1,72 @@
 @import 'tailwindcss';
 
 @theme {
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, monospace;
+
+  --color-bg: #0a0b0d;
+  --color-surface: #111317;
+  --color-raised: #171a1f;
+  --color-line: #23272e;
+  --color-line-strong: #2f343c;
+  --color-fg: #e8eaed;
+  --color-muted: #8a909a;
+  --color-faint: #5b616b;
+  --color-gold: #e4c06a;
+  --color-win: #4ade80;
+  --color-loss: #f87171;
   --color-accent: var(--accent);
-  --color-accent-2: var(--accent-2);
-  --color-bg: #070a13;
-  --color-panel: #0d1220;
-  --color-line: #1c2438;
-  --color-muted: #8892a8;
-  --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --color-accent-fg: var(--accent-fg);
+
+  --breakpoint-xs: 26rem;
 }
 
+/* Accent colour per user theme (stored keys kept for existing accounts). */
 :root,
-[data-theme='neon'] { --accent: #22d3ee; --accent-2: #a855f7; }
-[data-theme='steel'] { --accent: #94a3b8; --accent-2: #60a5fa; }
-[data-theme='sunset'] { --accent: #fb923c; --accent-2: #f43f5e; }
-[data-theme='ocean'] { --accent: #38bdf8; --accent-2: #14b8a6; }
-[data-theme='matrix'] { --accent: #4ade80; --accent-2: #a3e635; }
+[data-theme='neon'] { --accent: #3ddc97; --accent-fg: #04140c; }
+[data-theme='steel'] { --accent: #a5b4c8; --accent-fg: #0b0f14; }
+[data-theme='sunset'] { --accent: #ff8a4c; --accent-fg: #1a0b02; }
+[data-theme='ocean'] { --accent: #4cc2ff; --accent-fg: #021220; }
+[data-theme='matrix'] { --accent: #b4f04a; --accent-fg: #101802; }
 
-html { color-scheme: dark; }
-body { @apply bg-bg text-slate-100 antialiased; }
+html {
+  color-scheme: dark;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  @apply bg-bg font-sans text-fg antialiased;
+  font-feature-settings: 'cv11', 'ss01';
+}
+::selection { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
-@utility card { @apply rounded-2xl border border-line bg-panel/80 p-5; }
-@utility input { @apply w-full rounded-lg border border-line bg-bg px-3 py-2 text-sm outline-none focus:border-accent; }
-@utility btn { @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40; }
-@utility btn-primary { @apply btn bg-accent text-slate-950 hover:brightness-110; }
-@utility btn-ghost { @apply btn border border-line text-slate-200 hover:border-accent hover:text-accent; }
-@utility btn-danger { @apply btn bg-red-500/90 text-white hover:bg-red-500; }
-@utility label { @apply mb-1 block text-xs font-medium uppercase tracking-wide text-muted; }
-.glow { text-shadow: 0 0 18px var(--accent); }
+@utility panel { @apply rounded-xl border border-line bg-surface; }
+@utility card { @apply panel p-4 sm:p-5; }
+@utility input {
+  @apply h-10 w-full rounded-lg border border-line bg-bg px-3 text-sm text-fg outline-none transition placeholder:text-faint focus:border-accent;
+}
+@utility btn {
+  @apply inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium whitespace-nowrap transition select-none active:scale-[.98] disabled:pointer-events-none disabled:opacity-40;
+}
+@utility btn-primary { @apply btn bg-accent text-accent-fg hover:brightness-110; }
+@utility btn-secondary { @apply btn border border-line-strong bg-raised text-fg hover:border-faint; }
+@utility btn-ghost { @apply btn text-muted hover:bg-raised hover:text-fg; }
+@utility btn-danger { @apply btn bg-loss/15 text-loss hover:bg-loss/25; }
+@utility label { @apply mb-1.5 block text-xs font-medium text-muted; }
+@utility eyebrow { @apply text-[11px] font-semibold tracking-wider text-faint uppercase; }
+@utility num { @apply font-mono tabular-nums; }
+@utility chip {
+  @apply inline-flex h-8 shrink-0 items-center rounded-full border border-line px-3 text-xs font-medium text-muted transition hover:text-fg;
+}
+@utility chip-active { @apply chip border-accent bg-accent/10 text-fg; }
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}
 
+/* Card faces scale with the viewport so a full table fits on a phone. */
 .playing-card {
-  @apply inline-flex h-20 w-14 items-center justify-center rounded-lg border border-slate-300 bg-white text-lg font-bold shadow-lg;
+  @apply inline-flex items-center justify-center rounded-md border border-black/10 bg-white font-semibold text-neutral-900 shadow-sm;
+  width: clamp(2.1rem, 7vw, 3.25rem);
+  height: clamp(3rem, 10vw, 4.6rem);
+  font-size: clamp(0.8rem, 2.4vw, 1.05rem);
 }

@@ -1,20 +1,22 @@
+import { CircleDot, Cherry, Club, Coins, Crown, Plane, Rocket, Spade, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
 import { claimFaucet } from '@/app/actions/account';
 import { FormButton } from '@/components/FormButton';
+import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { netProfitSince, startOfDay } from '@/lib/wallet';
 
-const GAMES = [
-  { slug: 'crash', name: 'Crash', emoji: '🚀', text: 'Steig aus, bevor die Rakete explodiert.' },
-  { slug: 'aviator', name: 'Aviator', emoji: '✈️', text: 'Crash im Cockpit – gleiche Runde, andere Optik.' },
-  { slug: 'slots', name: 'Slots', emoji: '🎰', text: '8 Automaten von Classic bis Treasure Hunt.' },
-  { slug: 'blackjack', name: 'Blackjack', emoji: '🃏', text: 'Solo, mit Bots oder mit Freunden am Tisch.' },
-  { slug: 'roulette', name: 'Roulette', emoji: '🎡', text: 'Europäisches Roulette, alle setzen gemeinsam.' },
-  { slug: 'poker', name: 'Poker', emoji: '♠️', text: "Texas Hold'em gegen Bots oder Freunde." },
-  { slug: 'coinflip', name: 'Coinflip', emoji: '🪙', text: 'Kopf oder Zahl – Spieler gegen Spieler.' },
+const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint: string }[] = [
+  { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97' },
+  { slug: 'aviator', name: 'Aviator', text: 'Crash im Cockpit', icon: Plane, tint: '#ff6b6b' },
+  { slug: 'slots', name: 'Slots', text: '8 Automaten', icon: Cherry, tint: '#e4c06a' },
+  { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff' },
+  { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c' },
+  { slug: 'poker', name: 'Poker', text: "Texas Hold'em", icon: Club, tint: '#c084fc' },
+  { slug: 'coinflip', name: 'Coinflip', text: 'Spieler gegen Spieler', icon: Coins, tint: '#4cc2ff' },
 ];
 
 export default async function Lobby() {
@@ -26,37 +28,57 @@ export default async function Lobby() {
   const king = today.find((t) => t.profit > 0);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      <section className="card flex flex-wrap items-center justify-between gap-4 bg-gradient-to-r from-accent/10 to-accent-2/10">
+    <div className="space-y-6 sm:space-y-8">
+      <section className="panel flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
         <div>
-          <h1 className="text-2xl font-black">Willkommen zurück, {user.username}!</h1>
-          <p className="text-sm text-muted">Hol dir täglich 5.000 NVC gratis.</p>
+          <p className="eyebrow">Willkommen zurück</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{user.username}</h1>
+          <p className="mt-1 text-sm text-muted">Jeden Tag 5.000 NVC gratis abholen.</p>
         </div>
-        <FormButton action={claimFaucet} className="btn-primary" disabled={!!faucet}>
-          {faucet ? 'Faucet morgen wieder' : '🎁 5.000 NVC abholen'}
+        <FormButton action={claimFaucet} className="btn-primary w-full sm:w-auto" disabled={!!faucet}>
+          {faucet ? 'Morgen wieder verfügbar' : 'Tagesbonus abholen'}
         </FormButton>
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {GAMES.map((g) => (
-          <Link key={g.slug} href={`/play/${g.slug}`} className="card group transition hover:-translate-y-0.5 hover:border-accent">
-            <div className="text-4xl">{g.emoji}</div>
-            <h2 className="mt-3 text-lg font-bold group-hover:text-accent">{g.name}</h2>
-            <p className="text-sm text-muted">{g.text}</p>
-          </Link>
-        ))}
+      <section>
+        <h2 className="eyebrow mb-3">Spiele</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+          {GAMES.map(({ slug, name, text, icon: Icon, tint }) => (
+            <Link key={slug} href={`/play/${slug}`} className="panel group relative overflow-hidden p-4 transition hover:border-line-strong sm:p-5">
+              <div
+                className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full opacity-20 blur-2xl transition group-hover:opacity-35"
+                style={{ background: tint }}
+              />
+              <span className="grid h-10 w-10 place-items-center rounded-lg" style={{ background: `${tint}1a`, color: tint }}>
+                <Icon size={20} />
+              </span>
+              <h3 className="mt-6 font-semibold sm:mt-8">{name}</h3>
+              <p className="text-xs text-muted sm:text-sm">{text}</p>
+            </Link>
+          ))}
+        </div>
       </section>
 
-      <section className="card">
-        <h2 className="mb-3 font-bold">Heute vorne {king && <span className="text-amber-300">· 👑 King: {king.username}</span>}</h2>
+      <section className="panel">
+        <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
+          <h2 className="text-sm font-semibold">Heute vorne</h2>
+          {king && (
+            <span className="flex items-center gap-1.5 text-xs text-gold">
+              <Crown size={14} /> {king.username}
+            </span>
+          )}
+        </div>
         {today.length === 0 ? (
-          <p className="text-sm text-muted">Heute hat noch niemand gespielt.</p>
+          <Empty>Heute hat noch niemand gespielt.</Empty>
         ) : (
-          <ol className="space-y-1 text-sm">
+          <ol className="divide-y divide-line">
             {today.map((t, i) => (
-              <li key={t.userId} className="flex justify-between">
-                <span>{i + 1}. <Link href={`/profile/${t.username}`} className="hover:text-accent">{t.username}</Link></span>
-                <span className={`font-mono ${t.profit >= 0 ? 'text-emerald-300' : 'text-red-300'}`}>{t.profit >= 0 ? '+' : ''}{coins(t.profit)}</span>
+              <li key={t.userId} className="flex items-center justify-between px-5 py-3 text-sm">
+                <span className="flex items-center gap-3">
+                  <span className="num w-4 text-faint">{i + 1}</span>
+                  <Link href={`/profile/${t.username}`} className="hover:text-accent">{t.username}</Link>
+                </span>
+                <span className={`num ${t.profit >= 0 ? 'text-win' : 'text-loss'}`}>{t.profit >= 0 ? '+' : ''}{coins(t.profit)}</span>
               </li>
             ))}
           </ol>

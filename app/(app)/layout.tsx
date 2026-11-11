@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 
 import { Shell } from '@/components/Shell';
 import { SocketProvider } from '@/components/SocketProvider';
+import { Logo } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
@@ -13,11 +14,12 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   if (hub.maintenance.on && !isStaff) {
     return (
-      <main className="grid min-h-screen place-items-center p-6 text-center">
-        <div>
-          <h1 className="glow text-4xl font-black text-accent">Wartung</h1>
-          <p className="mt-3 text-muted">Neon Vault wird gerade verbessert.</p>
-          {hub.maintenance.endsAt && <p className="mt-1 text-sm text-muted">Voraussichtlich bis {new Date(hub.maintenance.endsAt).toLocaleString('de-DE')}</p>}
+      <main className="grid min-h-dvh place-items-center p-6 text-center">
+        <div className="max-w-sm">
+          <Logo />
+          <h1 className="mt-8 text-2xl font-semibold">Kurz in Wartung</h1>
+          <p className="mt-2 text-sm text-muted">Wir verbessern gerade etwas. Dein Guthaben ist sicher.</p>
+          {hub.maintenance.endsAt && <p className="mt-4 text-sm text-faint">Voraussichtlich zurück: {new Date(hub.maintenance.endsAt).toLocaleString('de-DE')}</p>}
         </div>
       </main>
     );

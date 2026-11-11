@@ -88,7 +88,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       event: setEvent,
       rain: setRain,
       toast: (msg: string) => toast(msg),
-      announcement: (a: { message: string; from: string }) => toast(`📢 ${a.from}: ${a.message}`, { duration: 10_000 }),
+      announcement: (a: { message: string; from: string }) => toast(`${a.from}: ${a.message}`, { duration: 10_000 }),
       notification: (n: { title: string; message: string }) => {
         toast(`${n.title}: ${n.message}`);
         router.refresh();

@@ -5,13 +5,13 @@ import { useEffect, useState } from 'react';
 import { coins } from '@/lib/format';
 import { useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput } from '../ui';
-import { PlayingCard, TableLobby } from './TableLobby';
+import { Felt, PlayingCard, TableBar, TableLobby } from './TableLobby';
 
 type Hand = { cards: string[]; total: number; bet: number; done: boolean; result?: string; won?: number };
 type Seat = { userId: string | null; name: string; isBot: boolean; bet: number; hands: Hand[]; insurance: number };
 type State = { id: string; isPrivate: boolean; phase: 'betting' | 'playing' | 'result'; deadline: number; turn: { seat: number; hand: number } | null; seats: Seat[]; dealer: string[]; dealerTotal: number | null };
 
-const RESULT = { blackjack: 'Blackjack!', win: 'Gewonnen', push: 'Unentschieden', lose: 'Verloren' } as Record<string, string>;
+const RESULT: Record<string, string> = { blackjack: 'Blackjack', win: 'Gewonnen', push: 'Push', lose: 'Verloren' };
 
 export function Blackjack() {
   const { call, balance, me } = useLive();
@@ -33,6 +33,8 @@ export function Blackjack() {
   if (!state) {
     return (
       <TableLobby
+        title="Blackjack"
+        subtitle="Allein, mit Bots oder mit Freunden an einem Tisch. Dealer steht auf 17, Blackjack zahlt 3:2."
         game="bj"
         maxBots={3}
         onCreate={(opts) => call<{ state: State }>('bj:create', opts).then(enter)}
@@ -49,54 +51,63 @@ export function Blackjack() {
   const act = (action: string) => call('bj:action', { action });
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4">
-      <div className="flex items-center justify-between">
-        <span className="text-sm text-muted">Tisch <b className="font-mono text-slate-200">#{state.id}</b> {state.isPrivate && '(privat – Code teilen)'}</span>
-        <button className="btn-ghost" onClick={() => call('bj:leave').then(() => setState(null))}>Tisch verlassen</button>
-      </div>
+    <div>
+      <TableBar id={state.id} isPrivate={state.isPrivate} info="Code an Freunde schicken" leaveLabel="Tisch verlassen" onLeave={() => call('bj:leave').then(() => setState(null))} />
 
-      <div className="card bg-gradient-to-b from-emerald-950/50 to-panel text-center">
-        <p className="label">Dealer {state.dealerTotal !== null && `· ${state.dealerTotal}`}</p>
-        <div className="flex min-h-20 justify-center gap-2">{state.dealer.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
+      <Felt>
+        <div className="text-center">
+          <p className="eyebrow text-white/50">Dealer {state.dealerTotal !== null && <span className="num">· {state.dealerTotal}</span>}</p>
+          <div className="mt-2 flex min-h-[clamp(3rem,10vw,4.6rem)] justify-center gap-1.5">{state.dealer.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
+        </div>
 
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-2 sm:mt-10 sm:gap-3 lg:grid-cols-[repeat(auto-fit,minmax(10rem,1fr))]">
           {state.seats.map((s, si) => (
-            <div key={si} className={`rounded-xl border p-3 ${state.turn?.seat === si ? 'border-accent' : 'border-line'} ${s.userId === me.id ? 'bg-accent/5' : ''}`}>
-              <p className="text-sm font-semibold">{s.name} {s.bet > 0 && <span className="font-mono text-amber-300">· {coins(s.bet)}</span>}</p>
+            <div
+              key={si}
+              className={`rounded-xl border p-2.5 text-center sm:p-3 ${state.turn?.seat === si ? 'border-accent bg-black/20' : 'border-white/10 bg-black/10'} ${s.userId === me.id ? 'ring-1 ring-accent/30' : ''}`}
+            >
+              <p className="truncate text-xs font-medium text-white/80 sm:text-sm">
+                {s.isBot && <span className="text-white/40">Bot · </span>}
+                {s.name}
+              </p>
+              {s.bet > 0 && <p className="num text-[11px] text-gold">{coins(s.bet)}</p>}
               {s.hands.map((h, hi) => (
                 <div key={hi} className="mt-2">
-                  <div className="flex justify-center gap-1">{h.cards.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
-                  <p className="mt-1 text-xs text-muted">
-                    {h.total} {h.result && <b className={h.result === 'lose' ? 'text-red-300' : 'text-emerald-300'}>· {RESULT[h.result]} {h.won ? `+${coins(h.won)}` : ''}</b>}
+                  <div className="flex justify-center -space-x-3 sm:-space-x-2">{h.cards.map((c, i) => <PlayingCard key={i} card={c} />)}</div>
+                  <p className="mt-1 text-xs">
+                    <span className="num text-white/70">{h.total}</span>
+                    {h.result && <span className={h.result === 'lose' ? ' text-loss' : h.result === 'push' ? ' text-white/60' : ' text-win'}> · {RESULT[h.result]}{h.won ? ` +${coins(h.won)}` : ''}</span>}
                   </p>
                 </div>
               ))}
-              {s.insurance > 0 && <p className="text-xs text-muted">Versichert: {coins(s.insurance)}</p>}
+              {s.insurance > 0 && <p className="mt-1 text-[11px] text-white/50">Versichert {coins(s.insurance)}</p>}
             </div>
           ))}
         </div>
-      </div>
+      </Felt>
 
-      <div className="card">
+      <div className="card mt-4">
         {state.phase === 'betting' && !mySeat?.bet && (
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-60 flex-1"><BetInput value={amount} onChange={setAmount} balance={balance} /></div>
-            <button className="btn-primary px-8" onClick={() => call('bj:bet', { amount })}>Setzen</button>
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+            <BetInput value={amount} onChange={setAmount} balance={balance} />
+            <button className="btn-primary h-10 px-8" onClick={() => call('bj:bet', { amount })}>Setzen</button>
           </div>
         )}
-        {state.phase === 'betting' && mySeat?.bet > 0 && <p className="text-center text-muted">Warte auf die anderen Spieler … {state.deadline > 0 && `${seconds}s`}</p>}
-        {state.phase === 'playing' && !myTurn && <p className="text-center text-muted">{state.turn ? `${state.seats[state.turn.seat]?.name} ist dran …` : 'Dealer spielt …'}</p>}
+        {state.phase === 'betting' && mySeat?.bet > 0 && <p className="text-center text-sm text-muted">Warte auf die anderen Spieler{state.deadline > 0 && ` · ${seconds}s`}</p>}
+        {state.phase === 'playing' && !myTurn && <p className="text-center text-sm text-muted">{state.turn ? `${state.seats[state.turn.seat]?.name} ist am Zug …` : 'Dealer spielt …'}</p>}
         {myHand && (
-          <div className="flex flex-wrap justify-center gap-2">
-            <button className="btn-primary" onClick={() => act('hit')}>Karte</button>
-            <button className="btn-ghost" onClick={() => act('stand')}>Halten</button>
-            {myHand.cards.length === 2 && <button className="btn-ghost" onClick={() => act('double')}>Verdoppeln</button>}
-            {myHand.cards.length === 2 && mySeat.hands.length === 1 && <button className="btn-ghost" onClick={() => act('split')}>Teilen</button>}
-            {myHand.cards.length === 2 && state.dealer[0]?.[0] === 'A' && !mySeat.insurance && <button className="btn-ghost" onClick={() => act('insurance')}>Versichern</button>}
-            <span className="self-center text-sm text-muted">{seconds}s</span>
+          <div className="space-y-3">
+            <p className="text-center text-xs text-muted">Du bist dran · <span className="num">{seconds}s</span></p>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:justify-center">
+              <button className="btn-primary" onClick={() => act('hit')}>Karte</button>
+              <button className="btn-secondary" onClick={() => act('stand')}>Halten</button>
+              {myHand.cards.length === 2 && <button className="btn-secondary" onClick={() => act('double')}>Verdoppeln</button>}
+              {myHand.cards.length === 2 && mySeat.hands.length === 1 && <button className="btn-secondary" onClick={() => act('split')}>Teilen</button>}
+              {myHand.cards.length === 2 && state.dealer[0]?.[0] === 'A' && !mySeat.insurance && <button className="btn-secondary" onClick={() => act('insurance')}>Versichern</button>}
+            </div>
           </div>
         )}
-        {state.phase === 'result' && <p className="text-center text-muted">Neue Runde in {seconds}s …</p>}
+        {state.phase === 'result' && <p className="text-center text-sm text-muted">Nächste Runde in <span className="num">{seconds}s</span></p>}
       </div>
     </div>
   );

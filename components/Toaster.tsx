@@ -3,5 +3,11 @@
 import { Toaster as HotToaster } from 'react-hot-toast';
 
 export const Toaster = () => (
-  <HotToaster position="bottom-right" toastOptions={{ style: { background: '#0d1220', color: '#e2e8f0', border: '1px solid #1c2438' } }} />
+  <HotToaster
+    position="top-center"
+    toastOptions={{
+      style: { background: '#171a1f', color: '#e8eaed', border: '1px solid #2f343c', fontSize: 14, borderRadius: 10 },
+      success: { iconTheme: { primary: '#4ade80', secondary: '#0a0b0d' } },
+    }}
+  />
 );

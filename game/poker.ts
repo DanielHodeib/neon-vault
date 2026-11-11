@@ -216,7 +216,7 @@ export function registerPoker(io: Server): Register {
     t.seats.forEach((s, i) => (s.stack += won[i]));
     t.phase = 'showdown';
     const big = t.results.find((r) => r.won >= 50_000);
-    if (big) systemMessage(`🃏 ${big.name} gewinnt einen ${big.won.toLocaleString('de-DE')} NVC Pot beim Poker!`);
+    if (big) systemMessage(`${big.name} gewinnt einen ${big.won.toLocaleString('de-DE')} NVC Pot beim Poker!`);
     void emit(t);
     schedule(t, NEXT_HAND_MS, () => {
       for (const s of t.seats.filter((x) => x.away)) void cashOut(t, s);

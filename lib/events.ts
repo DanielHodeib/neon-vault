@@ -32,7 +32,7 @@ export function startEvent(type: GlobalEvent['type'], minutes = 5 + randomInt(6)
   if (hub.event) return false;
   hub.event = { type, ...EVENT_TYPES[type], endsAt: Date.now() + minutes * 60_000 };
   broadcast('event', hub.event);
-  systemMessage(`⚡ ${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
+  systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
   timers.eventEnd = setTimeout(stopEvent, minutes * 60_000);
   if (type === 'RAIN') timers.rainDrops = setInterval(rainDrop, 45_000);
   return true;
@@ -40,7 +40,7 @@ export function startEvent(type: GlobalEvent['type'], minutes = 5 + randomInt(6)
 
 export function stopEvent() {
   if (!hub.event) return false;
-  systemMessage(`⏰ ${hub.event.label} ist vorbei.`);
+  systemMessage(`${hub.event.label} ist vorbei.`);
   hub.event = null;
   clearTimeout(timers.eventEnd);
   clearInterval(timers.rainDrops);
@@ -73,17 +73,17 @@ export function startRain(amount: number, seconds: number, players: number, by: 
   hub.rainActive = true;
   const endsAt = Date.now() + seconds * 1000;
   broadcast('rain', { amount, endsAt, players, by });
-  systemMessage(`🌧️ RAIN von ${by}: ${amount} NVC für ${players} aktive Chatter in ${seconds}s!`);
+  systemMessage(`Rain von ${by}: ${amount} NVC für ${players} aktive Chatter in ${seconds}s!`);
   setTimeout(async () => {
     hub.rainActive = false;
     broadcast('rain', null);
     const since = Date.now() - 10 * 60_000;
     const winners = shuffle([...hub.chatActive].filter(([, at]) => at >= since).map(([id]) => id)).slice(0, players);
     const share = Math.floor(amount / Math.max(1, winners.length));
-    if (!winners.length || share < 1) return systemMessage('🌧️ Rain vorbei – niemand war im Chat aktiv.');
+    if (!winners.length || share < 1) return systemMessage('Rain vorbei – niemand war im Chat aktiv.');
     await applyLedger(winners.map((userId) => ({ userId, amount: share, kind: 'RAIN' as const, note: `Rain von ${by}` })));
     const names = await db.user.findMany({ where: { id: { in: winners } }, select: { username: true } });
-    systemMessage(`🌧️ Rain vorbei: ${names.map((n) => n.username).join(', ')} bekommen je ${share} NVC.`);
+    systemMessage(`Rain vorbei: ${names.map((n) => n.username).join(', ')} bekommen je ${share} NVC.`);
   }, seconds * 1000);
   return true;
 }

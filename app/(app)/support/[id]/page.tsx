@@ -1,10 +1,11 @@
 import type { TicketStatus } from '@prisma/client';
+import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { deleteTicket, replyTicket, setTicketStatus } from '@/app/actions/support';
 import { FormButton } from '@/components/FormButton';
-import { ActionForm, SubmitButton } from '@/components/ui';
+import { ActionForm, PageHeader, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { TICKET_STATUS as STATUS } from '@/lib/format';
 import { db } from '@/lib/hub';
@@ -20,44 +21,40 @@ export default async function TicketPage({ params }: PageProps<'/support/[id]'>)
   if (!ticket || (!isStaff && ticket.userId !== user.id)) notFound();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <Link href="/support" className="text-sm text-accent">← Alle Tickets</Link>
-      <div className="card">
-        <div className="flex flex-wrap items-start justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-bold">{ticket.subject}</h1>
-            <p className="text-sm text-muted">
-              {ticket.category} · {STATUS[ticket.status]} · von {ticket.user?.username ?? `Gast ${ticket.guestName} (${ticket.guestContact})`}
-            </p>
-          </div>
-          {isStaff && (
-            <div className="flex flex-wrap gap-2">
-              {(['IN_PROGRESS', 'CLOSED', 'OPEN'] as TicketStatus[]).filter((s) => s !== ticket.status).map((s) => (
-                <FormButton key={s} action={setTicketStatus.bind(null, ticket.id, s)}>{STATUS[s]}</FormButton>
-              ))}
-              <FormButton action={deleteTicket.bind(null, ticket.id)} className="btn-danger" confirm="Ticket endgültig löschen?">Löschen</FormButton>
-            </div>
-          )}
+    <div className="mx-auto max-w-3xl">
+      <Link href="/support" className="inline-flex items-center gap-1 text-sm text-muted hover:text-fg"><ChevronLeft size={16} /> Alle Tickets</Link>
+      <PageHeader
+        title={ticket.subject}
+        subtitle={`${ticket.category} · ${STATUS[ticket.status]} · ${ticket.user?.username ?? `Gast ${ticket.guestName} (${ticket.guestContact})`}`}
+      />
+      {isStaff && (
+        <div className="-mt-2 mb-5 flex flex-wrap gap-2">
+          {(['IN_PROGRESS', 'CLOSED', 'OPEN'] as TicketStatus[]).filter((s) => s !== ticket.status).map((s) => (
+            <FormButton key={s} action={setTicketStatus.bind(null, ticket.id, s)} className="btn-secondary h-8 text-xs">{STATUS[s]}</FormButton>
+          ))}
+          <FormButton action={deleteTicket.bind(null, ticket.id)} className="btn-danger h-8 text-xs" confirm="Ticket endgültig löschen?">Löschen</FormButton>
         </div>
-      </div>
+      )}
 
       <div className="space-y-3">
         {ticket.messages.map((m) => (
-          <div key={m.id} className={`card max-w-[85%] ${m.isStaff ? 'ml-auto border-accent/40 bg-accent/5' : ''}`}>
-            <p className="mb-1 text-xs text-muted">
-              {m.isStaff ? '🛡️ Support' : m.sender?.username ?? ticket.guestName} · {m.createdAt.toLocaleString('de-DE')}
+          <div key={m.id} className={`max-w-[88%] rounded-xl border px-4 py-3 ${m.isStaff ? 'ml-auto border-accent/30 bg-accent/5' : 'border-line bg-surface'}`}>
+            <p className="mb-1 text-xs text-faint">
+              <span className="font-medium text-muted">{m.isStaff ? 'Support' : (m.sender?.username ?? ticket.guestName)}</span> · {m.createdAt.toLocaleString('de-DE')}
             </p>
-            <p className="whitespace-pre-wrap text-sm">{m.content}</p>
+            <p className="text-sm whitespace-pre-wrap">{m.content}</p>
           </div>
         ))}
       </div>
 
-      {ticket.status !== 'CLOSED' && (
-        <ActionForm action={replyTicket} className="card space-y-3">
+      {ticket.status !== 'CLOSED' ? (
+        <ActionForm action={replyTicket} className="mt-5 space-y-3">
           <input type="hidden" name="ticketId" value={ticket.id} />
-          <textarea className="input" name="content" rows={3} placeholder="Antwort schreiben …" required />
-          <SubmitButton>Antworten</SubmitButton>
+          <textarea className="input h-auto py-2" name="content" rows={3} placeholder="Antwort schreiben …" required />
+          <div className="flex justify-end"><SubmitButton>Antworten</SubmitButton></div>
         </ActionForm>
+      ) : (
+        <p className="mt-5 text-center text-sm text-faint">Dieses Ticket ist geschlossen.</p>
       )}
     </div>
   );

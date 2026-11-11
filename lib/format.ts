@@ -23,4 +23,4 @@ export const GAME_NAMES: Record<string, string> = {
 
 export const THEMES = ['neon', 'steel', 'sunset', 'ocean', 'matrix'] as const;
 export const TICKET_CATEGORIES = ['Allgemein', 'Konto', 'Zahlungen', 'Bug', 'Bann-Einspruch'];
-export const TICKET_STATUS: Record<string, string> = { OPEN: '🟡 Offen', IN_PROGRESS: '🔵 In Bearbeitung', ANSWERED: '🟢 Beantwortet', CLOSED: '⚫ Geschlossen' };
+export const TICKET_STATUS: Record<string, string> = { OPEN: 'Offen', IN_PROGRESS: 'In Bearbeitung', ANSWERED: 'Beantwortet', CLOSED: 'Geschlossen' };

@@ -1,15 +1,18 @@
+import { Search } from 'lucide-react';
 import Link from 'next/link';
 
 import { adjustUser, announceAction, banUser, deleteUser, eventAction, rainAction, resetUser, setMaintenanceAction, setRole, unbanUser } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
-import { ActionForm, Coins, RoleBadge, SubmitButton } from '@/components/ui';
+import { ActionForm, Coins, Empty, PageHeader, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
 import { requireRole } from '@/lib/auth';
-import { coins } from '@/lib/format';
+import { coins, compact } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast, canManage, ROLES } from '@/lib/roles';
 import { isBanned } from '@/lib/session';
 import { startOfDay } from '@/lib/wallet';
+
+export const metadata = { title: 'Admin' };
 
 export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
   const actor = await requireRole('SUPPORT');
@@ -26,56 +29,37 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
   ]);
   const manageable = selected && canManage(actor.role, selected.role);
 
-  const stat = (label: string, value: string | number) => (
-    <div className="card"><p className="label">{label}</p><p className="text-2xl font-black">{value}</p></div>
-  );
-
   return (
-    <div className="mx-auto max-w-6xl space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        {stat('Spieler', userCount)}
-        {stat('Online', hub.online.size)}
-        {stat('Offene Tickets', openTickets)}
-        {stat('Einsätze heute', betsToday)}
-        {stat('NVC im Umlauf', coins(totals._sum.balance ?? 0))}
+    <>
+      <PageHeader title="Admin" subtitle={`Angemeldet als ${actor.role}`} />
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <Stat label="Spieler"><span className="num">{userCount}</span></Stat>
+        <Stat label="Online"><span className="num">{hub.online.size}</span></Stat>
+        <Stat label="Offene Tickets"><span className="num">{openTickets}</span></Stat>
+        <Stat label="Einsätze heute"><span className="num">{betsToday}</span></Stat>
+        <Stat label="NVC im Umlauf"><span className="num text-gold">{compact(totals._sum.balance ?? 0)}</span></Stat>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-        <div className="card">
-          <form className="mb-3 flex gap-2">
-            <input className="input" name="q" defaultValue={q} placeholder="Spieler suchen …" />
-            <button className="btn-ghost">Suchen</button>
-          </form>
-          <ul className="divide-y divide-line text-sm">
-            {users.map((u) => (
-              <li key={u.id}>
-                <Link href={`?q=${q}&user=${u.id}`} className={`flex items-center justify-between py-2 hover:text-accent ${u.id === selectedId ? 'text-accent' : ''}`}>
-                  <span className="flex items-center gap-2">
-                    {u.username} <RoleBadge role={u.role} />
-                    {isBanned(u) && <span className="text-xs text-red-300">gesperrt</span>}
-                    {hub.online.has(u.id) && <span className="h-2 w-2 rounded-full bg-emerald-400" />}
-                  </span>
-                  <span className="font-mono text-xs text-muted">{coins(u.balance)}</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div className="space-y-4">
-          {selected ? (
-            <div className="card space-y-3">
-              <div>
-                <h2 className="text-lg font-bold">{selected.username} <RoleBadge role={selected.role} /></h2>
-                <p className="text-sm text-muted">Level {levelOf(selected.xp)} · <Coins value={Number(selected.balance)} /></p>
-                {isBanned(selected) && <p className="text-sm text-red-300">Gesperrt bis {selected.bannedUntil!.toLocaleString('de-DE')} {selected.banReason && `– ${selected.banReason}`}</p>}
-              </div>
+      {/* Phones: selected player → list → tools. Laptops: list left, the rest right. */}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
+        {selected && (
+          <Section title={<span className="flex items-center gap-2">{selected.username} <RoleBadge role={selected.role} /></span>} pad className="lg:col-start-2">
+            <div className="space-y-4">
+              <p className="text-sm text-muted">
+                Level {levelOf(selected.xp)} · <Coins value={Number(selected.balance)} /> NVC
+              </p>
+              {isBanned(selected) && (
+                <p className="rounded-lg bg-loss/10 px-3 py-2 text-sm text-loss">
+                  Gesperrt bis {selected.bannedUntil!.toLocaleString('de-DE')}
+                  {selected.banReason && ` – ${selected.banReason}`}
+                </p>
+              )}
               {!manageable ? (
-                <p className="text-sm text-muted">Keine Berechtigung für diesen Spieler.</p>
+                <p className="text-sm text-faint">Keine Berechtigung für diesen Spieler.</p>
               ) : (
                 <>
                   {isBanned(selected) ? (
-                    <FormButton action={unbanUser.bind(null, selected.id)}>Entsperren</FormButton>
+                    <FormButton action={unbanUser.bind(null, selected.id)} className="btn-secondary w-full">Entsperren</FormButton>
                   ) : (
                     <ActionForm action={banUser} className="space-y-2">
                       <input type="hidden" name="userId" value={selected.id} />
@@ -88,85 +72,121 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
                         </select>
                         <SubmitButton className="btn-danger">Sperren</SubmitButton>
                       </div>
-                      <input className="input" name="reason" placeholder="Grund" />
+                      <input className="input" name="reason" placeholder="Grund (optional)" />
                     </ActionForm>
                   )}
                   {isAdmin && (
                     <>
-                      <div className="flex flex-wrap gap-1">
-                        {ROLES.filter((r) => r !== selected.role && canManage(actor.role, r)).map((r) => (
-                          <FormButton key={r} action={setRole.bind(null, selected.id, r)}>→ {r}</FormButton>
-                        ))}
+                      <div>
+                        <p className="label">Rolle ändern</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {ROLES.filter((r) => r !== selected.role && canManage(actor.role, r)).map((r) => (
+                            <FormButton key={r} action={setRole.bind(null, selected.id, r)} className="chip">{r}</FormButton>
+                          ))}
+                        </div>
                       </div>
                       <ActionForm action={adjustUser} className="space-y-2">
                         <input type="hidden" name="userId" value={selected.id} />
+                        <p className="label">Guthaben / XP anpassen (±)</p>
                         <div className="grid grid-cols-2 gap-2">
-                          <input className="input" name="balance" type="number" placeholder="± NVC" defaultValue={0} />
-                          <input className="input" name="xp" type="number" placeholder="± XP" defaultValue={0} />
+                          <input className="input num" name="balance" type="number" placeholder="± NVC" defaultValue={0} />
+                          <input className="input num" name="xp" type="number" placeholder="± XP" defaultValue={0} />
                         </div>
-                        <input className="input" name="password" type="password" placeholder="Neues Passwort (optional)" />
-                        <SubmitButton>Übernehmen</SubmitButton>
+                        <input className="input" name="password" type="password" placeholder="Neues Passwort (optional)" autoComplete="new-password" />
+                        <SubmitButton className="btn-secondary w-full">Übernehmen</SubmitButton>
                       </ActionForm>
-                      <div className="flex flex-wrap gap-2">
-                        <FormButton action={resetUser.bind(null, selected.id, 'quests')}>Quests zurücksetzen</FormButton>
-                        <FormButton action={resetUser.bind(null, selected.id, 'social')} confirm="Alle Freunde und Blocks löschen?">Freunde zurücksetzen</FormButton>
-                        <FormButton action={deleteUser.bind(null, selected.id)} className="btn-danger" confirm={`${selected.username} endgültig löschen?`}>Löschen</FormButton>
+                      <div className="flex flex-wrap gap-2 border-t border-line pt-4">
+                        <FormButton action={resetUser.bind(null, selected.id, 'quests')} className="btn-ghost h-8 text-xs">Quests zurücksetzen</FormButton>
+                        <FormButton action={resetUser.bind(null, selected.id, 'social')} confirm="Alle Freunde und Blocks löschen?" className="btn-ghost h-8 text-xs">Freunde zurücksetzen</FormButton>
+                        <FormButton action={deleteUser.bind(null, selected.id)} className="btn-danger h-8 text-xs" confirm={`${selected.username} endgültig löschen?`}>Konto löschen</FormButton>
                       </div>
                     </>
                   )}
                 </>
               )}
             </div>
-          ) : (
-            <div className="card text-sm text-muted">Spieler links auswählen.</div>
-          )}
+          </Section>
+        )}
 
+        <Section title="Spieler" className="lg:col-start-1 lg:row-span-3 lg:row-start-1">
+          <form className="flex gap-2 border-b border-line p-3">
+            <input className="input" name="q" defaultValue={q} placeholder="Name suchen" autoCapitalize="off" />
+            <button className="btn-secondary w-10 px-0" aria-label="Suchen"><Search size={16} /></button>
+          </form>
+          {users.length === 0 && <Empty>Niemand gefunden.</Empty>}
+          <ul className="divide-y divide-line text-sm">
+            {users.map((u) => (
+              <li key={u.id}>
+                <Link href={`?q=${encodeURIComponent(q)}&user=${u.id}`} className={`flex items-center justify-between gap-3 px-4 py-2.5 ${u.id === selectedId ? 'bg-raised' : 'hover:bg-raised/50'}`}>
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${hub.online.has(u.id) ? 'bg-win' : 'bg-line-strong'}`} />
+                    <span className="truncate">{u.username}</span>
+                    <RoleBadge role={u.role} />
+                    {isBanned(u) && <span className="text-[11px] text-loss">gesperrt</span>}
+                  </span>
+                  <span className="num shrink-0 text-xs text-faint">{coins(u.balance)}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Section>
+
+        <div className="space-y-4 lg:col-start-2">
           {atLeast(actor.role, 'MODERATOR') && (
-            <ActionForm action={announceAction} className="card space-y-2">
-              <h2 className="font-bold">Ankündigung</h2>
-              <textarea className="input" name="message" rows={2} maxLength={300} required />
-              <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="persist" /> Auch als Benachrichtigung speichern</label>
-              <SubmitButton>Senden</SubmitButton>
-            </ActionForm>
+            <Section title="Ankündigung" pad>
+              <ActionForm action={announceAction} className="space-y-3">
+                <textarea className="input h-auto py-2" name="message" rows={2} maxLength={300} placeholder="Nachricht an alle" required />
+                <label className="flex items-center gap-2 text-sm text-muted">
+                  <input type="checkbox" name="persist" className="h-4 w-4 accent-[var(--accent)]" /> Auch als Benachrichtigung speichern
+                </label>
+                <SubmitButton className="btn-secondary">Senden</SubmitButton>
+              </ActionForm>
+            </Section>
           )}
 
           {isAdmin && (
             <>
-              <ActionForm action={eventAction} className="card space-y-2">
-                <h2 className="font-bold">Globales Event {hub.event && <span className="text-sm text-accent-2">· läuft: {hub.event.label}</span>}</h2>
-                <div className="flex gap-2">
-                  <select className="input" name="type">
-                    <option value="CASHBACK">Cashback-Mania</option>
-                    <option value="BOOST">Multiplier-Boost</option>
-                    <option value="RAIN">Rain-Event</option>
-                    <option value="STOP">Event stoppen</option>
-                  </select>
-                  <input className="input w-24" name="minutes" type="number" defaultValue={10} min={1} max={180} title="Minuten" />
-                </div>
-                <SubmitButton>Ausführen</SubmitButton>
-              </ActionForm>
+              <Section title={hub.event ? `Event · läuft: ${hub.event.label}` : 'Globales Event'} pad>
+                <ActionForm action={eventAction} className="space-y-3">
+                  <div className="grid grid-cols-[1fr_6rem] gap-2">
+                    <select className="input" name="type">
+                      <option value="CASHBACK">Cashback-Mania</option>
+                      <option value="BOOST">Multiplier-Boost</option>
+                      <option value="RAIN">Rain-Event</option>
+                      <option value="STOP">Event stoppen</option>
+                    </select>
+                    <input className="input num" name="minutes" type="number" defaultValue={10} min={1} max={180} aria-label="Minuten" />
+                  </div>
+                  <SubmitButton className="btn-secondary">Ausführen</SubmitButton>
+                </ActionForm>
+              </Section>
 
-              <ActionForm action={rainAction} className="card space-y-2">
-                <h2 className="font-bold">Rain starten</h2>
-                <div className="grid grid-cols-3 gap-2">
-                  <input className="input" name="amount" type="number" defaultValue={10_000} title="NVC" />
-                  <input className="input" name="seconds" type="number" defaultValue={60} title="Sekunden" />
-                  <input className="input" name="players" type="number" defaultValue={10} title="Spieler" />
-                </div>
-                <p className="text-xs text-muted">NVC · Sekunden · max. Gewinner (aktive Chatter)</p>
-                <SubmitButton>Regnen lassen</SubmitButton>
-              </ActionForm>
+              <Section title="Rain" pad>
+                <ActionForm action={rainAction} className="space-y-3">
+                  <div className="grid grid-cols-3 gap-2">
+                    {[['amount', 'NVC', 10_000], ['seconds', 'Sekunden', 60], ['players', 'Gewinner', 10]].map(([name, label, value]) => (
+                      <div key={name}>
+                        <label className="label">{label}</label>
+                        <input className="input num" name={String(name)} type="number" defaultValue={value} />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-faint">Wird unter den Spielern verteilt, die in den letzten 10 Minuten im Chat geschrieben haben.</p>
+                  <SubmitButton className="btn-secondary">Regnen lassen</SubmitButton>
+                </ActionForm>
+              </Section>
 
-              <ActionForm action={setMaintenanceAction} className="card space-y-2">
-                <h2 className="font-bold">Wartungsmodus {hub.maintenance.on && <span className="text-sm text-red-300">· aktiv</span>}</h2>
-                <input type="hidden" name="on" value={String(!hub.maintenance.on)} />
-                {!hub.maintenance.on && <input className="input" name="minutes" type="number" placeholder="Dauer in Minuten (optional)" />}
-                <SubmitButton className={hub.maintenance.on ? 'btn-primary' : 'btn-danger'}>{hub.maintenance.on ? 'Beenden' : 'Aktivieren'}</SubmitButton>
-              </ActionForm>
+              <Section title={hub.maintenance.on ? 'Wartungsmodus · aktiv' : 'Wartungsmodus'} pad>
+                <ActionForm action={setMaintenanceAction} className="space-y-3">
+                  <input type="hidden" name="on" value={String(!hub.maintenance.on)} />
+                  {!hub.maintenance.on && <input className="input num" name="minutes" type="number" placeholder="Dauer in Minuten (optional)" />}
+                  <SubmitButton className={hub.maintenance.on ? 'btn-primary' : 'btn-danger'}>{hub.maintenance.on ? 'Wartung beenden' : 'Wartung starten'}</SubmitButton>
+                </ActionForm>
+              </Section>
             </>
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }

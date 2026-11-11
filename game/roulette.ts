@@ -78,7 +78,7 @@ export function startRoulette(io: Server) {
     for (const [userId, p] of table.players) {
       const win = p.bets.reduce((sum, b) => sum + b.amount * rouletteMultiplier(b, n), 0);
       await payout(userId, win, 'roulette').catch(console.error);
-      if (win >= 50_000) systemMessage(`🎡 ${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC beim Roulette auf ${n}!`);
+      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC beim Roulette auf ${n}!`);
     }
     setTimeout(betting, RESULT_MS);
   };

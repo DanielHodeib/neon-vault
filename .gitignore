@@ -58,3 +58,6 @@ next-env.d.ts
 *.db
 *.db-journal
 /.claude/
+
+# iCloud sync conflict copies ("file 2.ts")
+* [0-9].*

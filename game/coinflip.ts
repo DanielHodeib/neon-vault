@@ -70,7 +70,7 @@ export const registerCoinflip: Register = (io, socket) => {
       await cashback(loser, lobby.amount, 'coinflip');
       emit();
       io.to('coinflip').emit('coinflip:result', { lobby, opponent: user.username, result, winner: winnerName, prize });
-      if (prize >= 50_000) systemMessage(`🪙 ${winnerName} gewinnt ${prize.toLocaleString('de-DE')} NVC im Coinflip!`);
+      if (prize >= 50_000) systemMessage(`${winnerName} gewinnt ${prize.toLocaleString('de-DE')} NVC im Coinflip!`);
     },
     { play: true },
   );

@@ -1,11 +1,16 @@
+import { Lock } from 'lucide-react';
 import { notFound } from 'next/navigation';
 
 import { sendFriendRequest } from '@/app/actions/social';
-import { ActionForm, Avatar, Coins, RankTag, RoleBadge, SubmitButton } from '@/components/ui';
+import { ActionForm, Avatar, Coins, RankTag, RoleBadge, Section, Stat, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { displayRank, levelOf } from '@/lib/ranks';
+
+export async function generateMetadata({ params }: PageProps<'/profile/[username]'>) {
+  return { title: decodeURIComponent((await params).username) };
+}
 
 export default async function ProfilePage({ params }: PageProps<'/profile/[username]'>) {
   const me = await requireUser();
@@ -14,14 +19,17 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
   const isMe = user.id === me.id;
 
   if (!user.publicProfile && !isMe) {
-    return <div className="card mx-auto max-w-xl text-center text-muted">{user.username} hat ein privates Profil.</div>;
+    return (
+      <div className="card mx-auto mt-10 max-w-sm text-center">
+        <Lock className="mx-auto text-faint" />
+        <p className="mt-3 text-sm text-muted">{user.username} hat ein privates Profil.</p>
+      </div>
+    );
   }
 
   const [favorite, history, friends, ownerFriend] = await Promise.all([
     db.ledgerEntry.groupBy({ by: ['game'], where: { userId: user.id, kind: 'BET' }, _count: true, orderBy: { _count: { game: 'desc' } }, take: 1 }),
-    user.showHistory || isMe
-      ? db.ledgerEntry.findMany({ where: { userId: user.id, kind: { in: ['BET', 'WIN'] } }, orderBy: { createdAt: 'desc' }, take: 15 })
-      : [],
+    user.showHistory || isMe ? db.ledgerEntry.findMany({ where: { userId: user.id, kind: { in: ['BET', 'WIN'] } }, orderBy: { createdAt: 'desc' }, take: 15 }) : [],
     db.friendship.count({ where: { accepted: true, OR: [{ fromId: user.id }, { toId: user.id }] } }),
     db.friendship.count({ where: { accepted: true, OR: [{ fromId: user.id, to: { role: 'OWNER' } }, { toId: user.id, from: { role: 'OWNER' } }] } }),
   ]);
@@ -30,50 +38,59 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <div className="card overflow-hidden p-0">
-        <div className="h-36 bg-gradient-to-r from-accent/30 to-accent-2/30 bg-cover bg-center" style={user.bannerUrl ? { backgroundImage: `url(${JSON.stringify(user.bannerUrl)})` } : undefined} />
-        <div className="flex flex-wrap items-end gap-4 p-5">
-          <div className="-mt-14 rounded-full border-4 border-panel">
-            <Avatar url={user.avatarUrl} name={user.username} size={88} />
+      <div className="panel overflow-hidden">
+        <div
+          className="h-28 bg-raised bg-cover bg-center sm:h-40"
+          style={user.bannerUrl ? { backgroundImage: `url(${JSON.stringify(user.bannerUrl)})` } : { backgroundImage: `linear-gradient(120deg, ${rank.color}33, transparent 70%)` }}
+        />
+        <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-6">
+          <div className="-mt-10 w-fit rounded-full border-4 border-surface sm:-mt-12">
+            <Avatar url={user.avatarUrl} name={user.username} size={84} />
           </div>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-black">{user.clanTag && <span className="text-muted">[{user.clanTag}] </span>}{user.username}</h1>
+              <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
+                {user.clanTag && <span className="text-faint">[{user.clanTag}] </span>}
+                {user.username}
+              </h1>
               <RoleBadge role={user.role} />
               <RankTag rank={rank} />
             </div>
-            <p className="text-sm text-muted">
-              Level {levelOf(user.xp)} · {friends} Freunde · dabei seit {user.createdAt.toLocaleDateString('de-DE')} ·{' '}
-              {online ? <span className="text-emerald-300">online – {online.activity}</span> : 'offline'}
+            <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-muted">
+              <span className={`h-2 w-2 rounded-full ${online ? 'bg-win' : 'bg-line-strong'}`} />
+              {online ? online.activity : 'offline'} · {friends} Freunde · seit {user.createdAt.toLocaleDateString('de-DE')}
             </p>
           </div>
           {!isMe && (
             <ActionForm action={sendFriendRequest}>
               <input type="hidden" name="username" value={user.username} />
-              <SubmitButton>Als Freund hinzufügen</SubmitButton>
+              <SubmitButton className="btn-secondary w-full sm:w-auto">Freund hinzufügen</SubmitButton>
             </ActionForm>
           )}
         </div>
+        {user.bio && <p className="border-t border-line px-4 py-4 text-sm whitespace-pre-wrap text-fg/90 sm:px-6">{user.bio}</p>}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <div className="card"><p className="label">Lieblingsspiel</p><p className="font-bold">{GAME_NAMES[favorite[0]?.game ?? ''] ?? '–'}</p></div>
-        <div className="card"><p className="label">Guthaben</p>{user.showBalance || isMe ? <Coins value={Number(user.balance)} /> : <p className="text-muted">privat</p>}</div>
-        <div className="card"><p className="label">XP</p><p className="font-mono font-bold">{coins(user.xp)}</p></div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Stat label="Level"><span className="num">{levelOf(user.xp)}</span></Stat>
+        <Stat label="XP"><span className="num">{coins(user.xp)}</span></Stat>
+        <Stat label="Lieblingsspiel">{GAME_NAMES[favorite[0]?.game ?? ''] ?? '–'}</Stat>
+        <Stat label="Guthaben">{user.showBalance || isMe ? <Coins value={Number(user.balance)} /> : <span className="text-faint">privat</span>}</Stat>
       </div>
-
-      {user.bio && <div className="card whitespace-pre-wrap text-sm">{user.bio}</div>}
 
       {history.length > 0 && (
-        <div className="card">
-          <p className="label">Letzte Spiele</p>
-          {history.map((h) => (
-            <div key={h.id} className="flex justify-between py-0.5 text-sm">
-              <span>{GAME_NAMES[h.game ?? ''] ?? h.game} <span className="text-xs text-muted">· {timeAgo(h.createdAt)}</span></span>
-              <span className={`font-mono ${h.amount > 0 ? 'text-emerald-300' : 'text-red-300'}`}>{h.amount > 0 ? '+' : ''}{coins(h.amount)}</span>
-            </div>
-          ))}
-        </div>
+        <Section title="Letzte Spiele">
+          <ul className="divide-y divide-line">
+            {history.map((h) => (
+              <li key={h.id} className="flex justify-between px-4 py-2.5 text-sm">
+                <span>
+                  {GAME_NAMES[h.game ?? ''] ?? h.game} <span className="text-xs text-faint">· {timeAgo(h.createdAt)}</span>
+                </span>
+                <span className={`num ${h.amount > 0 ? 'text-win' : 'text-muted'}`}>{h.amount > 0 ? '+' : ''}{coins(h.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </Section>
       )}
     </div>
   );
