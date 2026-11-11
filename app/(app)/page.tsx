@@ -1,4 +1,4 @@
-import { CircleDot, Cherry, Club, Coins, Crown, Plane, Rocket, Spade, type LucideIcon } from 'lucide-react';
+import { CircleDot, Cherry, Club, Coins, Crown, Rocket, Spade, type LucideIcon } from 'lucide-react';
 import Link from 'next/link';
 
 import { claimFaucet } from '@/app/actions/account';
@@ -11,7 +11,6 @@ import { netProfitSince, startOfDay } from '@/lib/wallet';
 
 const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint: string }[] = [
   { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97' },
-  { slug: 'aviator', name: 'Aviator', text: 'Crash im Cockpit', icon: Plane, tint: '#ff6b6b' },
   { slug: 'slots', name: 'Slots', text: '8 Automaten', icon: Cherry, tint: '#e4c06a' },
   { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff' },
   { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c' },

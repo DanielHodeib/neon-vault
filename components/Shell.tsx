@@ -14,7 +14,6 @@ import {
   LogOut,
   Menu,
   MessageSquare,
-  Plane,
   Rocket,
   Settings,
   Shield,
@@ -42,7 +41,6 @@ type NavItem = { href: string; label: string; icon: LucideIcon };
 
 const GAMES: NavItem[] = [
   { href: '/play/crash', label: 'Crash', icon: Rocket },
-  { href: '/play/aviator', label: 'Aviator', icon: Plane },
   { href: '/play/slots', label: 'Slots', icon: Cherry },
   { href: '/play/blackjack', label: 'Blackjack', icon: Spade },
   { href: '/play/roulette', label: 'Roulette', icon: CircleDot },

@@ -9,7 +9,6 @@ import { Slots } from '@/components/games/Slots';
 
 const GAMES = {
   crash: <Crash />,
-  aviator: <Crash variant="aviator" />,
   slots: <Slots />,
   blackjack: <Blackjack />,
   roulette: <Roulette />,

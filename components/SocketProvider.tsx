@@ -58,7 +58,7 @@ export function useJoin<T>(event: string, onResult: (r: T) => void) {
   }, [socket, call, event, onResult]);
 }
 
-const ACTIVITY: Record<string, string> = { crash: 'Crash', aviator: 'Aviator', slots: 'Slots', blackjack: 'Blackjack', roulette: 'Roulette', poker: 'Poker', coinflip: 'Coinflip' };
+const ACTIVITY: Record<string, string> = { crash: 'Crash', slots: 'Slots', blackjack: 'Blackjack', roulette: 'Roulette', poker: 'Poker', coinflip: 'Coinflip' };
 
 export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']; initialBalance: number; children: ReactNode }) {
   const router = useRouter();

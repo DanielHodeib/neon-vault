@@ -14,7 +14,7 @@ type State = { id: number; phase: 'waiting' | 'running' | 'crashed'; startsAt: n
 const W = 600;
 const H = 300;
 
-export function Crash({ variant = 'rocket' }: { variant?: 'rocket' | 'aviator' }) {
+export function Crash() {
   const { call, balance, me } = useLive();
   const [state, setState] = useState<State | null>(null);
   const [multiplier, setMultiplier] = useState(1);
@@ -35,9 +35,7 @@ export function Crash({ variant = 'rocket' }: { variant?: 'rocket' | 'aviator' }
     return () => clearInterval(t);
   }, []);
 
-  const aviator = variant === 'aviator';
-  const title = aviator ? 'Aviator' : 'Crash';
-  if (!state) return <GameFrame title={title} stage={<div className="panel aspect-[2/1] animate-pulse" />} controls={null} />;
+  if (!state) return <GameFrame title="Crash" stage={<div className="panel aspect-[2/1] animate-pulse" />} controls={null} />;
 
   const myBet = state.bets.find((b) => b.userId === me.id);
   const crashed = state.phase === 'crashed';
@@ -52,7 +50,7 @@ export function Crash({ variant = 'rocket' }: { variant?: 'rocket' | 'aviator' }
     return [(t / maxT) * W, H - ((multiplierAt(t) - 1) / (maxM - 1)) * (H - 24)];
   });
   const [tipX, tipY] = points.at(-1)!;
-  const stroke = crashed ? 'var(--color-loss)' : aviator ? '#ff6b6b' : 'var(--accent)';
+  const stroke = crashed ? 'var(--color-loss)' : 'var(--accent)';
   const path = points.map((p) => p.join(',')).join(' ');
 
   const stage = (
@@ -92,7 +90,7 @@ export function Crash({ variant = 'rocket' }: { variant?: 'rocket' | 'aviator' }
           ) : (
             <div className="text-center">
               <p className={`num text-5xl font-semibold tracking-tight sm:text-7xl ${crashed ? 'text-loss' : ''}`}>{multiplier.toFixed(2)}×</p>
-              {crashed && <p className="mt-1 text-sm text-loss">{aviator ? 'Davongeflogen' : 'Abgestürzt'}</p>}
+              {crashed && <p className="mt-1 text-sm text-loss">Abgestürzt</p>}
             </div>
           )}
         </div>
@@ -142,5 +140,5 @@ export function Crash({ variant = 'rocket' }: { variant?: 'rocket' | 'aviator' }
     </div>
   );
 
-  return <GameFrame title={title} subtitle="Steig aus, bevor der Multiplikator crasht." stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Crash" subtitle="Steig aus, bevor der Multiplikator crasht." stage={stage} controls={controls} extra={extra} />;
 }
