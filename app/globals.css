@@ -289,3 +289,12 @@ html { -webkit-tap-highlight-color: transparent; }
 .grow-bar { animation-name: grow-bar; animation-duration: .8s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); transform-origin: left; }
 @keyframes grow-bar { from { scale: 0 1; } }
 @media (prefers-reduced-motion: reduce) { .showcase-badge::after, .grow-bar { animation: none; } }
+
+/* Logo: neon glow, the vault handle turns on hover, a neon-tube flicker once on load */
+.logo-mark svg { filter: drop-shadow(0 0 3px color-mix(in oklab, var(--color-accent) 70%, transparent)) drop-shadow(0 0 10px color-mix(in oklab, var(--color-accent) 35%, transparent)); }
+.logo-wheel { transform-origin: 33px 32px; transition: transform .7s cubic-bezier(.3, 1.4, .5, 1); }
+.logo:hover .logo-wheel { transform: rotate(90deg); }
+.logo-neon { text-shadow: 0 0 6px color-mix(in oklab, var(--color-accent) 70%, transparent), 0 0 18px color-mix(in oklab, var(--color-accent) 35%, transparent); }
+.logo-mark, .logo-neon { animation-name: neon-on; animation-duration: 1.1s; animation-timing-function: linear; animation-fill-mode: both; }
+@keyframes neon-on { 0% { opacity: .15; } 8% { opacity: 1; } 12% { opacity: .3; } 18% { opacity: 1; } 24% { opacity: .5; } 30%, 100% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .logo-mark, .logo-neon { animation: none; } .logo-wheel { transition: none; } }

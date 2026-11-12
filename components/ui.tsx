@@ -2,6 +2,7 @@
 
 import type { Role } from '@prisma/client';
 import Link from 'next/link';
+import { VaultMark } from './VaultMark';
 import { useActionState, useEffect, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
@@ -13,11 +14,19 @@ import { tPage } from '@/lib/i18n';
 import { useT } from './I18n';
 import { shopItem } from '@/lib/shop';
 
+/** Vault-door mark in the accent colour; the handle turns on hover, the neon flickers on once on load. */
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
-    <span className="flex items-center gap-2.5 font-semibold tracking-tight">
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-accent text-sm font-bold text-accent-fg">NV</span>
-      {!compact && <span className="text-[15px]">Neon Vault</span>}
+    <span className="logo group flex items-center gap-2.5">
+      <span className="logo-mark shrink-0">
+        <VaultMark size={34} color="var(--color-accent)" bg="var(--bg)" wheelClass="logo-wheel" />
+      </span>
+      {!compact && (
+        <span className="flex flex-col leading-none">
+          <span className="logo-neon text-[15px] font-black tracking-[.22em] text-accent">NEON</span>
+          <span className="mt-0.5 text-[10.5px] font-semibold tracking-[.48em] text-fg/90">VAULT</span>
+        </span>
+      )}
     </span>
   );
 }
