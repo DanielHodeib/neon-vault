@@ -49,6 +49,7 @@ import { usePref } from './usePref';
 import { DEFAULT_SHORTCUTS, GAME_BY_SLUG, GAME_LIST } from './gameCatalog';
 import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
 import { WinTicker } from './WinTicker';
+import { InstallPrompt } from './InstallPrompt';
 import { useCountUp } from './useCountUp';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
@@ -210,13 +211,15 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
         </div>
       </div>
 
+      <InstallPrompt />
+
       {/* Phone bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         <TabButton icon={House} label="Lobby" href="/" active={pathname === '/'} />
         <TabButton icon={Gamepad2} label="Spiele" active={pathname.startsWith('/play')} onClick={() => setSheet('games')} />
         <TabButton icon={MessageSquare} label="Chat" active={!!chat} onClick={toggleChat} />
         <TabButton icon={Users} label="Freunde" href="/friends" active={isActive('/friends')} />
-        <TabButton icon={Menu} label="Mehr" onClick={() => setSheet('more')} />
+        <TabButton icon={Menu} label="Mehr" onClick={() => setSheet('more')} dot={dmUnread > 0} />
       </nav>
 
       {sheet === 'games' && <GamesPanel onClose={() => setSheet(null)} />}
@@ -292,12 +295,18 @@ function NavGroup({
   );
 }
 
-function TabButton({ icon: Icon, label, href, active, onClick }: { icon: LucideIcon; label: string; href?: string; active?: boolean; onClick?: () => void }) {
+function TabButton({ icon: Icon, label, href, active, onClick, dot }: { icon: LucideIcon; label: string; href?: string; active?: boolean; onClick?: () => void; dot?: boolean }) {
   const t = useT();
-  const cls = `flex flex-col items-center gap-1 py-2.5 text-[11px] ${active ? 'text-accent' : 'text-muted'}`;
+  const cls = `relative flex flex-col items-center gap-1 py-2.5 text-[11px] transition active:scale-90 ${active ? 'text-accent' : 'text-muted'}`;
   const body = (
     <>
-      <Icon size={20} /> {t(label)}
+      {/* bar above the active tab */}
+      <span className={`absolute top-0 h-0.5 w-8 rounded-full bg-accent transition-opacity ${active ? 'opacity-100' : 'opacity-0'}`} />
+      <span className="relative">
+        <Icon size={20} />
+        {dot && <span className="absolute -top-0.5 -right-1 h-2 w-2 rounded-full bg-accent ring-2 ring-surface" />}
+      </span>
+      {t(label)}
     </>
   );
   return href ? <Link href={href} className={cls}>{body}</Link> : <button onClick={onClick} className={cls}>{body}</button>;

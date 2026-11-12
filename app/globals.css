@@ -270,3 +270,7 @@ body {
 .skeleton { border-radius: 1rem; border: 1px solid var(--line); background: linear-gradient(100deg, var(--surface) 30%, var(--raised) 50%, var(--surface) 70%); background-size: 300% 100%; animation-name: skeleton; animation-duration: 1.4s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
 @keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
 @media (prefers-reduced-motion: reduce) { .page-in, .balance-up, .balance-down, .skeleton { animation: none; } }
+
+/* Touch: no double-tap zoom delay on controls, no grey flash on tap */
+button, a, [role='button'], input, select, label { touch-action: manipulation; }
+html { -webkit-tap-highlight-color: transparent; }

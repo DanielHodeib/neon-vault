@@ -245,18 +245,40 @@ function thunder(level: number) {
 
 const arpeggio = (notes: number[], step: number, opts?: Parameters<typeof tone>[2]) => notes.forEach((f, i) => tone(f, step * 2, { ...opts, at: i * step }));
 
+/** Phone vibration with the sound (Android; iPhones ignore it). Muting the game sound also stops it. */
+function buzz(pattern: number | number[]) {
+  if (muted || typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+  try {
+    navigator.vibrate(pattern);
+  } catch {
+    // not allowed before the first tap: skip
+  }
+}
+
 export const sound = {
   stop: () => tone(170, 0.07, { gain: 0.09 }),
   /** `level` 0–2: small, medium, nice win. */
-  win: (level: number) => arpeggio([523, 659, 784, 1047].slice(0, 2 + level), 0.08),
-  big: () => arpeggio([523, 659, 784, 1047, 784, 1047, 1319, 1568], 0.11, { type: 'square', gain: 0.03 }),
-  feature: () => arpeggio([392, 523, 659, 784, 1047], 0.07, { type: 'sine', gain: 0.06 }),
+  win: (level: number) => {
+    arpeggio([523, 659, 784, 1047].slice(0, 2 + level), 0.08);
+    buzz(level >= 2 ? [25, 40, 25] : 20);
+  },
+  big: () => {
+    arpeggio([523, 659, 784, 1047, 784, 1047, 1319, 1568], 0.11, { type: 'square', gain: 0.03 });
+    buzz([40, 60, 40, 60, 120]);
+  },
+  feature: () => {
+    arpeggio([392, 523, 659, 784, 1047], 0.07, { type: 'sine', gain: 0.06 });
+    buzz([20, 40, 20, 40, 20]);
+  },
   flip: () => arpeggio([700, 900, 700, 900, 700, 900], 0.05, { type: 'sine', gain: 0.02 }),
   lose: () => arpeggio([330, 262], 0.12, { type: 'sine', gain: 0.04 }),
   card: () => tone(1200, 0.05, { type: 'square', gain: 0.015 }),
   tick: () => tone(900, 0.03, { type: 'square', gain: 0.012 }),
   gem: () => arpeggio([880, 1320], 0.05, { type: 'sine', gain: 0.05 }),
-  bomb: () => arpeggio([160, 110, 70], 0.09, { type: 'sawtooth', gain: 0.07 }),
+  bomb: () => {
+    arpeggio([160, 110, 70], 0.09, { type: 'sawtooth', gain: 0.07 });
+    buzz([90, 50, 140]);
+  },
   start: () => arpeggio([392, 523], 0.07, { type: 'sine', gain: 0.04 }),
   /** Four-on-the-floor beat with a bass line for `seconds`. */
   disco: (seconds: number) => {

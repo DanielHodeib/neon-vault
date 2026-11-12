@@ -9,6 +9,11 @@ import { useT } from './I18n';
 import { useLive } from './SocketProvider';
 import { usePref } from './usePref';
 
+// Phones would pop up the keyboard over half the panel; only desktops get the search focused.
+const focusOnDesktop = (el: HTMLInputElement | null) => {
+  if (el && window.matchMedia('(min-width: 768px)').matches) el.focus();
+};
+
 const list = (raw: string) => raw.split(',').filter((s) => GAME_BY_SLUG.has(s));
 
 /** Favourite games (starred) and recently played ones, per browser. */
@@ -105,7 +110,7 @@ export function GamesPanel({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-2 border-b border-line p-3">
           <div className="relative flex-1">
             <Search size={16} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-faint" />
-            <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Spiel suchen …')} className="input h-10 pl-9" />
+            <input ref={focusOnDesktop} value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t('Spiel suchen …')} className="input h-10 pl-9" />
           </div>
           <button onClick={onClose} className="btn-ghost h-10 w-10 px-0" aria-label={t('Schließen')}>
             <X size={18} />
