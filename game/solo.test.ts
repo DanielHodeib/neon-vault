@@ -41,7 +41,11 @@ test('mines multiplier matches the formula and grows with each reveal', () => {
 });
 
 test('hi-lo: chances, ties count for the player, every guess returns at most 98 %', () => {
-  assert.equal(hiloChance(2, 'higher'), 1);
+  // On a 2 "higher" and on an ace "lower" are strict, so they are never a sure win.
+  assert.equal(hiloChance(2, 'higher'), 12 / 13);
+  assert.equal(hiloChance(14, 'lower'), 12 / 13);
+  assert.ok(judge('2S', '3H', 'higher') && !judge('2S', '2H', 'higher'));
+  assert.ok(judge('AS', 'KH', 'lower') && !judge('AS', 'AH', 'lower'));
   assert.equal(hiloChance(14, 'higher'), 1 / 13);
   assert.equal(hiloChance(2, 'lower'), 1 / 13);
   assert.ok(judge('7S', '7H', 'higher') && judge('7S', '7H', 'lower'));
@@ -49,7 +53,8 @@ test('hi-lo: chances, ties count for the player, every guess returns at most 98 
   for (let v = 2; v <= 14; v++) {
     for (const g of ['higher', 'lower'] as const) {
       const p = hiloChance(v, g);
-      if (p < 1) assert.ok(p * hiloStep(p) <= 0.98 + 1e-9 && p * hiloStep(p) > 0.95, `${v} ${g}`);
+      assert.ok(p < 1, `${v} ${g} is a sure win`);
+      assert.ok(p * hiloStep(p) <= 0.98 + 1e-9 && p * hiloStep(p) > 0.95, `${v} ${g}`);
     }
   }
 });

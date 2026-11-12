@@ -28,6 +28,8 @@ type Ctx = {
   setDmUnread: (n: number) => void;
   /** Freezes the shown balance until the returned release() runs, so it can't spoil an animation. */
   holdBalance: () => () => void;
+  /** While the balance is held: move the shown balance now (stake off, payout on) to match the animation. */
+  shiftBalance: (delta: number) => void;
 };
 
 const SocketContext = createContext<Ctx | null>(null);
@@ -171,10 +173,11 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     setTimeout(release, 15_000); // never freeze for good, e.g. if the game unmounts mid-animation
     return release;
   }, []);
+  const shiftBalance = useCallback((delta: number) => setBalance((b) => b + delta), []);
 
   const value = useMemo(
-    () => ({ socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread, setDmUnread }),
-    [socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, dmUnread],
+    () => ({ socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
+    [socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, shiftBalance, dmUnread],
   );
   return (
     <SocketContext.Provider value={value}>

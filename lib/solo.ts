@@ -39,6 +39,8 @@ export const HILO_MAX = 5000; // × stake
 export const HILO_SKIPS = 3; // free card swaps per round
 export type HiloGuess = 'higher' | 'lower';
 /** Chance that the next card (value 2..14) is higher-or-same / lower-or-same. */
-export const hiloChance = (value: number, guess: HiloGuess) => (guess === 'higher' ? 15 - value : value - 1) / 13;
+/** Ties win, except "higher" on a 2 and "lower" on an ace: those would always win, so there it must be strictly higher/lower. */
+export const hiloStrict = (value: number, guess: HiloGuess) => (guess === 'higher' ? value === 2 : value === 14);
+export const hiloChance = (value: number, guess: HiloGuess) => ((guess === 'higher' ? 15 - value : value - 1) - (hiloStrict(value, guess) ? 1 : 0)) / 13;
 /** Step multiplier for a guess, 2 % house edge, floored to 2 decimals. */
 export const hiloStep = (chance: number) => Math.floor(98 / chance) / 100;

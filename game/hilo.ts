@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
-import { HILO_MAX, HILO_SKIPS, hiloChance, hiloStep } from '@/lib/solo';
+import { HILO_MAX, HILO_SKIPS, hiloChance, hiloStep, hiloStrict } from '@/lib/solo';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { RANKS, rankValue, SUITS } from './cards';
 import { randInt } from './rng';
@@ -18,6 +18,7 @@ export const drawCard = () => RANKS[randInt(RANKS.length)] + SUITS[randInt(SUITS
 export function judge(card: string, next: string, guess: 'higher' | 'lower') {
   const a = rankValue(card);
   const b = rankValue(next);
+  if (hiloStrict(a, guess)) return guess === 'higher' ? b > a : b < a;
   return guess === 'higher' ? b >= a : b <= a;
 }
 

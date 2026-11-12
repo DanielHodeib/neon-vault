@@ -111,7 +111,7 @@ export function HiLo() {
               </p>
             </>
           ) : (
-            <p className="text-sm text-muted">{t('Höher oder tiefer? Gleich zählt immer für dich.')}</p>
+            <p className="text-sm text-muted">{t('Höher oder tiefer? Gleich zählt für dich – außer „Höher“ auf eine 2 und „Tiefer“ auf ein Ass.')}</p>
           )}
         </div>
       </div>
@@ -134,11 +134,11 @@ export function HiLo() {
         <>
           <div className="grid grid-cols-2 gap-2">
             {options.map(({ g, p, step }) => (
-              <button key={g} className="btn-secondary h-auto flex-col gap-0.5 py-3" disabled={busy || p >= 1} onClick={() => guess(g)}>
+              <button key={g} className="btn-secondary h-auto flex-col gap-0.5 py-3" disabled={busy} onClick={() => guess(g)}>
                 <span className="flex items-center gap-1.5 font-semibold">
                   {g === 'higher' ? <ArrowUp size={16} /> : <ArrowDown size={16} />} {g === 'higher' ? t('Höher') : t('Tiefer')}
                 </span>
-                <span className="text-[11px] text-muted">{p >= 1 ? t('sicher') : `${pct(p)} · ${step}×`}</span>
+                <span className="text-[11px] text-muted">{`${pct(p)} · ${step}×`}</span>
               </button>
             ))}
           </div>
@@ -157,7 +157,7 @@ export function HiLo() {
           </button>
         </>
       )}
-      <p className="text-xs text-faint">{t('Jeder Treffer multipliziert deinen Gewinn. Gleiche Karte zählt als Treffer. 2 % Hausvorteil, max. 5.000×.')}</p>
+      <p className="text-xs text-faint">{t('Jeder Treffer multipliziert deinen Gewinn. Gleiche Karte zählt als Treffer, außer bei „Höher“ auf eine 2 oder „Tiefer“ auf ein Ass. 2 % Hausvorteil, max. 5.000×.')}</p>
     </div>
   );
 
