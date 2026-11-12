@@ -48,3 +48,11 @@ test('race: every horse returns about 95 %, the winner crosses the line first', 
     assert.ok(racePosition(times[winner] - 1, times[winner], 7) < 1);
   }
 });
+
+test('wheel bonus: the bonus wheel averages exactly 30×, so the gold segment keeps its 100 % return', async () => {
+  const { WHEEL_BONUS, WHEEL_BONUS_SEGMENTS } = await import('../lib/wheel');
+  const avg = WHEEL_BONUS_SEGMENTS.reduce((s, m) => s + m, 0) / WHEEL_BONUS_SEGMENTS.length;
+  assert.equal(avg, 30);
+  assert.equal(WHEEL_BONUS_SEGMENTS.length, WHEEL_BONUS.reduce((s, b) => s + b.weight, 0));
+  for (const b of WHEEL_BONUS) assert.equal(WHEEL_BONUS_SEGMENTS.filter((m) => m === b.multiplier).length, b.weight);
+});

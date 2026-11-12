@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { coins } from '@/lib/format';
-import { WHEEL_OPTIONS, WHEEL_SEGMENTS, wheelColor } from '@/lib/wheel';
+import { bonusColor, WHEEL_BONUS_MS, WHEEL_BONUS_SEGMENTS, WHEEL_BONUS_TRIGGER, WHEEL_OPTIONS, WHEEL_SEGMENTS, wheelColor } from '@/lib/wheel';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
@@ -13,11 +13,46 @@ import { useCue } from './useCue';
 import { useT } from '@/components/I18n';
 
 type Bet = { multiplier: number; amount: number };
-type State = { phase: 'betting' | 'spinning' | 'result'; endsAt: number; index: number | null; history: number[]; players: { userId: string; username: string; bets: Bet[] }[] };
+type State = { phase: 'betting' | 'spinning' | 'bonus' | 'result'; endsAt: number; index: number | null; bonusIndex: number | null; history: number[]; players: { userId: string; username: string; bets: Bet[] }[] };
 
 const SEG = 360 / WHEEL_SEGMENTS.length;
 const WHEEL_BG = `conic-gradient(${WHEEL_SEGMENTS.map((m, i) => `${wheelColor(m)} ${i * SEG}deg ${(i + 1) * SEG - 0.6}deg, #0a0b0d ${(i + 1) * SEG - 0.6}deg ${(i + 1) * SEG}deg`).join(',')})`;
 const label = (m: number) => `${String(m).replace('.', ',')}×`;
+const BSEG = 360 / WHEEL_BONUS_SEGMENTS.length;
+const BONUS_BG = `conic-gradient(${WHEEL_BONUS_SEGMENTS.map((m, i) => `${bonusColor(m)} ${i * BSEG}deg ${(i + 1) * BSEG - 0.8}deg, #0a0b0d ${(i + 1) * BSEG - 0.8}deg ${(i + 1) * BSEG}deg`).join(',')})`;
+
+/** Second wheel after a gold hit: spins to the bonus multiplier the server drew. */
+function BonusWheel({ index, settled }: { index: number; settled: boolean }) {
+  const t = useT();
+  const [rotation, setRotation] = useState(0);
+  useEffect(() => {
+    // next frame, so the transition runs from 0 to the target
+    const id = requestAnimationFrame(() => setRotation(360 * 7 + (360 - index * BSEG - BSEG / 2)));
+    return () => cancelAnimationFrame(id);
+  }, [index]);
+  const value = WHEEL_BONUS_SEGMENTS[index];
+  return (
+    <div className="pop-in flex flex-col items-center gap-3 rounded-2xl border border-gold/50 bg-gradient-to-b from-gold/15 to-transparent p-4 shadow-[0_0_50px_#e4c06a33]">
+      <p className="text-xs font-bold tracking-[.3em] text-gold uppercase">{t('Bonus-Rad')}</p>
+      <div className="relative">
+        <div className="absolute -top-1 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[7px] border-t-[12px] border-x-transparent border-t-gold" />
+        <div className="relative h-44 w-44 rounded-full border-4 border-gold/60" style={{ background: BONUS_BG, transform: `rotate(${rotation}deg)`, transition: `transform ${WHEEL_BONUS_MS - 1200}ms cubic-bezier(.12,.7,.2,1)` }}>
+          {WHEEL_BONUS_SEGMENTS.map((m, i) => (
+            <span key={i} className="num absolute top-1/2 left-1/2 text-[9px] font-bold text-white" style={{ transform: `translate(-50%, -50%) rotate(${i * BSEG + BSEG / 2}deg) translateY(-70px)` }}>
+              {m}
+            </span>
+          ))}
+        </div>
+        <div className="absolute inset-0 m-auto grid h-16 w-16 place-items-center rounded-full border border-gold/40 bg-surface">
+          <span className={`num font-bold ${settled ? 'pop-in text-2xl' : 'text-sm text-muted'}`} style={settled ? { color: bonusColor(value) } : undefined}>
+            {settled ? label(value) : '…'}
+          </span>
+        </div>
+      </div>
+      <p className="text-center text-xs text-muted">{t('Alle Einsätze auf 30× zahlen den Bonus-Multiplikator.')}</p>
+    </div>
+  );
+}
 
 export function Wheel() {
   const t = useT();
@@ -40,9 +75,10 @@ export function Wheel() {
 
   useCue(state?.phase, (phase) => {
     if (phase === 'spinning') sound.start();
+    if (phase === 'bonus') sound.feature();
     if (phase === 'result' && state?.index != null) {
       const hit = state.players.some((p) => p.userId === me.id && p.bets.some((b) => b.multiplier === WHEEL_SEGMENTS[state.index!]));
-      (hit ? () => sound.win(1) : sound.stop)();
+      (hit ? () => (state.bonusIndex !== null ? sound.big() : sound.win(1)) : sound.stop)();
     }
   });
 
@@ -70,7 +106,9 @@ export function Wheel() {
             style={{ background: WHEEL_BG, transform: `rotate(${rotation}deg)`, transition: state.phase === 'spinning' ? 'transform 5.5s cubic-bezier(.12,.7,.2,1)' : 'none' }}
           />
           <div className="absolute inset-0 m-auto grid h-24 w-24 place-items-center rounded-full border border-line bg-surface">
-            {state.phase === 'result' && result !== null ? (
+            {state.phase === 'bonus' ? (
+              <span className="text-sm font-bold tracking-wider text-gold">BONUS!</span>
+            ) : state.phase === 'result' && result !== null ? (
               <span className="num text-3xl font-semibold" style={{ color: wheelColor(result) }}>{label(result)}</span>
             ) : (
               <span className="num text-xl text-muted">{state.phase === 'spinning' ? '…' : `${seconds}s`}</span>
@@ -78,7 +116,7 @@ export function Wheel() {
           </div>
         </div>
         <div className="w-full min-w-0 text-center sm:text-left">
-          <p className="text-sm font-medium">{open ? t('Einsätze offen') : state.phase === 'spinning' ? t('Das Rad dreht sich') : t('Ergebnis')}</p>
+          <p className="text-sm font-medium">{open ? t('Einsätze offen') : state.phase === 'spinning' ? t('Das Rad dreht sich') : state.phase === 'bonus' ? t('Gold! Das Bonus-Rad dreht sich …') : t('Ergebnis')}</p>
           <p className="text-xs text-muted">{t('Setze auf einen Multiplikator – trifft er, bekommst du Einsatz × Multiplikator.')}</p>
           <div className="mt-3 flex flex-wrap justify-center gap-1 sm:justify-start">
             {state.history.slice(0, 14).map((m, i) => (
@@ -87,6 +125,7 @@ export function Wheel() {
           </div>
         </div>
       </div>
+      {state.bonusIndex !== null && result === WHEEL_BONUS_TRIGGER && <BonusWheel index={state.bonusIndex} settled={state.phase === 'result'} />}
     </div>
   );
 
@@ -103,7 +142,7 @@ export function Wheel() {
             style={{ borderColor: o.color, background: `${o.color}26` }}
           >
             <span className="num block text-lg font-semibold">{label(o.multiplier)}</span>
-            <span className="num block text-xs text-muted">{onMine(o.multiplier) ? t('Gesetzt: {n}', { n: coins(onMine(o.multiplier)) }) : t('{n} von 30 Feldern', { n: o.count })}</span>
+            <span className="num block text-xs text-muted">{onMine(o.multiplier) ? t('Gesetzt: {n}', { n: coins(onMine(o.multiplier)) }) : o.multiplier === WHEEL_BONUS_TRIGGER ? t('Bonus-Rad bis 200×') : t('{n} von 30 Feldern', { n: o.count })}</span>
           </button>
         ))}
       </div>

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
-import { WHEEL_BET_MS, WHEEL_MULTIPLIERS, WHEEL_RESULT_MS, WHEEL_SEGMENTS, WHEEL_SPIN_MS } from '@/lib/wheel';
+import { WHEEL_BET_MS, WHEEL_BONUS_MS, WHEEL_BONUS_SEGMENTS, WHEEL_BONUS_TRIGGER, WHEEL_MULTIPLIERS, WHEEL_RESULT_MS, WHEEL_SEGMENTS, WHEEL_SPIN_MS } from '@/lib/wheel';
 import { randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
 
@@ -13,9 +13,10 @@ type WheelBet = z.infer<typeof betSchema>;
 type Player = { username: string; bets: WheelBet[] };
 
 const table = {
-  phase: 'betting' as 'betting' | 'spinning' | 'result',
+  phase: 'betting' as 'betting' | 'spinning' | 'bonus' | 'result',
   endsAt: 0,
   index: null as number | null,
+  bonusIndex: null as number | null, // segment of the bonus wheel, only after a 30× hit
   players: new Map<string, Player>(),
   history: [] as number[],
 };
@@ -24,6 +25,7 @@ const wheelState = () => ({
   phase: table.phase,
   endsAt: table.endsAt,
   index: table.phase === 'betting' ? null : table.index,
+  bonusIndex: table.phase === 'bonus' || table.phase === 'result' ? table.bonusIndex : null,
   history: table.history,
   players: [...table.players].map(([userId, p]) => ({ userId, username: p.username, bets: p.bets })),
 });
@@ -32,7 +34,7 @@ export function startWheel(io: Server) {
   const emit = () => io.to('wheel').emit('wheel:state', wheelState());
 
   const betting = () => {
-    Object.assign(table, { phase: 'betting', endsAt: Date.now() + WHEEL_BET_MS, index: null, players: new Map() });
+    Object.assign(table, { phase: 'betting', endsAt: Date.now() + WHEEL_BET_MS, index: null, bonusIndex: null, players: new Map() });
     emit();
     setTimeout(spin, WHEEL_BET_MS);
   };
@@ -40,7 +42,14 @@ export function startWheel(io: Server) {
   const spin = () => {
     Object.assign(table, { phase: 'spinning', endsAt: Date.now() + WHEEL_SPIN_MS, index: randInt(WHEEL_SEGMENTS.length) });
     emit();
-    setTimeout(settle, WHEEL_SPIN_MS);
+    setTimeout(() => (WHEEL_SEGMENTS[table.index!] === WHEEL_BONUS_TRIGGER ? bonus() : settle()), WHEEL_SPIN_MS);
+  };
+
+  // Gold hit: the bonus wheel spins for everyone, then the 30× bets are paid with its multiplier.
+  const bonus = () => {
+    Object.assign(table, { phase: 'bonus', endsAt: Date.now() + WHEEL_BONUS_MS, bonusIndex: randInt(WHEEL_BONUS_SEGMENTS.length) });
+    emit();
+    setTimeout(settle, WHEEL_BONUS_MS);
   };
 
   const settle = async () => {
@@ -48,9 +57,10 @@ export function startWheel(io: Server) {
     Object.assign(table, { phase: 'result', endsAt: Date.now() + WHEEL_RESULT_MS, history: [m, ...table.history].slice(0, 20) });
     emit();
     for (const [userId, p] of table.players) {
-      const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.multiplier === m ? b.amount * m : 0), 0));
+      const pays = m === WHEEL_BONUS_TRIGGER && table.bonusIndex !== null ? WHEEL_BONUS_SEGMENTS[table.bonusIndex] : m;
+      const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.multiplier === m ? b.amount * pays : 0), 0));
       await payout(userId, win, 'wheel').catch(console.error);
-      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC am Glücksrad auf ${String(m).replace('.', ',')}x!`);
+      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC am Glücksrad auf ${String(pays).replace('.', ',')}x!`);
     }
     setTimeout(betting, WHEEL_RESULT_MS);
   };
