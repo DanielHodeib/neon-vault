@@ -286,21 +286,32 @@ export async function deleteFxAsset(id: string) {
 }
 
 /** Plays an uploaded sound or shows an uploaded image – for everyone (`userId` null) or one player. */
-export async function playFxAsset(id: string, style: string, userId: string | null) {
+/** Plays an uploaded sound, an uploaded image, or both together, for everyone or one player. */
+export async function playFx(soundId: string | null, imageId: string | null, style: string, userId: string | null) {
   return run(async () => {
     const actor = await requireRole('ADMIN');
-    const asset = await db.fxAsset.findUnique({ where: { id }, select: { id: true, kind: true, name: true } });
-    if (!asset) throw new UserError('Nicht gefunden.');
-    if (asset.kind === 'image' && !Object.hasOwn(IMAGE_STYLES, style)) throw new UserError('Unbekannter Effekt.');
-    const payload: FxAssetPayload = { effect: 'asset', kind: asset.kind as 'sound' | 'image', url: `/fx/${asset.id}`, by: actor.username, ...(asset.kind === 'image' ? { style: style as keyof typeof IMAGE_STYLES } : {}) };
+    if (!soundId && !imageId) throw new UserError('Wähle einen Sound oder ein Bild.');
+    if (imageId && !Object.hasOwn(IMAGE_STYLES, style)) throw new UserError('Unbekannter Effekt.');
+    const ids = [soundId, imageId].filter((x): x is string => !!x);
+    const assets = await db.fxAsset.findMany({ where: { id: { in: ids } }, select: { id: true, kind: true, name: true } });
+    const sound = soundId ? assets.find((a) => a.id === soundId && a.kind === 'sound') : undefined;
+    const image = imageId ? assets.find((a) => a.id === imageId && a.kind === 'image') : undefined;
+    if ((soundId && !sound) || (imageId && !image)) throw new UserError('Nicht gefunden.');
+    const payload: FxAssetPayload = {
+      effect: 'asset',
+      by: actor.username,
+      ...(sound ? { sound: `/fx/${sound.id}` } : {}),
+      ...(image ? { image: `/fx/${image.id}`, style: style as keyof typeof IMAGE_STYLES } : {}),
+    };
+    const what = [sound, image].filter(Boolean).map((a) => `„${a!.name}“`).join(' + ');
     if (userId) {
       const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
       if (!user) throw new UserError('Spieler nicht gefunden.');
       emitToUser(user.id, 'fx', payload);
-      return `„${asset.name}“ an ${user.username}.`;
+      return `${what} an ${user.username}.`;
     }
     broadcast('fx', payload);
-    return `„${asset.name}“ an alle.`;
+    return `${what} an alle.`;
   });
 }
 

@@ -18,18 +18,17 @@ import {
   setMaintenanceAction,
   setRole,
   trollAction,
-  playFxAsset,
-  deleteFxAsset,
   uploadFxAsset,
   unbanUser,
 } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
 import { EventForm } from './EventForm';
 import { MoodForm } from './MoodForm';
+import { FxComposer } from './FxComposer';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
 import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
-import { FX, IMAGE_STYLES } from '@/lib/fx';
+import { FX } from '@/lib/fx';
 import { currentMood, db, hub, isMuted } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
 import { atLeast, canEditSelf, canManage, ROLES } from '@/lib/roles';
@@ -478,39 +477,8 @@ export async function FunTab({ q, selectedId }: { q: string; selectedId?: string
           <MoodForm to={to} toName={target?.username} current={currentMood()} />
         </Section>
 
-        <Section title="Eigene Sounds" pad>
-          {sounds.length === 0 && <p className="mb-3 text-sm text-faint">Noch keine Sounds – lade unten einen hoch.</p>}
-          <ul className="space-y-2">
-            {sounds.map((a) => (
-              <li key={a.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-3 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm font-medium">🔊 {a.name}</span>
-                <audio src={`/fx/${a.id}`} controls preload="none" className="h-8 w-40 sm:w-52" />
-                <FormButton action={playFxAsset.bind(null, a.id, '', to)} className="btn-primary h-8 text-xs">{target ? `An ${target.username}` : 'An alle'}</FormButton>
-                <FormButton action={deleteFxAsset.bind(null, a.id)} confirm={`„${a.name}“ löschen?`} className="btn-ghost h-8 text-xs">Löschen</FormButton>
-              </li>
-            ))}
-          </ul>
-        </Section>
-
-        <Section title="Eigene Bilder" pad>
-          {images.length === 0 && <p className="mb-3 text-sm text-faint">Noch keine Bilder – lade unten eins hoch.</p>}
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {images.map((a) => (
-              <li key={a.id} className="rounded-lg border border-line p-3">
-                <div className="mb-2 flex items-center gap-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element -- uploaded asset, served from the DB */}
-                  <img src={`/fx/${a.id}`} alt="" className="h-14 w-14 shrink-0 rounded-md object-cover" />
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.name}</span>
-                  <FormButton action={deleteFxAsset.bind(null, a.id)} confirm={`„${a.name}“ löschen?`} className="btn-ghost h-8 text-xs">Löschen</FormButton>
-                </div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {Object.entries(IMAGE_STYLES).map(([style, label]) => (
-                    <FormButton key={style} action={playFxAsset.bind(null, a.id, style, to)} className="btn-secondary h-8 text-xs">{label}</FormButton>
-                  ))}
-                </div>
-              </li>
-            ))}
-          </ul>
+        <Section title={target ? `Sound & Bild für ${target.username}` : 'Sound & Bild abspielen'} pad>
+          <FxComposer to={to} toName={target?.username} sounds={sounds} images={images} />
         </Section>
 
         <Section title="Sound oder Bild hochladen" pad>

@@ -72,19 +72,23 @@ function disco() {
   sound.disco(ms / 1000);
 }
 
-/** Uploaded image flying in, staying a moment and leaving again. */
-function showImage(url: string, style: ImageStyle) {
-  const img = new Image();
-  img.alt = '';
-  img.className = `fx-image fx-image-${style}`;
-  // Only insert once loaded: otherwise the entrance runs while the image is still downloading.
-  img.onload = () => layer('fx-image-stage', 4200).appendChild(img);
-  img.src = url;
+/** Uploaded image, resolved once loaded so its entrance does not run while it still downloads. */
+function loadImage(url: string, style: ImageStyle) {
+  return new Promise<HTMLImageElement | null>((resolve) => {
+    const img = new Image();
+    img.alt = '';
+    img.className = `fx-image fx-image-${style}`;
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
 }
 
-export function runAsset(p: FxAssetPayload) {
-  if (p.kind === 'sound') void sound.file(p.url);
-  else showImage(p.url, p.style ?? 'zoom');
+/** Uploaded sound and/or image; when both are sent they start together once both are ready. */
+export async function runAsset(p: FxAssetPayload) {
+  const [img, buffer] = await Promise.all([p.image ? loadImage(p.image, p.style ?? 'zoom') : null, p.sound ? sound.load(p.sound) : null]);
+  if (img) layer('fx-image-stage', 4200).appendChild(img);
+  if (buffer) sound.playBuffer(buffer);
 }
 
 export function runFx(effect: FxName, by: string) {

@@ -108,7 +108,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       event: setEvent,
       countdown: setCountdown,
       mood: setMood,
-      fx: (d: { effect: FxName | 'asset'; by: string }) => (d.effect === 'asset' ? runAsset(d as FxAssetPayload) : runFx(d.effect, d.by)),
+      fx: (d: { effect: FxName | 'asset'; by: string }) => (d.effect === 'asset' ? void runAsset(d as FxAssetPayload) : runFx(d.effect, d.by)),
       chatClear: () => setChat([]),
       rain: setRain,
       dm: (m: { from: string; text: string }) => {

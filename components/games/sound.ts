@@ -88,10 +88,10 @@ if (typeof window !== 'undefined') {
 
 const files = new Map<string, Promise<AudioBuffer>>();
 
-/** Uploaded sound file (Admin → Spaß), played through the unlocked audio context. */
-async function file(url: string, volume = 0.8) {
+/** Loads an uploaded sound file (Admin → Spaß); null when muted, locked or broken. */
+async function load(url: string): Promise<AudioBuffer | null> {
   const c = audio();
-  if (!c) return;
+  if (!c) return null;
   let buffer = files.get(url);
   if (!buffer) {
     buffer = fetch(url)
@@ -100,17 +100,18 @@ async function file(url: string, volume = 0.8) {
     files.set(url, buffer);
     buffer.catch(() => files.delete(url));
   }
-  try {
-    const src = c.createBufferSource();
-    src.buffer = await buffer;
-    if (c.state !== 'running') return; // page never clicked: stay silent rather than play late
-    const g = c.createGain();
-    g.gain.value = volume;
-    src.connect(g).connect(c.destination);
-    src.start();
-  } catch {
-    // broken or deleted file
-  }
+  return buffer.catch(() => null);
+}
+
+function playBuffer(buffer: AudioBuffer, volume = 0.8) {
+  const c = audio();
+  if (!c || c.state !== 'running') return; // page never clicked: stay silent rather than play late
+  const src = c.createBufferSource();
+  src.buffer = buffer;
+  const g = c.createGain();
+  g.gain.value = volume;
+  src.connect(g).connect(c.destination);
+  src.start();
 }
 
 let noiseBuffer: AudioBuffer | null = null;
@@ -265,7 +266,8 @@ export const sound = {
   reelLoop,
   ambience,
   thunder,
-  file,
+  load,
+  playBuffer,
   /** Reel `i` locks in: a thunk plus a click that climbs reel by reel. */
   reelStop: (i: number) => {
     tone(120, 0.09, { type: 'sine', gain: 0.12 });

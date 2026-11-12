@@ -18,8 +18,8 @@ export const IMAGE_STYLES = {
 } as const;
 export type ImageStyle = keyof typeof IMAGE_STYLES;
 
-/** Payload sent to the browser for an uploaded asset. */
-export type FxAssetPayload = { effect: 'asset'; kind: 'sound' | 'image'; url: string; style?: ImageStyle; by: string };
+/** Payload sent to the browser for uploaded assets: a sound, an image, or both at once. */
+export type FxAssetPayload = { effect: 'asset'; sound?: string; image?: string; style?: ImageStyle; by: string };
 
 /** Atmosphere presets: stay on screen for a while (components/Mood.tsx). */
 export const MOODS = {
