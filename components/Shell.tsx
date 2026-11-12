@@ -400,6 +400,8 @@ function UserMenu({ user, items }: { user: User; items: NavItem[] }) {
   const close = () => setOpen(false);
   const changeTheme = (t: string) => {
     document.documentElement.setAttribute('data-theme', t); // instant, no reload
+    document.documentElement.style.removeProperty('--accent'); // the theme brings its own accent
+    document.documentElement.style.removeProperty('--accent-fg');
     pickTheme(t);
     void setTheme(t);
   };

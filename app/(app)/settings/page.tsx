@@ -1,4 +1,5 @@
 import { changePassword, deleteAccount, updateProfile, updateSettings } from '@/app/actions/account';
+import { AccentPicker } from '@/components/AccentPicker';
 import { ImageField } from '@/components/ImageField';
 import { ActionForm, PageHeader, Section, SubmitButton } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
@@ -83,6 +84,7 @@ export default async function SettingsPage() {
                   ))}
                 </div>
               </div>
+              <AccentPicker value={user.accent} />
               <div className="divide-y divide-line border-y border-line">
                 <Toggle name="soundEnabled" label={t('Ton bei Erwähnungen')} hint={t('Wenn jemand @deinName im Chat schreibt')} checked={user.soundEnabled} />
                 <Toggle name="publicProfile" label={t('Öffentliches Profil')} checked={user.publicProfile} />

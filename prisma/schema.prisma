@@ -74,6 +74,7 @@ model User {
   dmsIn          DirectMessage[] @relation("DmTo")
   ticketMessages TicketMessage[]
   showcase       String? // up to 3 pinned achievement keys, comma-separated
+  accent         String? // own accent colour (#rrggbb) over the theme's, null = theme colour
   likesGiven     ProfileLike[] @relation("LikeFrom")
   likesReceived  ProfileLike[] @relation("LikeTo")
 }

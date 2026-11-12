@@ -11,7 +11,7 @@ import { endSession, requireUser, startSession } from '@/lib/auth';
 import { db, disconnectUser, UserError } from '@/lib/hub';
 import { spinDaily } from '@/lib/daily';
 import { claimQuest } from '@/lib/quests';
-import { THEMES } from '@/lib/format';
+import { ACCENT_RE, THEMES } from '@/lib/format';
 import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 import { changeLimit } from '@/lib/limits';
@@ -59,6 +59,7 @@ export async function updateSettings(_: ActionState, form: FormData) {
     const data = parse(
       z.object({
         theme: z.enum(THEMES),
+        accent: z.union([z.literal(''), z.string().regex(ACCENT_RE, 'Ungültige Farbe.')]).default(''),
         soundEnabled: checkbox,
         publicProfile: checkbox,
         showBalance: checkbox,
@@ -68,7 +69,7 @@ export async function updateSettings(_: ActionState, form: FormData) {
       form,
     );
     const limit = changeLimit(user, data.dailyLimit === '' ? null : BigInt(data.dailyLimit));
-    await db.user.update({ where: { id: user.id }, data: { ...data, ...limit } });
+    await db.user.update({ where: { id: user.id }, data: { ...data, accent: data.accent || null, ...limit } });
     refresh();
     return limit.dailyLimitNextAt
       ? 'Gespeichert. Ein höheres oder entferntes Tageslimit gilt erst nach 24 Stunden.'
@@ -137,7 +138,7 @@ export async function clearNotifications() {
 export async function setTheme(theme: string) {
   const user = await requireUser();
   if (!(THEMES as readonly string[]).includes(theme)) return;
-  await db.user.update({ where: { id: user.id }, data: { theme } });
+  await db.user.update({ where: { id: user.id }, data: { theme, accent: null } }); // a theme brings its own accent
 }
 
 /** Language switch: stored in a cookie so it also works on the login page. */

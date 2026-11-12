@@ -47,3 +47,14 @@ export const THEME_INFO: Record<Theme, { name: string; color: string }> = {
 };
 export const TICKET_CATEGORIES = ['Allgemein', 'Konto', 'Zahlungen', 'Bug', 'Bann-Einspruch'];
 export const TICKET_STATUS: Record<string, string> = { OPEN: 'Offen', IN_PROGRESS: 'In Bearbeitung', ANSWERED: 'Beantwortet', CLOSED: 'Geschlossen' };
+
+/** Text colour that stays readable on an accent colour (#rrggbb): dark on light colours, white on dark ones. */
+export function accentFg(hex: string) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 0.45 ? '#0a0b0d' : '#ffffff';
+}
+export const ACCENT_RE = /^#[0-9a-fA-F]{6}$/;
+/** Inline CSS variables for a custom accent, or nothing for the theme's own. */
+export const accentStyle = (accent: string | null | undefined) =>
+  accent && ACCENT_RE.test(accent) ? ({ '--accent': accent, '--accent-fg': accentFg(accent) } as Record<string, string>) : undefined;

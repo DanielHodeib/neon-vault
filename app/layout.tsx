@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
 import type { ReactNode } from 'react';
+import { accentStyle } from '@/lib/format';
 
 import { I18nProvider } from '@/components/I18n';
 import { Toaster } from '@/components/Toaster';
@@ -23,7 +24,7 @@ export const viewport: Viewport = { themeColor: '#0a0b0d', viewportFit: 'cover' 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const [user, lang] = await Promise.all([getUser(), getLang()]);
   return (
-    <html lang={lang} data-theme={user?.theme ?? 'neon'} className={`${inter.variable} ${mono.variable}`}>
+    <html lang={lang} data-theme={user?.theme ?? 'neon'} style={accentStyle(user?.accent)} className={`${inter.variable} ${mono.variable}`}>
       <body>
         <I18nProvider lang={lang}>
           {children}
