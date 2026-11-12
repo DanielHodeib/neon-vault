@@ -259,3 +259,14 @@ body {
 .ticker-new { animation-name: ticker-glow; animation-duration: 2s; animation-iteration-count: 3; }
 @keyframes ticker-glow { 50% { background: color-mix(in oklab, var(--color-gold) 18%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .ticker-track { animation: none; } }
+
+/* Polish: page fade-in, balance flash, skeletons, card lift */
+.page-in { animation-name: page-in; animation-duration: .28s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); animation-fill-mode: both; }
+@keyframes page-in { from { opacity: 0; translate: 0 6px; } }
+.balance-up { animation-name: balance-up; animation-duration: .9s; }
+.balance-down { animation-name: balance-down; animation-duration: .9s; }
+@keyframes balance-up { 20% { color: var(--color-win); text-shadow: 0 0 12px var(--color-win); } }
+@keyframes balance-down { 20% { color: var(--color-loss); } }
+.skeleton { border-radius: 1rem; border: 1px solid var(--line); background: linear-gradient(100deg, var(--surface) 30%, var(--raised) 50%, var(--surface) 70%); background-size: 300% 100%; animation-name: skeleton; animation-duration: 1.4s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .page-in, .balance-up, .balance-down, .skeleton { animation: none; } }

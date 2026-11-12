@@ -49,6 +49,7 @@ import { usePref } from './usePref';
 import { DEFAULT_SHORTCUTS, GAME_BY_SLUG, GAME_LIST } from './gameCatalog';
 import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
 import { WinTicker } from './WinTicker';
+import { useCountUp } from './useCountUp';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
 
@@ -168,7 +169,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           <Link href="/" className="md:hidden"><Logo compact /></Link>
           <div className="flex min-w-0 items-center gap-2 rounded-lg border border-line bg-bg px-3 py-1.5">
             <CoinsIcon size={15} className="shrink-0 text-gold" />
-            <span className="num truncate text-sm font-semibold text-gold">{coins(balance)}</span>
+            <BalanceValue value={balance} />
           </div>
           {event && (
             <span className="hidden items-center gap-1.5 rounded-full border border-accent/40 px-3 py-1 text-xs font-medium text-accent sm:flex" title={t(event.description)}>
@@ -195,7 +196,10 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
         <CountdownBanner />
         <div className="flex min-h-0 flex-1">
           <main className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 pb-24 sm:px-5 sm:pt-6 md:pb-8 lg:px-8">
-            <div className="mx-auto max-w-6xl">{children}</div>
+            {/* keyed by page: every navigation fades the new page in */}
+            <div key={pathname} className="page-in mx-auto max-w-6xl">
+              {children}
+            </div>
           </main>
 
           <div
@@ -481,5 +485,22 @@ function CountdownBanner() {
       </span>
       <span className="hidden text-xs opacity-70 sm:inline">· {t('Laufende Einsätze werden zurückgebucht')}</span>
     </div>
+  );
+}
+
+/** Header balance: counts to the new value and flashes green or red on a change. */
+function BalanceValue({ value }: { value: number }) {
+  const shown = useCountUp(value, 700);
+  const [last, setLast] = useState(value);
+  const [flash, setFlash] = useState<{ up: boolean; n: number } | null>(null);
+  if (value !== last) {
+    // derived from the previous render, so no effect is needed
+    setLast(value);
+    setFlash((f) => ({ up: value > last, n: (f?.n ?? 0) + 1 }));
+  }
+  return (
+    <span key={flash?.n} className={`num truncate text-sm font-semibold text-gold ${flash ? (flash.up ? 'balance-up' : 'balance-down') : ''}`}>
+      {coins(shown)}
+    </span>
   );
 }

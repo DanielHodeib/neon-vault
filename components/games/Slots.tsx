@@ -10,6 +10,7 @@ import { BetInput, Section } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound, soundPref } from './sound';
 import { useT } from '@/components/I18n';
+import { useCountUp } from '../useCountUp';
 
 type Cell = [number, number];
 type Win = { symbol: string; count: number; cells: Cell[]; amount: number; line?: number; ways?: number };
@@ -38,21 +39,6 @@ const cellKey = ([c, r]: Cell) => `${c}:${r}`;
 const startGrid = (m: Machine) =>
   Array.from({ length: m.cols }, (_, c) => Array.from({ length: m.rows }, (_, r) => m.symbols[(c * 2 + r) % m.symbols.length].icon));
 
-function useCountUp(target: number, ms = 900) {
-  const [value, setValue] = useState(target);
-  useEffect(() => {
-    let raf = 0;
-    const start = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - start) / ms);
-      setValue(Math.round(target * (1 - (1 - p) ** 3)));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, ms]);
-  return value;
-}
 
 export function Slots() {
   const t = useT();
