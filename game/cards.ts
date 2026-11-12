@@ -27,7 +27,7 @@ export const isBlackjack = (cards: string[]) => cards.length === 2 && bjTotal(ca
 export const HAND_NAMES = ['Höchste Karte', 'Paar', 'Zwei Paare', 'Drilling', 'Straße', 'Flush', 'Full House', 'Vierling', 'Straight Flush'];
 
 /** Score of exactly five cards; higher is better. Category is score >> 20. */
-function score5(cards: string[]) {
+export function score5(cards: string[]) {
   const values = cards.map(rankValue).sort((a, b) => b - a);
   const flush = cards.every((c) => c[1] === cards[0][1]);
   const unique = [...new Set(values)];

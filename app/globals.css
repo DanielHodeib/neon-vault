@@ -262,7 +262,7 @@ body {
 
 /* Polish: page fade-in, balance flash, skeletons, card lift */
 .page-in { animation-name: page-in; animation-duration: .28s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); animation-fill-mode: both; }
-@keyframes page-in { from { opacity: 0; translate: 0 6px; } }
+@keyframes page-in { from { opacity: .4; translate: 0 6px; } }
 .balance-up { animation-name: balance-up; animation-duration: .9s; }
 .balance-down { animation-name: balance-down; animation-duration: .9s; }
 @keyframes balance-up { 20% { color: var(--color-win); text-shadow: 0 0 12px var(--color-win); } }
@@ -274,3 +274,6 @@ body {
 /* Touch: no double-tap zoom delay on controls, no grey flash on tap */
 button, a, [role='button'], input, select, label { touch-action: manipulation; }
 html { -webkit-tap-highlight-color: transparent; }
+
+/* Video Poker: bigger cards than at the tables */
+.vp-cards .playing-card { width: clamp(3.3rem, 15vw, 5.6rem); height: clamp(4.7rem, 21vw, 7.8rem); font-size: clamp(1.05rem, 4vw, 1.75rem); }

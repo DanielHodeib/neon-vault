@@ -26,6 +26,10 @@ export const GAME_NAMES: Record<string, string> = {
   wheel: 'Glücksrad',
   jackpot: 'Jackpot',
   race: 'Pferderennen',
+  scratch: 'Rubbellos',
+  tower: 'Tower',
+  keno: 'Keno',
+  vpoker: 'Video Poker',
 };
 
 export const THEMES = ['neon', 'ocean', 'violet', 'rose', 'sunset', 'gold', 'matrix', 'steel'] as const;

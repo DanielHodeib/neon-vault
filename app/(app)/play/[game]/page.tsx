@@ -13,6 +13,10 @@ import { Race } from '@/components/games/Race';
 import { Roulette } from '@/components/games/Roulette';
 import { Slots } from '@/components/games/Slots';
 import { Wheel } from '@/components/games/Wheel';
+import { Keno } from '@/components/games/Keno';
+import { Scratch } from '@/components/games/Scratch';
+import { Tower } from '@/components/games/Tower';
+import { VideoPoker } from '@/components/games/VideoPoker';
 
 const GAMES = {
   crash: <Crash />,
@@ -28,6 +32,10 @@ const GAMES = {
   wheel: <Wheel />,
   jackpot: <Jackpot />,
   race: <Race />,
+  scratch: <Scratch />,
+  tower: <Tower />,
+  keno: <Keno />,
+  vpoker: <VideoPoker />,
 };
 
 export default async function PlayPage({ params }: PageProps<'/play/[game]'>) {

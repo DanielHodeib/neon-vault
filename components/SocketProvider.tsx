@@ -30,7 +30,7 @@ type Ctx = {
   dmUnread: number;
   setDmUnread: (n: number) => void;
   /** Freezes the shown balance until the returned release() runs, so it can't spoil an animation. */
-  holdBalance: () => () => void;
+  holdBalance: (maxMs?: number) => () => void;
   /** While the balance is held: move the shown balance now (stake off, payout on) to match the animation. */
   shiftBalance: (delta: number) => void;
 };
@@ -168,7 +168,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     [socket],
   );
 
-  const holdBalance = useCallback(() => {
+  const holdBalance = useCallback((maxMs = 15_000) => {
     held.current++;
     let done = false;
     const release = () => {
@@ -179,7 +179,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
         pending.current = null;
       }
     };
-    setTimeout(release, 15_000); // never freeze for good, e.g. if the game unmounts mid-animation
+    setTimeout(release, maxMs); // never freeze for good, e.g. if the game unmounts mid-animation
     return release;
   }, []);
   const shiftBalance = useCallback((delta: number) => setBalance((b) => b + delta), []);
