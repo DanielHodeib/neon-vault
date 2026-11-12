@@ -107,7 +107,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
                     <RoleBadge role={m.role} />
                     <RankTag rank={m.rank} />
                   </div>
-                  <p className={`mt-0.5 break-words text-fg/90 ${m.text.includes(`@${me.username}`) ? 'rounded bg-accent/10 px-1.5 py-0.5' : ''}`}>{m.text}</p>
+                  <p className={`mt-0.5 w-fit max-w-full break-words text-fg/90 ${shopItem(m.bubble)?.className ?? ''} ${m.text.includes(`@${me.username}`) ? 'rounded bg-accent/10 px-1.5 py-0.5' : ''}`}>{m.text}</p>
                 </div>
               ) : (
                 <p key={m.id} className="rounded-lg border border-line bg-raised px-3 py-2 text-xs text-muted">{t(m.text)}</p>

@@ -115,12 +115,14 @@ export function UserLink({ name }: { name: string }) {
 }
 
 export function Avatar({ url, name, size = 36, frame }: { url?: string | null; name: string; size?: number; frame?: string | null }) {
-  const ring = shopItem(frame)?.frame;
-  // A bought frame wraps the picture in a gradient ring.
-  if (ring) {
+  const item = shopItem(frame);
+  // A bought frame wraps the picture in a gradient ring (animated ones spin it behind the picture).
+  if (item?.frame) {
     return (
-      <span className="grid shrink-0 place-items-center rounded-full p-[2px]" style={{ background: ring, width: size + 4, height: size + 4 }}>
-        <Avatar url={url} name={name} size={size - 2} />
+      <span className={`relative grid shrink-0 place-items-center overflow-hidden rounded-full p-[2px] ${item.className ?? ''}`} style={{ background: item.frame, width: size + 4, height: size + 4 }}>
+        <span className="relative">
+          <Avatar url={url} name={name} size={size - 2} />
+        </span>
       </span>
     );
   }

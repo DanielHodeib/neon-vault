@@ -298,3 +298,12 @@ html { -webkit-tap-highlight-color: transparent; }
 .logo-mark, .logo-neon { animation-name: neon-on; animation-duration: 1.1s; animation-timing-function: linear; animation-fill-mode: both; }
 @keyframes neon-on { 0% { opacity: .15; } 8% { opacity: 1; } 12% { opacity: .3; } 18% { opacity: 1; } 24% { opacity: .5; } 30%, 100% { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .logo-mark, .logo-neon { animation: none; } .logo-wheel { transition: none; } }
+
+/* Shop: animated frames and name effects */
+.frame-spin::before { content: ''; position: absolute; inset: 0; border-radius: 9999px; background: inherit; animation-name: frame-spin; animation-duration: 3s; animation-timing-function: linear; animation-iteration-count: infinite; }
+@keyframes frame-spin { to { rotate: 360deg; } }
+.name-shimmer { background: linear-gradient(100deg, var(--color-fg) 35%, #fff 50%, var(--color-fg) 65%); background-size: 250% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; animation-name: name-shimmer; animation-duration: 2.6s; animation-iteration-count: infinite; animation-timing-function: linear; }
+@keyframes name-shimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.name-pulse { color: var(--color-accent); animation-name: name-pulse; animation-duration: 1.6s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; }
+@keyframes name-pulse { 50% { text-shadow: 0 0 10px var(--color-accent), 0 0 22px var(--color-accent); } }
+@media (prefers-reduced-motion: reduce) { .frame-spin::before, .name-shimmer, .name-pulse { animation: none; } }

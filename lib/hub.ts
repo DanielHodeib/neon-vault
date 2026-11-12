@@ -34,6 +34,7 @@ export type ChatMessage = {
   color?: string | null;
   title?: string | null; // bought chat title
   effect?: string | null; // bought name effect (lib/shop.ts id)
+  bubble?: string | null; // bought chat bubble (lib/shop.ts id)
   at: number;
 };
 

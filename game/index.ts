@@ -84,6 +84,7 @@ export function setupRealtime(io: Server) {
         color: u.chatColor,
         title: shopItem(u.title)?.name ?? null,
         effect: u.nameEffect,
+        bubble: u.bubble,
         at: Date.now(),
       };
       hub.chat = [...hub.chat.slice(-49), msg];

@@ -5,7 +5,7 @@ import { refresh } from 'next/cache';
 import { run } from '@/lib/action';
 import { requireUser } from '@/lib/auth';
 import { db, UserError } from '@/lib/hub';
-import { shopItem, type ShopSlot } from '@/lib/shop';
+import { SHOP_SLOTS, shopItem, type ShopSlot } from '@/lib/shop';
 import { applyLedger } from '@/lib/wallet';
 
 // Item ids arrive from the browser (bound arguments), so each one is checked against the catalog.
@@ -36,7 +36,7 @@ export async function buyItem(id: string) {
 export async function equipItem(slot: ShopSlot, id: string | null) {
   return run(async () => {
     const user = await requireUser();
-    if (!['frame', 'title', 'nameEffect'].includes(slot)) throw new UserError('Ungültig.');
+    if (!SHOP_SLOTS.includes(slot)) throw new UserError('Ungültig.');
     if (id !== null) {
       const item = shopItem(id);
       if (!item || item.slot !== slot) throw new UserError('Unbekannter Artikel.');
