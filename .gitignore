@@ -26,3 +26,6 @@ npm-debug.log*
 
 # restart countdown request from deploy/update.sh
 /restart-request
+
+# code knowledge graph (graphify), local only
+/graphify-out/
