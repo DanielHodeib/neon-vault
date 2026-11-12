@@ -282,3 +282,10 @@ html { -webkit-tap-highlight-color: transparent; }
 .reaction-float { animation-name: reaction-up; animation-duration: 2.6s; animation-timing-function: cubic-bezier(.2, .7, .3, 1); animation-fill-mode: both; }
 @keyframes reaction-up { 0% { translate: -50% 0; scale: .4; opacity: 0; } 12% { scale: 1.15; opacity: 1; } 70% { opacity: 1; } 100% { translate: -50% -220px; scale: .9; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .reaction-float { animation-duration: 1.2s; } }
+
+/* Profile: showcase shine and growing play bars */
+.showcase-badge::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, #fff2 50%, transparent 65%); translate: -100% 0; animation-name: badge-shine; animation-duration: 4s; animation-iteration-count: infinite; }
+@keyframes badge-shine { 30%, 100% { translate: 100% 0; } }
+.grow-bar { animation-name: grow-bar; animation-duration: .8s; animation-timing-function: cubic-bezier(.2, .8, .2, 1); transform-origin: left; }
+@keyframes grow-bar { from { scale: 0 1; } }
+@media (prefers-reduced-motion: reduce) { .showcase-badge::after, .grow-bar { animation: none; } }

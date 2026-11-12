@@ -16,6 +16,8 @@ import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 import { changeLimit } from '@/lib/limits';
 import { isLang, LANG_COOKIE } from '@/lib/i18n';
+import { achievements } from '@/lib/achievements';
+import { playerStats } from '@/lib/stats';
 
 const optionalUrl = z.union([z.literal(''), z.string().trim().max(500).regex(IMAGE_URL, 'Bild-URL muss mit https:// beginnen.')]);
 const checkbox = z.literal('on').optional().transform(Boolean);
@@ -143,4 +145,16 @@ export async function setLang(lang: string) {
   if (!isLang(lang)) return;
   (await cookies()).set(LANG_COOKIE, lang, { path: '/', maxAge: 60 * 60 * 24 * 365, sameSite: 'lax' });
   refresh();
+}
+
+/** Pins up to three earned achievements to the profile showcase. */
+export async function setShowcase(keys: string[]) {
+  return run(async () => {
+    const user = await requireUser();
+    const earned = new Set(achievements((await playerStats(user.id)).stats).filter((a) => a.done).map((a) => a.key));
+    const pinned = [...new Set(keys)].filter((k) => earned.has(k)).slice(0, 3);
+    await db.user.update({ where: { id: user.id }, data: { showcase: pinned.join(',') || null } });
+    refresh();
+    return 'Vitrine gespeichert.';
+  });
 }

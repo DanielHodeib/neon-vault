@@ -100,3 +100,16 @@ export async function sendMoney(_: ActionState, form: FormData) {
     return `${amount.toLocaleString('de-DE')} NVC an ${other.username} gesendet.`;
   });
 }
+
+/** 👍 on a profile, or taking it back. */
+export async function toggleLike(userId: string) {
+  return run(async () => {
+    const me = await requireUser();
+    if (userId === me.id) throw new UserError('Dein eigenes Profil kannst du nicht liken.');
+    const key = { fromId_toId: { fromId: me.id, toId: userId } };
+    if (await db.profileLike.findUnique({ where: key })) await db.profileLike.delete({ where: key });
+    else if (await db.user.count({ where: { id: userId } })) await db.profileLike.create({ data: { fromId: me.id, toId: userId } });
+    else throw new UserError('Spieler nicht gefunden.');
+    refresh();
+  });
+}
