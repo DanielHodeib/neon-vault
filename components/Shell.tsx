@@ -2,7 +2,6 @@
 
 import type { Role } from '@prisma/client';
 import {
-  ArrowUpDown,
   Bell,
   ChevronDown,
   ChevronRight,
@@ -10,16 +9,7 @@ import {
   PanelLeftOpen,
   RefreshCw,
   ChartColumn,
-  Bomb,
-  Dices,
-  FerrisWheel,
-  Flag,
-  PiggyBank,
-  Triangle,
-  CircleDot,
-  Club,
   Coins as CoinsIcon,
-  Cherry,
   CloudRain,
   Gamepad2,
   Headphones,
@@ -29,11 +19,9 @@ import {
   Medal,
   Menu,
   MessageSquare,
-  Rocket,
   Settings,
   Shield,
   ShoppingBag,
-  Spade,
   Target,
   Trophy,
   UserRound,
@@ -58,24 +46,11 @@ import { useLang, useT } from './I18n';
 import { useLive } from './SocketProvider';
 import { Avatar, Logo } from './ui';
 import { usePref } from './usePref';
+import { DEFAULT_SHORTCUTS, GAME_BY_SLUG, GAME_LIST } from './gameCatalog';
+import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
 
-const GAMES: NavItem[] = [
-  { href: '/play/crash', label: 'Crash', icon: Rocket },
-  { href: '/play/slots', label: 'Slots', icon: Cherry },
-  { href: '/play/blackjack', label: 'Blackjack', icon: Spade },
-  { href: '/play/roulette', label: 'Roulette', icon: CircleDot },
-  { href: '/play/poker', label: 'Poker', icon: Club },
-  { href: '/play/coinflip', label: 'Coinflip', icon: CoinsIcon },
-  { href: '/play/mines', label: 'Mines', icon: Bomb },
-  { href: '/play/dice', label: 'Dice', icon: Dices },
-  { href: '/play/plinko', label: 'Plinko', icon: Triangle },
-  { href: '/play/hilo', label: 'Hi-Lo', icon: ArrowUpDown },
-  { href: '/play/wheel', label: 'Glücksrad', icon: FerrisWheel },
-  { href: '/play/jackpot', label: 'Jackpot', icon: PiggyBank },
-  { href: '/play/race', label: 'Rennen', icon: Flag },
-];
 
 type Notification = { id: string; title: string; message: string; link: string | null; friendId: string | null; isRead: boolean; createdAt: string };
 type User = { username: string; avatarUrl: string | null; frame: string | null; level: number; role: Role; theme: string };
@@ -87,6 +62,16 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
   // null = default (docked on wide screens, closed elsewhere)
   const [chat, setChat] = useState<boolean | null>(null);
   const [sheet, setSheet] = useState<'games' | 'more' | null>(null);
+  const shortcuts = useGameShortcuts();
+  const players = usePlayerCounts();
+  // Remember the game being played for the "recently played" shortcuts.
+  const playing = pathname.startsWith('/play/') ? pathname.split('/')[2] : null;
+  const { visit } = shortcuts;
+  useEffect(() => {
+    if (playing && GAME_BY_SLUG.has(playing)) visit(playing);
+  }, [playing, visit]);
+  // Sidebar shortcuts: favourites first, then recently played, filled up with popular games.
+  const shortcutSlugs = [...new Set([...shortcuts.favs, ...shortcuts.recent, ...DEFAULT_SHORTCUTS])].slice(0, 5);
   // Laptop sidebar: full width or folded to an icon rail; groups can be closed one by one.
   const [folded, setFolded] = usePref('nv-sidebar-folded', '0');
   const [closedRaw, setClosed] = usePref('nv-nav-closed', '');
@@ -127,21 +112,43 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
         </Link>
         <nav className={`no-scrollbar flex-1 overflow-y-auto p-3 ${wide ? 'space-y-6 lg:space-y-4' : 'space-y-6'}`}>
           <NavGroup items={[{ href: '/', label: 'Lobby', icon: House }]} isActive={isActive} wide={wide} />
-          {[
-            ['Spiele', GAMES],
-            ['Community', community],
-          ].map(([title, items]) => (
-            <NavGroup
-              key={title as string}
-              title={title as string}
-              items={items as NavItem[]}
-              isActive={isActive}
-              wide={wide}
-              tiles={title === 'Spiele'}
-              open={!closed.has(title as string)}
-              onToggle={() => toggleGroup(title as string)}
-            />
-          ))}
+          <div>
+            <div className={`mb-1 hidden items-center justify-between px-3 ${wide ? 'lg:flex' : ''}`}>
+              <span className="eyebrow">{t('Spiele')}</span>
+              <button onClick={() => setSheet('games')} className="text-[11px] text-muted hover:text-accent">{t('Alle')} · {GAME_LIST.length}</button>
+            </div>
+            <div className="space-y-0.5">
+              {shortcutSlugs.map((slug) => {
+                const g = GAME_BY_SLUG.get(slug)!;
+                const Icon = g.icon;
+                const active = isActive(`/play/${slug}`);
+                return (
+                  <Link
+                    key={slug}
+                    href={`/play/${slug}`}
+                    title={t(g.name)}
+                    className={`relative flex items-center justify-center gap-3 rounded-lg px-3 py-1.5 text-sm transition ${wide ? 'lg:justify-start' : ''} ${active ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'}`}
+                  >
+                    <Icon size={17} style={{ color: g.tint }} />
+                    <span className={wide ? 'hidden truncate lg:inline' : 'hidden'}>{t(g.name)}</span>
+                    {shortcuts.isFav(slug) && <span className={wide ? 'hidden text-[10px] text-gold lg:inline' : 'hidden'}>★</span>}
+                    {players[slug] > 0 && (
+                      <span className={`num text-[10px] text-win ${wide ? 'absolute top-0.5 right-1 lg:static lg:ml-auto' : 'absolute top-0.5 right-1'}`}>{players[slug]}</span>
+                    )}
+                  </Link>
+                );
+              })}
+              <button
+                onClick={() => setSheet('games')}
+                title={t('Alle Spiele')}
+                className={`flex w-full items-center justify-center gap-3 rounded-lg border border-dashed border-line px-3 py-1.5 text-sm text-muted transition hover:border-accent/60 hover:text-fg ${wide ? 'lg:justify-start' : ''}`}
+              >
+                <Gamepad2 size={17} />
+                <span className={wide ? 'hidden lg:inline' : 'hidden'}>{t('Alle Spiele')}</span>
+              </button>
+            </div>
+          </div>
+          <NavGroup title="Community" items={community} isActive={isActive} wide={wide} open={!closed.has('Community')} onToggle={() => toggleGroup('Community')} />
         </nav>
         <div className="hidden border-t border-line p-3 lg:block">
           <button
@@ -206,20 +213,19 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
         <TabButton icon={Menu} label="Mehr" onClick={() => setSheet('more')} />
       </nav>
 
-      {sheet && (
-        <Sheet title={sheet === 'games' ? 'Spiele' : t('Menü')} onClose={() => setSheet(null)}>
+      {sheet === 'games' && <GamesPanel onClose={() => setSheet(null)} />}
+      {sheet === 'more' && (
+        <Sheet title={t('Menü')} onClose={() => setSheet(null)}>
           <div className="grid grid-cols-3 gap-2">
-            {(sheet === 'games' ? GAMES : [...community, ...account]).map(({ href, label, icon: Icon }) => (
+            {[...community, ...account].map(({ href, label, icon: Icon }) => (
               <Link key={href} href={href} onClick={() => setSheet(null)} className={`flex flex-col items-center gap-2 rounded-xl border p-4 text-xs ${isActive(href) ? 'border-accent text-fg' : 'border-line text-muted'}`}>
                 <Icon size={22} />
                 {t(label)}
               </Link>
             ))}
-            {sheet === 'more' && (
-              <button onClick={() => logout()} className="flex flex-col items-center gap-2 rounded-xl border border-line p-4 text-xs text-muted">
-                <LogOut size={22} /> {t('Abmelden')}
-              </button>
-            )}
+            <button onClick={() => logout()} className="flex flex-col items-center gap-2 rounded-xl border border-line p-4 text-xs text-muted">
+              <LogOut size={22} /> {t('Abmelden')}
+            </button>
           </div>
         </Sheet>
       )}
@@ -234,7 +240,6 @@ function NavGroup({
   wide,
   open = true,
   onToggle,
-  tiles = false,
 }: {
   title?: string;
   items: NavItem[];
@@ -242,7 +247,6 @@ function NavGroup({
   wide: boolean;
   open?: boolean;
   onToggle?: () => void;
-  tiles?: boolean; // compact 3-column grid on the wide sidebar (used for the many games)
 }) {
   // On the icon rail (tablet or folded) groups are always open; closing only hides labels there.
   const t = useT();
@@ -258,30 +262,13 @@ function NavGroup({
           <ChevronDown size={14} className={`transition-transform ${open ? '' : '-rotate-90'}`} />
         </button>
       )}
-      {tiles && wide && open && (
-        <div className="hidden grid-cols-3 gap-1 lg:grid">
-          {items.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              title={t(label)}
-              className={`flex flex-col items-center gap-1 rounded-lg px-1 py-2 text-[10.5px] leading-tight transition ${
-                isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
-              }`}
-            >
-              <Icon size={18} className={isActive(href) ? 'text-accent' : ''} />
-              <span className="w-full truncate text-center">{t(label)}</span>
-            </Link>
-          ))}
-        </div>
-      )}
-      <div className={`space-y-0.5 ${!open && wide ? 'lg:hidden' : ''} ${tiles && wide ? 'lg:hidden' : ''}`}>
+      <div className={`space-y-0.5 ${!open && wide ? 'lg:hidden' : ''}`}>
         {items.map(({ href, label, icon: Icon, badge }) => (
           <Link
             key={href}
             href={href}
             title={t(label)}
-            className={`relative flex items-center justify-center gap-3 rounded-lg px-3 py-2 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
+            className={`relative flex items-center justify-center gap-3 rounded-lg px-3 py-1.5 text-sm transition ${wide ? 'lg:justify-start' : ''} ${
               isActive(href) ? 'bg-raised text-fg' : 'text-muted hover:bg-raised/60 hover:text-fg'
             }`}
           >
