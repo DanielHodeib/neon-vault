@@ -1,6 +1,9 @@
 import { z } from 'zod';
 
 import {
+  BACCARAT_PAYS,
+  baccaratTotal,
+  baccaratValue,
   KENO_DRAWN,
   KENO_MAX_PICKS,
   KENO_NUMBERS,
@@ -11,6 +14,9 @@ import {
   TOWER_FLOORS,
   towerMultiplier,
   VIDEO_POKER_PAYS,
+  LIMBO_MAX,
+  LIMBO_MIN,
+  type BaccaratSide,
   type TowerRisk,
   type VideoPokerHand,
 } from '@/lib/arcade';
@@ -58,6 +64,42 @@ export function evaluateVideoPoker(cards: string[]): VideoPokerHand | null {
 }
 const VP_MULT = Object.fromEntries(VIDEO_POKER_PAYS.map((p) => [p.key, p.multiplier])) as Record<VideoPokerHand, number>;
 
+// ── Limbo ───────────────────────────────────────────────────────────────────────────────────────
+
+/** Result multiplier: P(result ≥ t) = 0.99 / t, floored to cents. */
+export const limboResult = (u = rand()) => Math.min(LIMBO_MAX * 10, Math.floor((0.99 / (1 - u)) * 100) / 100);
+
+// ── Baccarat (punto banco, third-card rules) ─────────────────────────────────────────────────────
+
+export function baccaratDeal(deck: string[]) {
+  const player = [deck.pop()!, deck.pop()!];
+  const banker = [deck.pop()!, deck.pop()!];
+  const p = baccaratTotal(player);
+  const b = baccaratTotal(banker);
+  if (p < 8 && b < 8) {
+    // Player draws on 0–5. Banker then follows the tableau, depending on the player's third card.
+    let third: number | null = null;
+    if (p <= 5) {
+      const card = deck.pop()!;
+      player.push(card);
+      third = baccaratValue(card);
+    }
+    const bt = baccaratTotal(banker);
+    const bankerDraws =
+      third === null
+        ? bt <= 5
+        : bt <= 2 || (bt === 3 && third !== 8) || (bt === 4 && third >= 2 && third <= 7) || (bt === 5 && third >= 4 && third <= 7) || (bt === 6 && (third === 6 || third === 7));
+    if (bankerDraws) banker.push(deck.pop()!);
+  }
+  const pt = baccaratTotal(player);
+  const btot = baccaratTotal(banker);
+  const winner: BaccaratSide = pt > btot ? 'player' : btot > pt ? 'banker' : 'tie';
+  return { player, banker, playerTotal: pt, bankerTotal: btot, winner };
+}
+
+/** What a bet returns (× stake): its pay on a hit, the stake back for player/banker on a tie, else 0. */
+export const baccaratReturn = (side: BaccaratSide, winner: BaccaratSide) => (side === winner ? BACCARAT_PAYS[side] : winner === 'tie' ? 1 : 0);
+
 // ── State of the games with more than one step ───────────────────────────────────────────────────
 
 // `paid` is false while the stake is still being debited.
@@ -99,6 +141,40 @@ export const registerArcade: Register = (_io, socket) => {
       await payout(user.id, won, 'keno');
       shout(won, `${user.username} trifft ${hits} von ${picks.length} beim Keno: ${won.toLocaleString('de-DE')} NVC!`);
       return { drawn, hits, multiplier, payout: won };
+    },
+    { play: true },
+  );
+
+  handle(
+    socket,
+    'limbo:play',
+    z.object({ amount, target: z.number().min(LIMBO_MIN).max(LIMBO_MAX) }),
+    async ({ amount, target }) => {
+      const t = Math.floor(target * 100) / 100;
+      await placeBet(user.id, amount, 'limbo');
+      const result = limboResult();
+      const won = result >= t ? Math.floor(amount * t) : 0;
+      await payout(user.id, won, 'limbo');
+      shout(won, `${user.username} trifft ${t}× bei Limbo: ${won.toLocaleString('de-DE')} NVC!`);
+      return { result, target: t, payout: won };
+    },
+    { play: true },
+  );
+
+  handle(
+    socket,
+    'baccarat:play',
+    z.object({ amount, side: z.enum(['player', 'banker', 'tie']) }),
+    async ({ amount, side }) => {
+      await placeBet(user.id, amount, 'baccarat');
+      const hand = baccaratDeal(newDeck(8));
+      const back = baccaratReturn(side, hand.winner);
+      const won = Math.floor(amount * back);
+      // A push hands the stake back as a cancelled bet, not as a win.
+      if (back === 1) await cancelBet(user.id, won, 'baccarat');
+      else await payout(user.id, won, 'baccarat');
+      shout(won, `${user.username} gewinnt ${won.toLocaleString('de-DE')} NVC beim Baccarat!`);
+      return { ...hand, side, multiplier: back, payout: won };
     },
     { play: true },
   );

@@ -30,6 +30,8 @@ export const GAME_NAMES: Record<string, string> = {
   tower: 'Tower',
   keno: 'Keno',
   vpoker: 'Video Poker',
+  limbo: 'Limbo',
+  baccarat: 'Baccarat',
 };
 
 export const THEMES = ['neon', 'ocean', 'violet', 'rose', 'sunset', 'gold', 'matrix', 'steel'] as const;

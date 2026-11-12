@@ -14,6 +14,8 @@ import { Roulette } from '@/components/games/Roulette';
 import { Slots } from '@/components/games/Slots';
 import { Wheel } from '@/components/games/Wheel';
 import { Keno } from '@/components/games/Keno';
+import { Baccarat } from '@/components/games/Baccarat';
+import { Limbo } from '@/components/games/Limbo';
 import { Scratch } from '@/components/games/Scratch';
 import { Tower } from '@/components/games/Tower';
 import { VideoPoker } from '@/components/games/VideoPoker';
@@ -36,6 +38,8 @@ const GAMES = {
   tower: <Tower />,
   keno: <Keno />,
   vpoker: <VideoPoker />,
+  limbo: <Limbo />,
+  baccarat: <Baccarat />,
 };
 
 export default async function PlayPage({ params }: PageProps<'/play/[game]'>) {

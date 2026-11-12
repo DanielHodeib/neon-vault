@@ -1,4 +1,4 @@
-import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Dices, FerrisWheel, Flag, Grid3x3, PiggyBank, Rocket, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, Flag, Gauge, Grid3x3, PiggyBank, Rocket, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
 
 // Every game once: sidebar, games panel, lobby and phone sheet all read this list.
 export type GameCategory = 'live' | 'tables' | 'solo';
@@ -19,15 +19,17 @@ export const GAME_LIST: GameEntry[] = [
   { slug: 'coinflip', name: 'Coinflip', text: 'Solo oder im Duell', icon: Coins, tint: '#4cc2ff', category: 'live' },
   { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff', category: 'tables' },
   { slug: 'poker', name: 'Poker', text: "Texas Hold'em", icon: Club, tint: '#c084fc', category: 'tables' },
+  { slug: 'baccarat', name: 'Baccarat', text: 'Spieler oder Bank', icon: Crown, tint: '#fda4af', category: 'tables', isNew: true },
   { slug: 'slots', name: 'Slots', text: '8 Automaten', icon: Cherry, tint: '#e4c06a', category: 'solo' },
   { slug: 'mines', name: 'Mines', text: 'Felder aufdecken, Bomben meiden', icon: Bomb, tint: '#f87171', category: 'solo' },
   { slug: 'plinko', name: 'Plinko', text: 'Kugel fallen lassen', icon: Triangle, tint: '#f472b6', category: 'solo' },
   { slug: 'dice', name: 'Dice', text: 'Drüber oder drunter', icon: Dices, tint: '#a5b4c8', category: 'solo' },
   { slug: 'hilo', name: 'Hi-Lo', text: 'Höher oder tiefer?', icon: ArrowUpDown, tint: '#22d3ee', category: 'solo' },
-  { slug: 'scratch', name: 'Rubbellos', text: 'Freirubbeln, 3 gleiche gewinnen', icon: Sparkles, tint: '#facc15', category: 'solo', isNew: true },
-  { slug: 'tower', name: 'Tower', text: 'Stockwerk für Stockwerk nach oben', icon: Building2, tint: '#818cf8', category: 'solo', isNew: true },
-  { slug: 'keno', name: 'Keno', text: '10 Zahlen tippen, 10 werden gezogen', icon: Grid3x3, tint: '#2dd4bf', category: 'solo', isNew: true },
-  { slug: 'vpoker', name: 'Video Poker', text: 'Jacks or Better', icon: SquareStack, tint: '#f97316', category: 'solo', isNew: true },
+  { slug: 'scratch', name: 'Rubbellos', text: 'Freirubbeln, 3 gleiche gewinnen', icon: Sparkles, tint: '#facc15', category: 'solo' },
+  { slug: 'tower', name: 'Tower', text: 'Stockwerk für Stockwerk nach oben', icon: Building2, tint: '#818cf8', category: 'solo' },
+  { slug: 'keno', name: 'Keno', text: '10 Zahlen tippen, 10 werden gezogen', icon: Grid3x3, tint: '#2dd4bf', category: 'solo' },
+  { slug: 'limbo', name: 'Limbo', text: 'Ziel wählen, hoch hinaus', icon: Gauge, tint: '#38bdf8', category: 'solo', isNew: true },
+  { slug: 'vpoker', name: 'Video Poker', text: 'Jacks or Better', icon: SquareStack, tint: '#f97316', category: 'solo' },
 ];
 
 export const GAME_BY_SLUG = new Map(GAME_LIST.map((g) => [g.slug, g]));

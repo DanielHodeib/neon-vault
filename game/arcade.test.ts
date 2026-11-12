@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { KENO_DRAWN, KENO_NUMBERS, KENO_PAYS, SCRATCH_FIELDS, SCRATCH_PRIZES, TOWER_DOORS, TOWER_FLOORS, towerMultiplier, VIDEO_POKER_PAYS } from '../lib/arcade';
-import { evaluateVideoPoker, kenoResult, scratchCard } from './arcade';
+import { KENO_DRAWN, KENO_NUMBERS, KENO_PAYS, limboChance, SCRATCH_FIELDS, SCRATCH_PRIZES, TOWER_DOORS, TOWER_FLOORS, towerMultiplier, VIDEO_POKER_PAYS } from '../lib/arcade';
+import { newDeck } from './cards';
+import { baccaratDeal, baccaratReturn, evaluateVideoPoker, kenoResult, limboResult, scratchCard } from './arcade';
 
 const choose = (n: number, k: number) => {
   let c = 1;
@@ -57,4 +58,33 @@ test('video poker: Jacks or Better hands', () => {
   assert.equal(evaluateVideoPoker(['TS', 'TH', '4D', '8C', '2S']), null);
   assert.equal(evaluateVideoPoker(['AS', '3H', '6D', '9C', 'QS']), null);
   assert.equal(VIDEO_POKER_PAYS[0].key, 'royal');
+});
+
+test('limbo: hit rate matches 0.99 / target', () => {
+  const n = 200_000;
+  for (const target of [2, 10]) {
+    let hits = 0;
+    for (let i = 0; i < n; i++) if (limboResult() >= target) hits++;
+    assert.ok(Math.abs(hits / n - limboChance(target)) < 0.006, `target ${target}: ${hits / n}`);
+  }
+  assert.equal(limboResult(0), 0.99); // the lowest possible result always loses
+});
+
+test('baccarat: natural/third-card rules give the known odds and returns', () => {
+  const n = 120_000;
+  const wins = { player: 0, banker: 0, tie: 0 };
+  let deck = newDeck(8);
+  for (let i = 0; i < n; i++) {
+    if (deck.length < 10) deck = newDeck(8);
+    wins[baccaratDeal(deck).winner]++;
+  }
+  const p = { player: wins.player / n, banker: wins.banker / n, tie: wins.tie / n };
+  assert.ok(Math.abs(p.banker - 0.4586) < 0.008 && Math.abs(p.player - 0.4462) < 0.008 && Math.abs(p.tie - 0.0952) < 0.006, JSON.stringify(p));
+  const rtp = (side: 'player' | 'banker' | 'tie') => (['player', 'banker', 'tie'] as const).reduce((s, w) => s + p[w] * baccaratReturn(side, w), 0);
+  assert.ok(rtp('player') > 0.97 && rtp('player') < 1.0, `player ${rtp('player')}`);
+  assert.ok(rtp('banker') > 0.97 && rtp('banker') < 1.0, `banker ${rtp('banker')}`);
+  assert.ok(rtp('tie') > 0.8 && rtp('tie') < 0.92, `tie ${rtp('tie')}`);
+  // fixed hand (dealt from the end): player 8 + K = 8, banker Q + 9 = 9 – both naturals, nobody draws
+  const hand = baccaratDeal(['5S', '4S', '9H', 'QC', 'KH', '8D']);
+  assert.deepEqual([hand.playerTotal, hand.bankerTotal, hand.winner, hand.player.length, hand.banker.length], [8, 9, 'banker', 2, 2]);
 });

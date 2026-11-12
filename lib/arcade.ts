@@ -57,3 +57,18 @@ export const VIDEO_POKER_PAYS = [
   { key: 'jacks', name: 'Bube oder besser', multiplier: 1 },
 ] as const;
 export type VideoPokerHand = (typeof VIDEO_POKER_PAYS)[number]['key'];
+
+// ── Limbo: pick a target multiplier; the result must reach it ────────────────────────────────────
+export const LIMBO_MIN = 1.01;
+export const LIMBO_MAX = 1_000;
+/** Win chance for a target (1 % house edge). */
+export const limboChance = (target: number) => 0.99 / target;
+
+// ── Baccarat: bet on Spieler, Bank or Unentschieden ──────────────────────────────────────────────
+export type BaccaratSide = 'player' | 'banker' | 'tie';
+/** Return per bet (× stake, stake included). On a tie, player/banker bets come back. */
+export const BACCARAT_PAYS: Record<BaccaratSide, number> = { player: 2, banker: 1.95, tie: 9 };
+export const BACCARAT_LABEL: Record<BaccaratSide, string> = { player: 'Spieler', banker: 'Bank', tie: 'Unentschieden' };
+/** Baccarat value of a card ("9S" → 9, tens and faces → 0, ace → 1). */
+export const baccaratValue = (card: string) => ('TJQK'.includes(card[0]) ? 0 : card[0] === 'A' ? 1 : Number(card[0]));
+export const baccaratTotal = (cards: string[]) => cards.reduce((s, c) => s + baccaratValue(c), 0) % 10;
