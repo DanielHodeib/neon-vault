@@ -2,6 +2,7 @@ import type { Server } from 'socket.io';
 import { z } from 'zod';
 
 import { systemMessage } from '@/lib/events';
+import { REACTION_ROOMS, REACTIONS } from '@/lib/games';
 import { currentMood, db, hub, isMuted, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
 import { shopItem } from '@/lib/shop';
@@ -86,6 +87,14 @@ export function setupRealtime(io: Server) {
       hub.chat = [...hub.chat.slice(-49), msg];
       hub.chatActive.set(u.id, msg.at);
       io.emit('chat', msg);
+    });
+
+    // Emoji reactions in the live games: shown to everyone in that game's room, at most one per 1.2 s.
+    let lastReaction = 0;
+    handle(socket, 'react', z.object({ room: z.enum(REACTION_ROOMS), emoji: z.enum(REACTIONS) }), ({ room, emoji }) => {
+      if (Date.now() - lastReaction < 1200) return;
+      lastReaction = Date.now();
+      io.to(room).emit('react', { id: id(), room, emoji, username: user.username });
     });
 
     // Names for chat autocomplete: the user's friends (online players come from the presence list).

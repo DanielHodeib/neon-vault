@@ -8,6 +8,7 @@ import { HORSES, RACE_RUN_MS, racePosition } from '@/lib/race';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { NameDot, Reactions } from './Reactions';
 import { sound } from './sound';
 import { useCue } from './useCue';
 import { useT } from '@/components/I18n';
@@ -140,7 +141,9 @@ export function Race() {
         <ul className="divide-y divide-line text-sm">
           {state.players.map((p) => (
             <li key={p.userId} className="flex items-center justify-between gap-3 px-4 py-2.5">
-              <span className={`truncate ${p.userId === me.id ? 'text-accent' : ''}`}>{p.username}</span>
+              <span className={`flex min-w-0 items-center gap-2 ${p.userId === me.id ? 'text-accent' : ''}`}>
+                <NameDot name={p.username} /> <span className="truncate">{p.username}</span>
+              </span>
               <span className="flex flex-wrap justify-end gap-1">
                 {p.bets.map((b, i) => (
                   <span key={i} className="num rounded px-1.5 py-px text-[11px]" style={{ background: `${HORSES[b.horse].color}40` }}>
@@ -155,5 +158,5 @@ export function Race() {
     </div>
   );
 
-  return <GameFrame title="Pferderennen" subtitle={t('Alle wetten, ein Rennen, live.')} stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Pferderennen" subtitle={t('Alle wetten, ein Rennen, live.')} stage={<Reactions room="race">{stage}</Reactions>} controls={controls} extra={extra} />;
 }

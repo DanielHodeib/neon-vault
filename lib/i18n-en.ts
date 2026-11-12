@@ -508,6 +508,7 @@ export const EN: Record<string, string> = {
   'Raise-Betrag': 'Raise amount',
   'Rangliste': 'Ranking',
   'Rate zuerst mindestens einmal richtig.': 'Guess right at least once first.',
+  'Reaktionen': 'Reactions',
   'Rechtzeitig aussteigen': 'Cash out in time',
   'Regenbogen-Name': 'Rainbow name',
   'Registrieren': 'Sign up',

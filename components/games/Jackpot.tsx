@@ -7,6 +7,7 @@ import { JACKPOT_CLOSE_MS, JACKPOT_FEE } from '@/lib/wheel';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { NameDot, Reactions } from './Reactions';
 import { sound } from './sound';
 import { useCue } from './useCue';
 import { useT } from '@/components/I18n';
@@ -79,7 +80,9 @@ export function Jackpot() {
           {state.players.map((p, i) => (
             <li key={p.userId} className={`rounded-lg border p-3 transition ${highlight?.userId === p.userId ? 'border-win bg-win/10' : 'border-line'}`}>
               <div className="flex items-center justify-between gap-3 text-sm">
-                <span className={`truncate ${p.userId === me.id ? 'text-accent' : ''}`}>{p.username}</span>
+                <span className={`flex min-w-0 items-center gap-2 ${p.userId === me.id ? 'text-accent' : ''}`}>
+                <NameDot name={p.username} /> <span className="truncate">{p.username}</span>
+              </span>
                 <span className="num shrink-0 text-muted">
                   {coins(p.total)} · <span className="text-fg">{pct(p.chance)}</span>
                 </span>
@@ -126,5 +129,5 @@ export function Jackpot() {
     </div>
   );
 
-  return <GameFrame title="Jackpot" subtitle={t('Gemeinsamer Pot · einer gewinnt alles')} stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Jackpot" subtitle={t('Gemeinsamer Pot · einer gewinnt alles')} stage={<Reactions room="jackpot">{stage}</Reactions>} controls={controls} extra={extra} />;
 }

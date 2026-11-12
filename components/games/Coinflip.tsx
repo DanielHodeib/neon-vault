@@ -8,6 +8,7 @@ import { COINFLIP_SOLO_PAYOUT } from '@/lib/games';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { NameDot, Reactions } from './Reactions';
 import { sound } from './sound';
 import { useT } from '@/components/I18n';
 
@@ -130,7 +131,7 @@ export function Coinflip() {
             <li key={l.id} className="flex items-center gap-3 px-4 py-3">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-gold/40 text-xs font-semibold text-gold">{t(SIDE[l.side])[0]}</span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-medium">{l.username}</span>
+                <span className="flex items-center gap-2 truncate text-sm font-medium"><NameDot name={l.username} /> {l.username}</span>
                 <span className="text-xs text-muted">{t('setzt auf {side}', { side: t(SIDE[l.side]) })}</span>
               </span>
               <span className="num text-sm text-gold">{coins(l.amount)}</span>
@@ -202,7 +203,7 @@ export function Coinflip() {
     <GameFrame
       title="Coinflip"
       subtitle={mode === 'solo' ? t('Kopf oder Zahl gegen das Haus.') : t('Kopf oder Zahl, Spieler gegen Spieler.')}
-      stage={mode === 'solo' ? solo : duel}
+      stage={<Reactions room="coinflip">{mode === 'solo' ? solo : duel}</Reactions>}
       controls={controls}
       extra={extra}
     />

@@ -7,6 +7,7 @@ import { multiplierAt } from '@/lib/games';
 import { useJoin, useLive, useSocketEvent } from '../SocketProvider';
 import { BetInput, Empty } from '../ui';
 import { GameFrame } from './GameFrame';
+import { NameDot, Reactions } from './Reactions';
 import { sound } from './sound';
 import { useCue } from './useCue';
 import { useT } from '@/components/I18n';
@@ -142,8 +143,10 @@ export function Crash() {
       ) : (
         <ul className="divide-y divide-line text-sm">
           {state.bets.map((b) => (
-            <li key={b.userId} className="flex justify-between px-4 py-2.5">
-              <span>{b.username}</span>
+            <li key={b.userId} className="pop-in flex items-center justify-between gap-2 px-4 py-2.5">
+              <span className={`flex min-w-0 items-center gap-2 ${b.userId === me.id ? 'text-accent' : ''}`}>
+                <NameDot name={b.username} /> <span className="truncate">{b.username}</span>
+              </span>
               <span className={`num ${b.cashedAt ? 'text-win' : crashed ? 'text-loss' : 'text-muted'}`}>
                 {b.cashedAt ? `${b.cashedAt.toFixed(2)}× · +${coins(Math.floor(b.amount * b.cashedAt))}` : coins(b.amount)}
               </span>
@@ -154,5 +157,5 @@ export function Crash() {
     </div>
   );
 
-  return <GameFrame title="Crash" subtitle={t('Steig aus, bevor der Multiplikator crasht.')} stage={stage} controls={controls} extra={extra} />;
+  return <GameFrame title="Crash" subtitle={t('Steig aus, bevor der Multiplikator crasht.')} stage={<Reactions room="crash">{stage}</Reactions>} controls={controls} extra={extra} />;
 }

@@ -277,3 +277,8 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* Video Poker: bigger cards than at the tables */
 .vp-cards .playing-card { width: clamp(3.3rem, 15vw, 5.6rem); height: clamp(4.7rem, 21vw, 7.8rem); font-size: clamp(1.05rem, 4vw, 1.75rem); }
+
+/* Live reactions rising over the board */
+.reaction-float { animation-name: reaction-up; animation-duration: 2.6s; animation-timing-function: cubic-bezier(.2, .7, .3, 1); animation-fill-mode: both; }
+@keyframes reaction-up { 0% { translate: -50% 0; scale: .4; opacity: 0; } 12% { scale: 1.15; opacity: 1; } 70% { opacity: 1; } 100% { translate: -50% -220px; scale: .9; opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .reaction-float { animation-duration: 1.2s; } }
