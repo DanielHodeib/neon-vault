@@ -22,6 +22,7 @@ import {
   unbanUser,
 } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
+import { cancelMarket } from '@/app/actions/markets';
 import { EventForm } from './EventForm';
 import { MoodForm } from './MoodForm';
 import { DiscoSoundSelect, FxComposer } from './FxComposer';
@@ -335,8 +336,16 @@ export async function PlayersTab({ actor, q, selectedId }: { actor: User; q: str
   );
 }
 
-export function LiveTab({ actor }: { actor: User }) {
+const isPast = (d: Date) => d.getTime() < Date.now();
+
+export async function LiveTab({ actor }: { actor: User }) {
   const isAdmin = atLeast(actor.role, 'ADMIN');
+  const markets = await db.market.findMany({
+    where: { status: 'open' },
+    orderBy: { closesAt: 'asc' },
+    take: 20,
+    select: { id: true, question: true, closesAt: true, creator: { select: { username: true } }, _count: { select: { bets: true } } },
+  });
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2">
       <Section title="Ankündigung" pad>
@@ -364,6 +373,28 @@ export function LiveTab({ actor }: { actor: User }) {
           </Section>
         </>
       )}
+
+      <Section title={`Offene Wetten · ${markets.length}`} className="lg:col-span-2">
+        {markets.length === 0 ? (
+          <Empty>Keine offenen Wetten.</Empty>
+        ) : (
+          <ul className="divide-y divide-line text-sm">
+            {markets.map((m) => (
+              <li key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-2.5">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{m.question}</span>
+                  <span className="text-xs text-muted">
+                    von {m.creator.username} · {m._count.bets} Einsätze · {isPast(m.closesAt) ? <span className="text-gold">Einsatzschluss vorbei – wartet aufs Auflösen</span> : `bis ${m.closesAt.toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' })}`}
+                  </span>
+                </span>
+                <FormButton action={cancelMarket.bind(null, m.id)} confirm={`„${m.question}“ absagen? Alle bekommen ihren Einsatz zurück.`} className="btn-ghost h-8 text-xs">
+                  Absagen
+                </FormButton>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </div>
   );
 }

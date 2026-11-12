@@ -10,6 +10,8 @@ test('tournament category rotates week by week', () => {
   const w3 = new Date(w2.getTime() + 7 * 86_400_000);
   const w4 = new Date(w3.getTime() + 7 * 86_400_000);
   assert.equal(weekKey(w1), '2026-11-09');
-  assert.equal(new Set([kindOf(w1), kindOf(w2), kindOf(w3)]).size, 3);
-  assert.equal(kindOf(w4), kindOf(w1));
+  const w5 = new Date(w4.getTime() + 7 * 86_400_000);
+  assert.equal(new Set([kindOf(w1), kindOf(w2), kindOf(w3), kindOf(w4)]).size, 4);
+  assert.equal(kindOf(w5), kindOf(w1));
+  assert.equal(kindOf(w1), 'profit'); // the week the arena category arrived kept its category
 });

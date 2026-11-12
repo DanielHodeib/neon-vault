@@ -12,10 +12,12 @@ export const TOURNAMENT_KINDS = {
   profit: { label: 'Gewinner der Woche', description: 'Höchster Netto-Gewinn über alle Spiele.', unit: 'NVC Gewinn' },
   volume: { label: 'High-Roller-Woche', description: 'Wer setzt insgesamt am meisten ein?', unit: 'NVC eingesetzt' },
   wins: { label: 'Treffer-Jagd', description: `Die meisten Gewinne ab ${WIN_MIN} NVC.`, unit: 'Gewinne' },
+  arena: { label: 'Arena-Woche', description: 'Die meisten gewonnenen Duelle in der Arena.', unit: 'Duell-Siege' },
 } as const;
 export type TournamentKind = keyof typeof TOURNAMENT_KINDS;
 
-const ORDER: TournamentKind[] = ['profit', 'volume', 'wins'];
+// Arranged so the week this was added (week 2967, 'profit') kept its category when the cycle grew to four.
+const ORDER: TournamentKind[] = ['volume', 'wins', 'arena', 'profit'];
 export const kindOf = (weekStart: Date) => ORDER[Math.round(weekStart.getTime() / WEEK) % ORDER.length];
 /** Milliseconds until this week's tournament ends. */
 export const msLeftThisWeek = () => startOfWeek().getTime() + WEEK - Date.now();
@@ -27,8 +29,9 @@ export async function standings(weekStart: Date, take = 10) {
   const range = { gte: weekStart, lt: new Date(weekStart.getTime() + WEEK) };
   const kind = kindOf(weekStart);
   let scores: { userId: string; score: number }[];
-  if (kind === 'wins') {
-    const rows = await db.ledgerEntry.groupBy({ by: ['userId'], where: { createdAt: range, kind: 'WIN', amount: { gte: WIN_MIN } }, _count: { _all: true } });
+  if (kind === 'wins' || kind === 'arena') {
+    const where = kind === 'wins' ? { kind: 'WIN', amount: { gte: WIN_MIN } } : { kind: 'WIN', game: 'duel' };
+    const rows = await db.ledgerEntry.groupBy({ by: ['userId'], where: { createdAt: range, ...where }, _count: { _all: true } });
     scores = rows.map((r) => ({ userId: r.userId, score: r._count._all }));
   } else {
     const kinds = kind === 'profit' ? ['BET', 'WIN', 'CANCEL', 'REFUND', 'BUYIN', 'CASHOUT'] : ['BET', 'CANCEL'];

@@ -1,6 +1,7 @@
 import { db } from './hub';
 import { levelOf } from './ranks';
 import type { PlayerStats } from './achievements';
+import { GAME_NAMES } from './format';
 
 const GAME_KINDS = ['BET', 'WIN', 'CANCEL', 'REFUND', 'BUYIN', 'CASHOUT'];
 
@@ -28,7 +29,9 @@ export async function playerStats(userId: string) {
     biggestWin: Number(biggest._max.amount ?? 0),
     level: levelOf(user.xp),
     friends,
-    gamesPlayed: [...games.values()].filter((g) => g.staked > 0).length,
+    gamesPlayed: [...games.entries()].filter(([game, g]) => g.staked > 0 && game in GAME_NAMES).length,
+    duelWins: rows.find((r) => r.game === 'duel' && r.kind === 'WIN')?._count ?? 0,
+    marketWins: rows.find((r) => r.game === 'market' && r.kind === 'WIN')?._count ?? 0,
   };
   return { games, stats };
 }

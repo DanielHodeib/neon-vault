@@ -1,6 +1,6 @@
 import { GAME_NAMES } from './format';
 
-export type PlayerStats = { bets: number; biggestWin: number; level: number; friends: number; gamesPlayed: number };
+export type PlayerStats = { bets: number; biggestWin: number; level: number; friends: number; gamesPlayed: number; duelWins: number; marketWins: number };
 
 export const ALL_GAMES = Object.keys(GAME_NAMES).length;
 
@@ -13,5 +13,7 @@ export const achievements = (s: PlayerStats) => [
   { key: 'win-100k', icon: '💎', title: 'Volltreffer', description: 'Ein Einzelgewinn ab 100.000 NVC.', done: s.biggestWin >= 100_000 },
   { key: 'level-10', icon: '⭐', title: 'Aufsteiger', description: 'Level 10 erreicht.', done: s.level >= 10 },
   { key: 'friends-5', icon: '🤝', title: 'Gesellig', description: '5 Freunde.', done: s.friends >= 5 },
+  { key: 'duels-10', icon: '⚔️', title: 'Duellant', description: '10 Duelle in der Arena gewonnen.', done: s.duelWins >= 10 },
+  { key: 'markets-5', icon: '🔮', title: 'Hellseher', description: '5 Wetten richtig getippt.', done: s.marketWins >= 5 },
   { key: 'all-games', icon: '🌍', title: 'Allrounder', description: 'Alle {n} Spiele ausprobiert.', done: s.gamesPlayed >= ALL_GAMES },
 ];

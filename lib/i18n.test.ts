@@ -30,7 +30,7 @@ test('every german data text has an english version (plain names may stay as the
     ...Object.values(THEME_INFO).map((t) => t.name),
     ...TICKET_CATEGORIES,
     ...Object.values(TICKET_STATUS),
-    ...achievements({ bets: 0, biggestWin: 0, level: 1, friends: 0, gamesPlayed: 0 }).flatMap((a) => [a.title, a.description]),
+    ...achievements({ bets: 0, biggestWin: 0, level: 1, friends: 0, gamesPlayed: 0, duelWins: 0, marketWins: 0 }).flatMap((a) => [a.title, a.description]),
     ...Object.values(PLINKO_RISK_LABEL),
   ];
   const missing = texts.filter((t) => !(t in EN) && !/^[A-Za-z0-9 -]+$/.test(t));
