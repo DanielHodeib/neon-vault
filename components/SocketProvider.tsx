@@ -150,10 +150,17 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     // Unread private messages, fetched again after every reconnect.
     const loadUnread = () => socket.emit('dm:unread', {}, (r: { ok: boolean; unread?: number }) => r.ok && setDmUnread(r.unread ?? 0));
     socket.on('connect', loadUnread);
+    // Marks the page as interactive and live (the click tests in e2e/ wait for it).
+    const live = () => document.documentElement.setAttribute('data-live', '');
+    const offline = () => document.documentElement.removeAttribute('data-live');
+    socket.on('connect', live);
+    socket.on('disconnect', offline);
     socket.connect();
     return () => {
       for (const [name, fn] of Object.entries(handlers)) socket.off(name, fn);
       socket.off('connect', loadUnread);
+      socket.off('connect', live);
+      socket.off('disconnect', offline);
       socket.disconnect();
     };
   }, [socket, me.id, me.username, me.soundEnabled, router]);

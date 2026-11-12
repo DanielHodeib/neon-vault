@@ -53,7 +53,8 @@ Damit der Mac beim Spielen nicht einschläft, lässt du nebenbei `caffeinate -d`
 | `npm run build && npm start` | Produktion |
 | `npm run share` | Öffentliche HTTPS-Adresse per Tailscale Funnel |
 | `npm run check` | Typecheck, Lint und Tests |
-| `npm test` | Spiel-Engines testen (Auszahlungsquoten, Poker-Hände, Side-Pots …) |
+| `npm test` | Spiel-Engines testen (Auszahlungsquoten, Poker-Hände, Side-Pots, Wirtschaft …) |
+| `npm run e2e` | Klick-Tests im echten Browser (eigener Testserver + leere Test-Datenbank); einmalig vorher `npx playwright install chromium` |
 | `npm run set-role -- Name ROLLE` | Rolle vergeben (OWNER, ADMIN, MODERATOR, SUPPORT, USER) |
 | `npm run db:migrate` | Neue Migration nach einer Schema-Änderung |
 | `npm run db:studio` | Datenbank im Browser ansehen |

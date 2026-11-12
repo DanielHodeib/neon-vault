@@ -1,6 +1,10 @@
 # dependencies & build output
 node_modules/
 /.next/
+/.next-e2e/
+/test-results/
+/playwright-report/
+/prisma/e2e-backups/
 *.tsbuildinfo
 next-env.d.ts
 
