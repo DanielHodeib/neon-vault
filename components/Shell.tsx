@@ -52,6 +52,7 @@ import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
 import { WinTicker } from './WinTicker';
 import { InstallPrompt } from './InstallPrompt';
 import { SoundMenu } from './SoundMenu';
+import { CommandPalette, PaletteButton } from './CommandPalette';
 import { useCountUp } from './useCountUp';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
@@ -193,6 +194,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           )}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <PaletteButton />
             <SoundMenu />
             <Notifications items={notifications} />
             <button onClick={toggleChat} className="btn-ghost hidden h-9 w-9 px-0 md:inline-flex" aria-label={t('Chat ein- oder ausblenden')}>
@@ -221,6 +223,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
       </div>
 
       <InstallPrompt />
+      <CommandPalette />
 
       {/* Phone bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

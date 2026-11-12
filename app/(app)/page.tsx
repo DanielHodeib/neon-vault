@@ -3,6 +3,7 @@ import Link from 'next/link';
 
 import { DailySpin } from '@/components/DailySpin';
 import { LobbyGames, LobbyLive } from '@/components/Lobby';
+import { Welcome } from '@/components/Welcome';
 import { levelOf } from '@/lib/ranks';
 import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
@@ -18,7 +19,7 @@ const BIG_WIN = 5_000;
 export default async function Lobby() {
   const t = await getT();
   const user = await requireUser();
-  const [today, daily, bigWins] = await Promise.all([
+  const [today, daily, bigWins, friends] = await Promise.all([
     netProfitSince(startOfDay(), 5),
     dailyStatus(user.id),
     db.ledgerEntry.findMany({
@@ -27,6 +28,7 @@ export default async function Lobby() {
       take: 8,
       select: { id: true, amount: true, game: true, createdAt: true, user: { select: { username: true } } },
     }),
+    db.friendship.count({ where: { accepted: true, OR: [{ fromId: user.id }, { toId: user.id }] } }),
   ]);
   const king = today.find((t) => t.profit > 0);
 
@@ -35,6 +37,8 @@ export default async function Lobby() {
       <DailySpin username={user.username} claimedToday={daily.claimedToday} streak={daily.streak} level={levelOf(user.xp)} levelProgress={(user.xp % 1000) / 1000}>
         <LobbyLive king={king ? { username: king.username, profit: king.profit } : null} />
       </DailySpin>
+
+      {user.xp < 2000 && <Welcome spun={daily.claimedToday || daily.streak > 1} friends={friends} />}
 
       <LobbyGames />
 

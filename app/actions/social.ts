@@ -113,3 +113,12 @@ export async function toggleLike(userId: string) {
     refresh();
   });
 }
+
+/** Player names for the quick search (Ctrl+K): prefix match, public profiles only, at most 6. */
+export async function searchPlayers(query: string) {
+  await requireUser();
+  const q = query.trim().replace(/[^a-zA-Z0-9_]/g, '').slice(0, 20);
+  if (q.length < 2) return [];
+  const users = await db.user.findMany({ where: { username: { startsWith: q }, publicProfile: true }, select: { username: true }, take: 6, orderBy: { username: 'asc' } });
+  return users.map((u) => u.username);
+}
