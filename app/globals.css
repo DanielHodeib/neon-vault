@@ -238,3 +238,24 @@ body {
 .group:hover .game-icon[data-game=coinflip] svg { animation-name: g-flip; animation-duration: .8s; }
 .group:hover .game-icon[data-game=mines] svg, .group:hover .game-icon[data-game=jackpot] svg { animation-name: g-pulse; animation-duration: .7s; }
 @media (prefers-reduced-motion: reduce) { .lobby-hero::before, .group:hover .game-icon svg { animation: none; } }
+
+/* Huge win: gold coin rain + banner for everyone (components/fx.ts celebrate) */
+.fx-celebrate { display: grid; place-items: center; background: radial-gradient(circle at 50% 45%, #0008, transparent 65%); }
+.fx-coin { position: absolute; top: -40px; width: 26px; height: 26px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff6c4, #f5c542 45%, #b8860b 100%); box-shadow: inset 0 0 0 3px #d4a52a, 0 0 12px #f5c54288; animation-name: fx-coin-fall; animation-timing-function: cubic-bezier(.4, .1, .8, 1); animation-fill-mode: both; }
+@keyframes fx-coin-fall { 0% { translate: 0 0; rotate: 0deg; } 100% { translate: 0 115vh; rotate: 540deg; } }
+.fx-celebrate-banner { position: relative; text-align: center; padding: 1.5rem 2.5rem; border-radius: 1.25rem; background: linear-gradient(160deg, #1a1405f2, #0b0b0ef2); border: 1px solid #f5c54288; box-shadow: 0 0 60px #f5c54244, 0 30px 80px #000c; animation-name: fx-banner-in; animation-duration: .6s; animation-timing-function: cubic-bezier(.2, 1.4, .4, 1); animation-fill-mode: both; }
+@keyframes fx-banner-in { from { scale: .3; opacity: 0; } }
+.fx-celebrate-eyebrow { font-size: .75rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: #f5c542; }
+.fx-celebrate-name { margin-top: .25rem; font-size: 1.5rem; font-weight: 700; color: #fff; }
+.fx-celebrate-amount { margin-top: .25rem; font-family: var(--font-mono, monospace); font-size: clamp(2rem, 7vw, 3.5rem); font-weight: 800; color: #f5c542; text-shadow: 0 0 24px #f5c54288; }
+.fx-celebrate-game { margin-top: .25rem; font-size: .875rem; color: #fff9; }
+@media (prefers-reduced-motion: reduce) { .fx-coin { display: none; } .fx-celebrate-banner { animation: none; } }
+
+/* Live win ticker */
+.ticker { mask-image: linear-gradient(90deg, transparent, #000 4%, #000 96%, transparent); }
+.ticker-track { animation-name: ticker-move; animation-timing-function: linear; animation-iteration-count: infinite; }
+.ticker:hover .ticker-track { animation-play-state: paused; }
+@keyframes ticker-move { to { translate: -50% 0; } }
+.ticker-new { animation-name: ticker-glow; animation-duration: 2s; animation-iteration-count: 3; }
+@keyframes ticker-glow { 50% { background: color-mix(in oklab, var(--color-gold) 18%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .ticker-track { animation: none; } }

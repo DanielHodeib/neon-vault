@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 
 import type { FxAssetPayload, FxName, ImageStyle } from '@/lib/fx';
 import { sound } from './games/sound';
+import { GAME_NAMES } from '@/lib/format';
 
 // Admin fun effects. All are temporary and only change how the page looks or sounds.
 function bodyClass(name: string, ms: number) {
@@ -92,6 +93,26 @@ export async function runAsset(p: FxAssetPayload) {
   const [img, buffer] = await Promise.all([p.image ? loadImage(p.image, p.style ?? 'zoom') : null, p.sound ? sound.load(p.sound) : null]);
   if (img) layer('fx-image-stage', 4200).appendChild(img);
   if (buffer) sound.playBuffer(buffer);
+}
+
+/** Huge win somewhere on the site: gold coins rain down and a banner names the winner, for everyone. */
+export function celebrate(win: { username: string; game: string; amount: number }, t: (s: string, v?: Record<string, string | number>) => string) {
+  const ms = 4_500;
+  const scene = layer('fx-celebrate', ms);
+  for (let i = 0; i < 70; i++) {
+    child(scene, 'fx-coin', {
+      left: `${Math.random() * 100}%`,
+      animationDelay: `${Math.random() * 1.2}s`,
+      animationDuration: `${1.8 + Math.random() * 1.4}s`,
+      transform: `scale(${0.6 + Math.random() * 0.8})`,
+    });
+  }
+  const banner = child(scene, 'fx-celebrate-banner');
+  child(banner, 'fx-celebrate-eyebrow').textContent = t('Riesengewinn!');
+  child(banner, 'fx-celebrate-name').textContent = win.username;
+  child(banner, 'fx-celebrate-amount').textContent = `+${win.amount.toLocaleString('de-DE')} NVC`;
+  child(banner, 'fx-celebrate-game').textContent = t(GAME_NAMES[win.game] ?? win.game);
+  sound.big();
 }
 
 export function runFx(effect: FxName, by: string, music?: string) {

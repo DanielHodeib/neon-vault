@@ -8,6 +8,7 @@ import { closeAndRefund, setupRealtime } from './game';
 import { startBackups } from './lib/backup';
 import { startTournaments } from './lib/tournament';
 import { loadMaintenance, startCountdown, startEventScheduler } from './lib/events';
+import { loadBigWins } from './lib/bigwins';
 import { db } from './lib/hub';
 
 // One process serves the Next app and Socket.IO, so both share the DB client and game state.
@@ -21,6 +22,7 @@ const handleRequest = app.getRequestHandler();
 async function main() {
   await app.prepare();
   await loadMaintenance();
+  await loadBigWins();
   // Expired logins are useless; drop them now and once a day so the table doesn't grow forever.
   const dropExpiredSessions = () => db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(console.error);
   void dropExpiredSessions();

@@ -18,6 +18,9 @@ export type GlobalEvent = {
 /** Global countdown banner: a server restart or scheduled maintenance. */
 export type Countdown = { kind: 'restart' | 'maintenance'; at: number; minutes?: number };
 
+/** A big win for the live ticker (lib/bigwins.ts). */
+export type BigWin = { id: string; username: string; game: string; amount: number; at: number };
+
 export type OnlineUser = { id: string; username: string; activity: string; sockets: number };
 
 export type ChatMessage = {
@@ -41,6 +44,7 @@ type Hub = {
   maintenance: { on: boolean; endsAt: number | null };
   countdown: Countdown | null;
   mood: Mood | null; // atmosphere preset for everyone
+  bigWins: BigWin[]; // newest first
   online: Map<string, OnlineUser>;
   chat: ChatMessage[];
   chatActive: Map<string, number>; // userId -> last message time
@@ -61,6 +65,7 @@ export const hub: Hub = (g.__neonHub ??= {
   maintenance: { on: false, endsAt: null },
   countdown: null,
   mood: null,
+  bigWins: [],
   online: new Map(),
   chat: [],
   chatActive: new Map(),

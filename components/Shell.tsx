@@ -48,6 +48,7 @@ import { Avatar, Logo } from './ui';
 import { usePref } from './usePref';
 import { DEFAULT_SHORTCUTS, GAME_BY_SLUG, GAME_LIST } from './gameCatalog';
 import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
+import { WinTicker } from './WinTicker';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
 
@@ -190,6 +191,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           </div>
         </header>
 
+        <WinTicker />
         <CountdownBanner />
         <div className="flex min-h-0 flex-1">
           <main className="min-w-0 flex-1 overflow-y-auto px-3 pt-4 pb-24 sm:px-5 sm:pt-6 md:pb-8 lg:px-8">

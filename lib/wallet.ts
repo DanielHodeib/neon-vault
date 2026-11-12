@@ -1,3 +1,4 @@
+import { announceWin } from './bigwins';
 import { db, emitToUser, hub, notify, UserError } from './hub';
 import { effectiveLimit } from './limits';
 import { levelOf } from './ranks';
@@ -117,6 +118,7 @@ export async function payout(userId: string, amount: number, game: string, kind:
   const coins = Math.floor(amount);
   if (coins <= 0) return;
   await applyLedger([{ userId, amount: coins, kind, game }]);
+  if (kind === 'WIN') void announceWin(userId, game, coins).catch(console.error);
 }
 
 /** Gives back a stake that was never played (cancelled bet, closed table, shutdown). */

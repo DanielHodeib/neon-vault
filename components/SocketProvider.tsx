@@ -9,8 +9,9 @@ import { GAME_NAMES } from '@/lib/format';
 import type { FxAssetPayload, FxName, Mood } from '@/lib/fx';
 import { MoodLayer } from './Mood';
 import { tPage } from '@/lib/i18n';
-import type { ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
-import { runAsset, runFx } from './fx';
+import type { BigWin, ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
+import { CELEBRATE_MIN } from '@/lib/games';
+import { celebrate, runAsset, runFx } from './fx';
 
 type Online = { id: string; username: string; activity: string };
 type Ctx = {
@@ -22,6 +23,8 @@ type Ctx = {
   event: GlobalEvent | null;
   countdown: Countdown | null;
   rain: { amount: number; endsAt: number; players: number; by: string } | null;
+  /** Big wins for the live ticker, newest first. */
+  wins: BigWin[];
   call: <T = Record<string, unknown>>(event: string, data?: unknown) => Promise<T | null>;
   /** Unread private messages; the messages page resets it. */
   dmUnread: number;
@@ -83,6 +86,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [countdown, setCountdown] = useState<Countdown | null>(null);
   const [mood, setMood] = useState<Mood | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
+  const [wins, setWins] = useState<BigWin[]>([]);
   const [dmUnread, setDmUnread] = useState(0);
   const held = useRef(0);
   const pending = useRef<number | null>(null);
@@ -91,12 +95,13 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     if (!socket) return;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- socket.io listener signature
     const handlers: Record<string, (...args: any[]) => void> = {
-      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null; countdown: Countdown | null; mood?: Mood | null }) => {
+      hello: (d: { chat: ChatMessage[]; online: Online[]; event: GlobalEvent | null; countdown: Countdown | null; mood?: Mood | null; wins?: BigWin[] }) => {
         setChat(d.chat);
         setOnline(d.online);
         setEvent(d.event);
         setCountdown(d.countdown);
         setMood(d.mood ?? null);
+        setWins(d.wins ?? []);
       },
       balance: (b: number) => {
         if (held.current > 0) pending.current = b;
@@ -113,6 +118,10 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       fx: (d: { effect: FxName | 'asset'; by: string; sound?: string }) => (d.effect === 'asset' ? void runAsset(d as FxAssetPayload) : runFx(d.effect, d.by, d.sound)),
       chatClear: () => setChat([]),
       rain: setRain,
+      bigwin: (w: BigWin) => {
+        setWins((list) => [w, ...list].slice(0, 20));
+        if (w.amount >= CELEBRATE_MIN) celebrate(w, tPage);
+      },
       dm: (m: { from: string; text: string }) => {
         if (m.from === me.username || window.location.pathname.startsWith('/messages')) return;
         setDmUnread((n) => n + 1);
@@ -176,8 +185,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const shiftBalance = useCallback((delta: number) => setBalance((b) => b + delta), []);
 
   const value = useMemo(
-    () => ({ socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
-    [socket, me, balance, online, chat, event, countdown, rain, call, holdBalance, shiftBalance, dmUnread],
+    () => ({ socket, me, balance, online, chat, event, countdown, rain, wins, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
+    [socket, me, balance, online, chat, event, countdown, rain, wins, call, holdBalance, shiftBalance, dmUnread],
   );
   return (
     <SocketContext.Provider value={value}>
