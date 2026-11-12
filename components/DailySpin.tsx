@@ -2,7 +2,7 @@
 
 import { Flame } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useSyncExternalStore, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
 
 import { dailySpinAction } from '@/app/actions/account';
@@ -17,12 +17,14 @@ const fill = (v: number) => (v >= 25_000 ? 'var(--color-gold)' : v >= 7_500 ? 'v
 const WHEEL_BG = `conic-gradient(${DAILY_SEGMENTS.map((s, i) => `${fill(s.value) ?? (i % 2 ? '#1d2127' : '#252a32')} ${i * SEG}deg ${(i + 1) * SEG}deg`).join(',')})`;
 const factor = (m: number) => `×${m.toFixed(1).replace('.', ',')}`;
 
-export function DailySpin({ username, claimedToday, streak }: { username: string; claimedToday: boolean; streak: number }) {
+/** Lobby hero: greeting, level, live status (`children`) and the daily spin wheel. */
+export function DailySpin({ username, claimedToday, streak, level, levelProgress, children }: { username: string; claimedToday: boolean; streak: number; level: number; levelProgress: number; children?: ReactNode }) {
   const router = useRouter();
   const t = useT();
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
   const [done, setDone] = useState(claimedToday);
+  const hello = useSyncExternalStore(noSubscribe, greeting, () => 'Willkommen zurück');
 
   const spin = async () => {
     setSpinning(true);
@@ -47,12 +49,20 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
   const next = done ? streak + 1 : streak;
 
   return (
-    <section className="panel grid gap-6 p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-6">
-      <div className="space-y-4">
+    <section className="lobby-hero panel relative grid gap-6 overflow-hidden p-5 sm:grid-cols-[1fr_auto] sm:items-center sm:p-7">
+      <div className="relative space-y-5">
         <div>
-          <p className="eyebrow">{t('Willkommen zurück')}</p>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{username}</h1>
+          <p className="eyebrow">{t(hello)}</p>
+          <h1 className="mt-1 text-3xl font-bold tracking-tight sm:text-4xl">{username}</h1>
+          <div className="mt-3 flex items-center gap-3 text-xs text-muted">
+            <span className="num shrink-0 font-semibold text-fg">Level {level}</span>
+            <span className="h-1.5 w-full max-w-56 overflow-hidden rounded-full bg-raised">
+              <span className="block h-full rounded-full bg-accent transition-[width] duration-700" style={{ width: `${Math.round(levelProgress * 100)}%` }} />
+            </span>
+            <span className="num shrink-0">{Math.round(levelProgress * 100)} %</span>
+          </div>
         </div>
+        {children}
         <div>
           <p className="flex items-center gap-2 text-sm">
             <Flame size={16} className={shown > 1 ? 'text-gold' : 'text-faint'} />
@@ -72,7 +82,7 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
         </div>
       </div>
 
-      <div className="flex flex-col items-center gap-3">
+      <div className="relative flex flex-col items-center gap-3">
         <div className="relative">
           <div className="absolute -top-1.5 left-1/2 z-10 h-0 w-0 -translate-x-1/2 border-x-[7px] border-t-[12px] border-x-transparent border-t-fg" />
           <div
@@ -97,4 +107,12 @@ export function DailySpin({ username, claimedToday, streak }: { username: string
       </div>
     </section>
   );
+}
+
+const noSubscribe = () => () => {};
+
+/** Greeting by the browser's local time (the server renders a neutral one). */
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? 'Noch wach?' : h < 11 ? 'Guten Morgen' : h < 17 ? 'Schönen Tag' : h < 22 ? 'Guten Abend' : 'Späte Runde?';
 }

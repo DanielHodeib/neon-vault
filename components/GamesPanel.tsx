@@ -47,7 +47,7 @@ export function GameTile({ game, players, fav, onFav, onPick, size = 'md' }: { g
         className={`panel relative flex h-full flex-col overflow-hidden transition duration-200 hover:-translate-y-0.5 hover:border-line-strong ${size === 'lg' ? 'p-4 sm:p-5' : 'p-3'}`}
       >
         <span className="pointer-events-none absolute -top-8 -right-8 h-24 w-24 rounded-full opacity-20 blur-2xl transition group-hover:opacity-40" style={{ background: game.tint }} />
-        <span className={`grid place-items-center rounded-lg transition group-hover:scale-110 ${size === 'lg' ? 'h-11 w-11' : 'h-9 w-9'}`} style={{ background: `${game.tint}1f`, color: game.tint }}>
+        <span data-game={game.slug} className={`game-icon grid place-items-center rounded-lg transition group-hover:scale-110 ${size === 'lg' ? 'h-11 w-11' : 'h-9 w-9'}`} style={{ background: `${game.tint}1f`, color: game.tint }}>
           <Icon size={size === 'lg' ? 22 : 18} />
         </span>
         <span className={`font-semibold ${size === 'lg' ? 'mt-6 sm:mt-8' : 'mt-3 text-sm'}`}>{t(game.name)}</span>

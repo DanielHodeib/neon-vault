@@ -215,3 +215,26 @@ body {
 /* Panels and sheets */
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes sheet-up { from { transform: translateY(100%); } }
+
+/* Lobby hero: slow aurora in the theme colours */
+.lobby-hero { background: radial-gradient(120% 140% at 0% 0%, color-mix(in oklab, var(--color-accent) 16%, transparent), transparent 55%), radial-gradient(90% 120% at 100% 100%, color-mix(in oklab, var(--color-gold) 12%, transparent), transparent 60%), var(--surface); }
+.lobby-hero::before { content: ''; position: absolute; inset: -40%; pointer-events: none; background: conic-gradient(from 0deg, transparent, color-mix(in oklab, var(--color-accent) 10%, transparent), transparent 30%); animation-name: hero-turn; animation-duration: 24s; animation-iteration-count: infinite; animation-timing-function: linear; }
+@keyframes hero-turn { to { transform: rotate(360deg); } }
+@utility chip-live { display: inline-flex; align-items: center; gap: .375rem; border-radius: 9999px; border: 1px solid var(--line); background: color-mix(in oklab, var(--bg) 70%, transparent); padding: .3rem .7rem; font-weight: 500; }
+
+/* Game cards: each icon does its own little move on hover */
+@keyframes g-rise { 0%, 100% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(3px, -4px) rotate(-8deg); } }
+@keyframes g-spin { to { transform: rotate(360deg); } }
+@keyframes g-roll { 0% { transform: rotate(0) scale(1); } 50% { transform: rotate(180deg) scale(.85); } 100% { transform: rotate(360deg) scale(1); } }
+@keyframes g-drop { 0% { transform: translateY(-4px); } 60% { transform: translateY(3px); } 80% { transform: translateY(-1px); } 100% { transform: translateY(0); } }
+@keyframes g-flip { to { transform: rotateY(360deg); } }
+@keyframes g-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
+@keyframes g-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg); } 75% { transform: rotate(10deg); } }
+.group:hover .game-icon svg { animation-duration: .9s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; animation-name: g-wiggle; }
+.group:hover .game-icon[data-game=crash] svg { animation-name: g-rise; }
+.group:hover .game-icon[data-game=roulette] svg, .group:hover .game-icon[data-game=wheel] svg { animation-name: g-spin; animation-timing-function: linear; animation-duration: 1.4s; }
+.group:hover .game-icon[data-game=dice] svg { animation-name: g-roll; }
+.group:hover .game-icon[data-game=plinko] svg, .group:hover .game-icon[data-game=race] svg { animation-name: g-drop; animation-duration: .6s; }
+.group:hover .game-icon[data-game=coinflip] svg { animation-name: g-flip; animation-duration: .8s; }
+.group:hover .game-icon[data-game=mines] svg, .group:hover .game-icon[data-game=jackpot] svg { animation-name: g-pulse; animation-duration: .7s; }
+@media (prefers-reduced-motion: reduce) { .lobby-hero::before, .group:hover .game-icon svg { animation: none; } }

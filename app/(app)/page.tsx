@@ -1,7 +1,9 @@
-import { ArrowUpDown, Bomb, Flag, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, PiggyBank, Rocket, Spade, Triangle, type LucideIcon } from 'lucide-react';
+import { Crown } from 'lucide-react';
 import Link from 'next/link';
 
 import { DailySpin } from '@/components/DailySpin';
+import { LobbyGames, LobbyLive } from '@/components/Lobby';
+import { levelOf } from '@/lib/ranks';
 import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
@@ -12,21 +14,6 @@ import { getT } from '@/lib/i18nServer';
 
 const BIG_WIN = 5_000;
 
-const GAMES: { slug: string; name: string; text: string; icon: LucideIcon; tint: string }[] = [
-  { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97' },
-  { slug: 'slots', name: 'Slots', text: '8 Automaten', icon: Cherry, tint: '#e4c06a' },
-  { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff' },
-  { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c' },
-  { slug: 'poker', name: 'Poker', text: "Texas Hold'em", icon: Club, tint: '#c084fc' },
-  { slug: 'coinflip', name: 'Coinflip', text: 'Solo oder im Duell', icon: Coins, tint: '#4cc2ff' },
-  { slug: 'mines', name: 'Mines', text: 'Felder aufdecken, Bomben meiden', icon: Bomb, tint: '#f87171' },
-  { slug: 'dice', name: 'Dice', text: 'Drüber oder drunter', icon: Dices, tint: '#a5b4c8' },
-  { slug: 'plinko', name: 'Plinko', text: 'Kugel fallen lassen', icon: Triangle, tint: '#f472b6' },
-  { slug: 'hilo', name: 'Hi-Lo', text: 'Höher oder tiefer?', icon: ArrowUpDown, tint: '#22d3ee' },
-  { slug: 'wheel', name: 'Glücksrad', text: 'Alle drehen gemeinsam', icon: FerrisWheel, tint: '#34d399' },
-  { slug: 'jackpot', name: 'Jackpot', text: 'Ein Topf, ein Gewinner', icon: PiggyBank, tint: '#fbbf24' },
-  { slug: 'race', name: 'Pferderennen', text: 'Alle wetten, live', icon: Flag, tint: '#fb7185' },
-];
 
 export default async function Lobby() {
   const t = await getT();
@@ -45,26 +32,11 @@ export default async function Lobby() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
-      <DailySpin username={user.username} claimedToday={daily.claimedToday} streak={daily.streak} />
+      <DailySpin username={user.username} claimedToday={daily.claimedToday} streak={daily.streak} level={levelOf(user.xp)} levelProgress={(user.xp % 1000) / 1000}>
+        <LobbyLive king={king ? { username: king.username, profit: king.profit } : null} />
+      </DailySpin>
 
-      <section>
-        <h2 className="eyebrow mb-3">Spiele</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {GAMES.map(({ slug, name, text, icon: Icon, tint }) => (
-            <Link key={slug} href={`/play/${slug}`} className="panel group relative overflow-hidden p-4 transition hover:border-line-strong sm:p-5">
-              <div
-                className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full opacity-20 blur-2xl transition group-hover:opacity-35"
-                style={{ background: tint }}
-              />
-              <span className="grid h-10 w-10 place-items-center rounded-lg" style={{ background: `${tint}1a`, color: tint }}>
-                <Icon size={20} />
-              </span>
-              <h3 className="mt-6 font-semibold sm:mt-8">{t(name)}</h3>
-              <p className="text-xs text-muted sm:text-sm">{t(text)}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
+      <LobbyGames />
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
       <section className="panel">
