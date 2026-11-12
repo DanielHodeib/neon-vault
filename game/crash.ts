@@ -1,7 +1,7 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { cashback, systemMessage, winBoost } from '@/lib/events';
+import { boostedWin, cashback, systemMessage } from '@/lib/events';
 import { multiplierAt } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -45,7 +45,7 @@ const crashState = () => ({
 async function cashOut(io: Server, bet: Bet, at: number) {
   bet.cashedAt = at; // set before the await so a second cashout can't pay twice
   io.to('crash').emit('crash:state', crashState());
-  const win = Math.floor(bet.amount * at * winBoost('crash'));
+  const win = boostedWin('crash', bet.userId, bet.amount * at);
   await payout(bet.userId, win, 'crash');
   if (win >= 50_000) systemMessage(`${bet.username} hat bei ${at.toFixed(2)}× ${win.toLocaleString('de-DE')} NVC in Crash gewonnen!`);
   return win;

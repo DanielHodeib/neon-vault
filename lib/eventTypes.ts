@@ -9,15 +9,21 @@ type EventInfo = { label: string; description: string; minutes: number; params: 
 export const EVENT_INFO: Record<EventType, EventInfo> = {
   CASHBACK: {
     label: 'Cashback-Mania',
-    description: '{percent} % Cashback auf verlorene Crash- und Coinflip-Einsätze.',
+    description: '{percent} % Cashback auf verlorene Crash- und Coinflip-Einsätze (bis {cap} NVC pro Spieler).',
     minutes: 10,
-    params: [{ key: 'percent', label: 'Cashback', def: 10, min: 1, max: 50, unit: '%' }],
+    params: [
+      { key: 'percent', label: 'Cashback', def: 10, min: 1, max: 25, unit: '%' },
+      { key: 'cap', label: 'Max. pro Spieler', def: 5_000, min: 500, max: 100_000, unit: 'NVC' },
+    ],
   },
   BOOST: {
     label: 'Multiplier-Boost',
-    description: '{factor}× Auszahlung auf Crash- und Coinflip-Gewinne.',
+    description: '{factor}× Auszahlung auf Crash- und Coinflip-Gewinne (Extra bis {cap} NVC pro Spieler).',
     minutes: 10,
-    params: [{ key: 'factor', label: 'Faktor', def: 1.2, min: 1.05, max: 3, step: 0.05, unit: '×' }],
+    params: [
+      { key: 'factor', label: 'Faktor', def: 1.2, min: 1.05, max: 2, step: 0.05, unit: '×' },
+      { key: 'cap', label: 'Max. pro Spieler', def: 5_000, min: 500, max: 100_000, unit: 'NVC' },
+    ],
   },
   RAIN: {
     label: 'Rain-Event',
@@ -39,7 +45,8 @@ export const EVENT_INFO: Record<EventType, EventInfo> = {
     label: 'Jackpot-Rush',
     description: 'Das beste Symbol jedes Slot-Automaten zahlt {factor}×.',
     minutes: 10,
-    params: [{ key: 'factor', label: 'Faktor', def: 3, min: 1.5, max: 10, step: 0.5, unit: '×' }],
+    // Above 1.5× the richest machines would pay back more than 100 % (simulated).
+    params: [{ key: 'factor', label: 'Faktor', def: 1.5, min: 1.1, max: 1.5, step: 0.1, unit: '×' }],
   },
   DUEL: {
     label: 'Duell-Woche',

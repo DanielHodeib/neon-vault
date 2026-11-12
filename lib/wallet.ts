@@ -20,7 +20,8 @@ export const MAX_AMOUNT = 1_000_000_000_000;
 const XP_PER_BET = 10;
 /** XP for a stake: 1 per 10 NVC, at most 10. Tiny bets give none, so level rewards can't be farmed with 1-NVC spam. */
 export const betXp = (stake: bigint) => Number(stake >= 100n ? BigInt(XP_PER_BET) : stake / 10n);
-export const LEVEL_REWARD = 500; // NVC per level reached, times the level
+export const LEVEL_REWARD = 500; // NVC per level reached, times the level …
+export const LEVEL_REWARD_MAX = 10_000; // … but never more than this per level
 
 export function assertAmount(amount: number, min = 1) {
   if (!Number.isSafeInteger(amount) || amount < min || amount > MAX_AMOUNT) {
@@ -76,7 +77,7 @@ async function book(entries: Entry[]) {
       for (let level = levelOf(r.xp - gained) + 1; gained > 0 && level <= levelOf(r.xp); level++) {
         // Each level pays once, even if cancelled bets push the XP back below it.
         if (await tx.ledgerEntry.findFirst({ where: { userId: r.id, kind: 'BONUS', note: `Level ${level}` }, select: { id: true } })) continue;
-        const reward = level * LEVEL_REWARD;
+        const reward = Math.min(level * LEVEL_REWARD, LEVEL_REWARD_MAX);
         await tx.user.update({ where: { id: r.id }, data: { balance: { increment: reward } } });
         await tx.ledgerEntry.create({ data: { userId: r.id, amount: BigInt(reward), kind: 'BONUS', note: `Level ${level}` } });
         r.balance += BigInt(reward);

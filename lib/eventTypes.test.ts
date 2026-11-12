@@ -4,9 +4,9 @@ import test from 'node:test';
 import { cleanParams, defaultParams, describeEvent, EVENT_INFO, EVENT_KEYS } from './eventTypes';
 
 test('event settings are clamped to their range and rounded to their step', () => {
-  assert.deepEqual(cleanParams('CASHBACK', { percent: 500 }), { percent: 50 });
-  assert.deepEqual(cleanParams('CASHBACK', {}), { percent: 10 });
-  assert.deepEqual(cleanParams('BOOST', { factor: 1.234 }), { factor: 1.25 });
+  assert.deepEqual(cleanParams('CASHBACK', { percent: 500 }), { percent: 25, cap: 5_000 });
+  assert.deepEqual(cleanParams('CASHBACK', {}), { percent: 10, cap: 5_000 });
+  assert.deepEqual(cleanParams('BOOST', { factor: 1.234, cap: 1e9 }), { factor: 1.25, cap: 100_000 });
   assert.deepEqual(cleanParams('KING', { bonus: Number.NaN }), { bonus: 25_000 });
   assert.equal(cleanParams('RAIN', { min: 7.6 }).min, 8);
 });

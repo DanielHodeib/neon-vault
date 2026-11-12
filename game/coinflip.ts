@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { bounty, cashback, eventParam, systemMessage, winBoost } from '@/lib/events';
+import { boostedWin, bounty, cashback, eventParam, systemMessage } from '@/lib/events';
 import { COINFLIP_SOLO_PAYOUT } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -94,7 +94,7 @@ export const registerCoinflip: Register = (io, socket) => {
       const winnerName = creatorWins ? lobby.username : user.username;
       const duelFee = eventParam('DUEL', 'fee');
       const fee = duelFee === undefined ? HOUSE_FEE : duelFee / 100;
-      const prize = Math.floor(lobby.amount * 2 * (1 - fee) * winBoost('coinflip'));
+      const prize = boostedWin('coinflip', winner, lobby.amount * 2 * (1 - fee));
       await payout(winner, prize, 'coinflip');
       await cashback(loser, lobby.amount, 'coinflip');
       await bounty(winner, loser, winnerName).catch(console.error);

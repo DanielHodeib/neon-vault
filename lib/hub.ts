@@ -54,6 +54,7 @@ type Hub = {
   autoEvents: boolean; // server starts random events by itself
   nextAutoAt: number | null;
   bountyPaid: boolean; // Bounty event pays out once
+  eventBonusPaid: Map<string, number>; // boost/cashback extra per player during the running event
 };
 
 const g = globalThis as unknown as { __neonHub?: Hub };
@@ -75,6 +76,7 @@ export const hub: Hub = (g.__neonHub ??= {
   autoEvents: true,
   nextAutoAt: null,
   bountyPaid: false,
+  eventBonusPaid: new Map(),
 });
 
 export const db = hub.db;

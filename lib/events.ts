@@ -18,11 +18,26 @@ export const eventParam = (type: EventType, key: string): number | undefined => 
 const BOOSTED_GAMES = new Set(['crash', 'coinflip']);
 const timers = hub.timers;
 
-export const winBoost = (game: string) => (BOOSTED_GAMES.has(game) ? (eventParam('BOOST', 'factor') ?? 1) : 1);
+/** Extra coins an event may still hand this player: boost and cashback stop at the event's per-player cap. */
+function takeEventBonus(userId: string, wanted: number) {
+  const cap = hub.event?.params.cap ?? 5_000;
+  const paid = (hub.eventBonusPaid ??= new Map()).get(userId) ?? 0;
+  const extra = Math.max(0, Math.min(Math.floor(wanted), cap - paid));
+  if (extra) hub.eventBonusPaid.set(userId, paid + extra);
+  return extra;
+}
+
+/** A win during the Multiplier-Boost: the extra part (gross × (factor − 1)) is capped per player. */
+export function boostedWin(game: string, userId: string, gross: number) {
+  const factor = BOOSTED_GAMES.has(game) ? eventParam('BOOST', 'factor') : undefined;
+  return Math.floor(gross) + (factor ? takeEventBonus(userId, gross * (factor - 1)) : 0);
+}
 
 export async function cashback(userId: string, lost: number, game: string) {
   const percent = eventParam('CASHBACK', 'percent');
-  if (percent && BOOSTED_GAMES.has(game)) await payout(userId, (lost * percent) / 100, game, 'REFUND');
+  if (!percent || !BOOSTED_GAMES.has(game)) return;
+  const back = takeEventBonus(userId, (lost * percent) / 100);
+  if (back) await payout(userId, back, game, 'REFUND');
 }
 
 export function systemMessage(text: string) {
@@ -38,6 +53,7 @@ export function startEvent(type: EventType, minutes = EVENT_INFO[type].minutes, 
   const { label } = EVENT_INFO[type];
   hub.event = { type, label, description: describeEvent(type, params), params, startedAt: Date.now(), endsAt: Date.now() + minutes * 60_000 };
   if (type === 'BOUNTY') hub.bountyPaid = false;
+  hub.eventBonusPaid = new Map(); // fresh per-player caps for this event
   broadcast('event', hub.event);
   systemMessage(`${hub.event.label}: ${hub.event.description} (${minutes} Min.)`);
   timers.eventEnd = setTimeout(stopEvent, minutes * 60_000);
