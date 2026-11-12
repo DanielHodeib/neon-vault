@@ -46,9 +46,11 @@ const child = (parent: HTMLElement, className: string, style: Partial<CSSStyleDe
   return el;
 };
 
-/** Disco: a mirror ball drops in, lasers and spotlights sweep, fog drifts in low from the sides. */
-function disco() {
+/** Disco: a mirror ball drops in, lasers and spotlights sweep, fog drifts in low from the sides.
+ * With an uploaded track (Admin → Spaß → Disco-Musik) the show starts once the music is loaded. */
+async function disco(music?: string) {
   const ms = 15_000;
+  const track = music ? await sound.load(music) : null;
   const scene = layer('fx-disco-scene', ms);
   const rig = child(scene, 'fx-ball-rig');
   child(rig, 'fx-ball-string');
@@ -69,7 +71,8 @@ function disco() {
   child(scene, 'fx-fog fx-fog-left');
   child(scene, 'fx-fog fx-fog-right');
   bodyClass('fx-disco', ms);
-  sound.disco(ms / 1000);
+  if (track) sound.playBuffer(track, 0.8, ms / 1000);
+  else sound.disco(ms / 1000);
 }
 
 /** Uploaded image, resolved once loaded so its entrance does not run while it still downloads. */
@@ -91,7 +94,7 @@ export async function runAsset(p: FxAssetPayload) {
   if (buffer) sound.playBuffer(buffer);
 }
 
-export function runFx(effect: FxName, by: string) {
+export function runFx(effect: FxName, by: string, music?: string) {
   switch (effect) {
     case 'confetti':
       confetti();
@@ -106,7 +109,7 @@ export function runFx(effect: FxName, by: string) {
       toast(`🙃 ${by} hat die Welt auf den Kopf gestellt`);
       break;
     case 'disco':
-      disco();
+      void disco(music);
       break;
     case 'airhorn':
       sound.airhorn();

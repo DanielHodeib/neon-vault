@@ -244,7 +244,11 @@ export async function trollAction(effect: string, userId: string | null) {
   return run(async () => {
     const actor = await requireRole('ADMIN');
     if (!Object.hasOwn(FX, effect)) throw new UserError('Unbekannter Effekt.');
-    const payload = { effect, by: actor.username };
+    const payload: { effect: string; by: string; sound?: string } = { effect, by: actor.username };
+    if (effect === 'disco') {
+      const id = (await db.systemSettings.findUnique({ where: { id: 1 }, select: { discoSoundId: true } }))?.discoSoundId;
+      if (id && (await db.fxAsset.count({ where: { id, kind: 'sound' } }))) payload.sound = `/fx/${id}`;
+    }
     if (userId) {
       const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
       if (!user) throw new UserError('Spieler nicht gefunden.');
@@ -353,5 +357,16 @@ export async function stopMoodAction(userId: string | null) {
     broadcast('mood', null);
     refresh();
     return 'Stimmung beendet.';
+  });
+}
+
+/** Chooses the uploaded sound the disco effect plays (null = built-in beat). */
+export async function setDiscoSound(id: string | null) {
+  return run(async () => {
+    await requireRole('ADMIN');
+    if (id && !(await db.fxAsset.count({ where: { id, kind: 'sound' } }))) throw new UserError('Sound nicht gefunden.');
+    await db.systemSettings.upsert({ where: { id: 1 }, update: { discoSoundId: id }, create: { id: 1, discoSoundId: id } });
+    refresh();
+    return id ? 'Disco spielt jetzt deinen Sound.' : 'Disco spielt den eingebauten Beat.';
   });
 }

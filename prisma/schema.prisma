@@ -234,4 +234,5 @@ model SystemSettings {
   id                Int       @id @default(1)
   maintenance       Boolean   @default(false)
   maintenanceEndsAt DateTime?
+  discoSoundId      String? // uploaded FxAsset played by the disco effect; null = built-in beat
 }

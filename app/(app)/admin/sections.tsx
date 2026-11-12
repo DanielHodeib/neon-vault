@@ -24,7 +24,7 @@ import {
 import { FormButton } from '@/components/FormButton';
 import { EventForm } from './EventForm';
 import { MoodForm } from './MoodForm';
-import { FxComposer } from './FxComposer';
+import { DiscoSoundSelect, FxComposer } from './FxComposer';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
 import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
@@ -445,10 +445,11 @@ export function ServerTab({ actor }: { actor: User }) {
 }
 
 export async function FunTab({ q, selectedId }: { q: string; selectedId?: string }) {
-  const [users, target, assets] = await Promise.all([
+  const [users, target, assets, settings] = await Promise.all([
     findUsers(q),
     selectedId ? db.user.findUnique({ where: { id: selectedId }, select: { id: true, username: true } }) : null,
     db.fxAsset.findMany({ orderBy: { createdAt: 'desc' }, select: { id: true, kind: true, name: true } }),
+    db.systemSettings.findUnique({ where: { id: 1 }, select: { discoSoundId: true } }),
   ]);
   const to = target?.id ?? null;
   const sounds = assets.filter((a) => a.kind === 'sound');
@@ -470,6 +471,7 @@ export async function FunTab({ q, selectedId }: { q: string; selectedId?: string
               </FormButton>
             ))}
           </div>
+          <DiscoSoundSelect sounds={sounds} value={settings?.discoSoundId ?? null} />
         </Section>
 
         <Section title={target ? `Stimmung für ${target.username}` : 'Stimmung'} pad>

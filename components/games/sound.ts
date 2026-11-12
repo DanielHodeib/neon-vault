@@ -103,7 +103,8 @@ async function load(url: string): Promise<AudioBuffer | null> {
   return buffer.catch(() => null);
 }
 
-function playBuffer(buffer: AudioBuffer, volume = 0.8) {
+/** Plays a loaded sound; `maxSeconds` cuts it off with a short fade. */
+function playBuffer(buffer: AudioBuffer, volume = 0.8, maxSeconds?: number) {
   const c = audio();
   if (!c || c.state !== 'running') return; // page never clicked: stay silent rather than play late
   const src = c.createBufferSource();
@@ -112,6 +113,12 @@ function playBuffer(buffer: AudioBuffer, volume = 0.8) {
   g.gain.value = volume;
   src.connect(g).connect(c.destination);
   src.start();
+  if (maxSeconds && buffer.duration > maxSeconds) {
+    const end = c.currentTime + maxSeconds;
+    g.gain.setValueAtTime(volume, end - 1);
+    g.gain.linearRampToValueAtTime(0.0001, end);
+    src.stop(end);
+  }
 }
 
 let noiseBuffer: AudioBuffer | null = null;

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
 
-import { deleteFxAsset, playFx } from '@/app/actions/admin';
+import { deleteFxAsset, playFx, setDiscoSound } from '@/app/actions/admin';
 import { FormButton } from '@/components/FormButton';
 import { runAsset } from '@/components/fx';
 import { sound } from '@/components/games/sound';
+import { toastAction } from '@/components/ui';
 import { IMAGE_STYLES, type ImageStyle } from '@/lib/fx';
 
 type Asset = { id: string; name: string };
@@ -104,5 +105,29 @@ export function FxComposer({ sounds, images, to, toName }: Props) {
         </FormButton>
       </div>
     </div>
+  );
+}
+
+/** Which uploaded sound the disco effect plays. */
+export function DiscoSoundSelect({ sounds, value }: { sounds: Asset[]; value: string | null }) {
+  const [pending, start] = useTransition();
+  const current = sounds.some((a) => a.id === value) ? value : null;
+  return (
+    <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-muted">🪩 Disco-Musik</span>
+      <select
+        className="input h-9 w-auto min-w-48 py-1 text-sm"
+        value={current ?? ''}
+        disabled={pending}
+        onChange={(e) => start(() => toastAction(setDiscoSound(e.target.value || null)))}
+      >
+        <option value="">Eingebauter Beat</option>
+        {sounds.map((a) => (
+          <option key={a.id} value={a.id}>
+            🔊 {a.name}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
