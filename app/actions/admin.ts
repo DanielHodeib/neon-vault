@@ -31,7 +31,7 @@ async function target(min: Role, userId: string, { self = false } = {}) {
 export async function banUser(_: ActionState, form: FormData) {
   return run(async () => {
     const { userId, hours, reason } = parse(
-      z.object({ userId: z.string(), hours: z.coerce.number().int().min(0), reason: z.string().trim().max(200) }),
+      z.object({ userId: z.string(), hours: z.coerce.number().int().min(0).max(87_600, 'Höchstens 10 Jahre – 0 = dauerhaft.'), reason: z.string().trim().max(200) }),
       form,
     );
     const { actor, user } = await target('MODERATOR', userId);

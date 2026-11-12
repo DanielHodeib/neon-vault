@@ -31,7 +31,7 @@ export const EVENT_INFO: Record<EventType, EventInfo> = {
   },
   HAPPY_HOUR: {
     label: 'Happy Hour',
-    description: '+{xp} Extra-XP für jeden Gewinn.',
+    description: '+{xp} Extra-XP für jeden Gewinn (höchstens 1 XP je 10 NVC Gewinn).',
     minutes: 60,
     params: [{ key: 'xp', label: 'XP pro Gewinn', def: 10, min: 1, max: 1000 }],
   },

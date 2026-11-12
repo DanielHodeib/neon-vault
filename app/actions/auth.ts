@@ -11,6 +11,7 @@ import { isBanned } from '@/lib/session';
 import { applyLedger } from '@/lib/wallet';
 
 const INVITE_BONUS = 2_500;
+const INVITE_BONUS_PER_DAY = 5; // throwaway accounts can't farm the bonus endlessly
 
 export async function register(_: ActionState, form: FormData) {
   const result = await run(async () => {
@@ -21,16 +22,27 @@ export async function register(_: ActionState, form: FormData) {
     );
     if (password !== confirm) throw new UserError('Passwörter stimmen nicht überein.');
     if (await db.user.findUnique({ where: { username } })) throw new UserError('Benutzername ist vergeben.');
-    const user = await db.user.create({ data: { username, passwordHash: await bcrypt.hash(password, 10) } });
+    const user = await db.user
+      .create({ data: { username, passwordHash: await bcrypt.hash(password, 10) } })
+      .catch((err: { code?: string }) => {
+        // Two sign-ups with the same name at once: the unique index catches the second one.
+        if (err.code === 'P2002') throw new UserError('Benutzername ist vergeben.');
+        throw err;
+      });
     const inviter = ref ? await db.user.findUnique({ where: { username: ref }, select: { id: true } }) : null;
     if (inviter) {
-      // Invite bonus for both, and they start out as friends.
+      // Invite bonus for both (a few per inviter and day), and they start out as friends.
       await db.friendship.create({ data: { fromId: inviter.id, toId: user.id, accepted: true } });
-      await applyLedger([
-        { userId: inviter.id, amount: INVITE_BONUS, kind: 'BONUS', note: `Einladung: ${username}` },
-        { userId: user.id, amount: INVITE_BONUS, kind: 'BONUS', note: 'Einladungsbonus' },
-      ]);
-      await notify(inviter.id, 'Einladung angenommen', `${username} ist über deinen Link dabei: +${INVITE_BONUS.toLocaleString('de-DE')} NVC.`, { link: `/profile/${username}` });
+      const today = await db.ledgerEntry.count({
+        where: { userId: inviter.id, kind: 'BONUS', note: { startsWith: 'Einladung:' }, createdAt: { gte: new Date(Date.now() - 86_400_000) } },
+      });
+      if (today < INVITE_BONUS_PER_DAY) {
+        await applyLedger([
+          { userId: inviter.id, amount: INVITE_BONUS, kind: 'BONUS', note: `Einladung: ${username}` },
+          { userId: user.id, amount: INVITE_BONUS, kind: 'BONUS', note: 'Einladungsbonus' },
+        ]);
+        await notify(inviter.id, 'Einladung angenommen', `${username} ist über deinen Link dabei: +${INVITE_BONUS.toLocaleString('de-DE')} NVC.`, { link: `/profile/${username}` });
+      }
     }
     await startSession(user.id);
   });

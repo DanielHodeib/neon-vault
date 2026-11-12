@@ -1,6 +1,6 @@
 // English translations, keyed by the German text. Missing keys fall back to German.
 export const EN: Record<string, string> = {
-  '+{xp} Extra-XP für jeden Gewinn.': '+{xp} extra XP for every win.',
+  '+{xp} Extra-XP für jeden Gewinn (höchstens 1 XP je 10 NVC Gewinn).': '+{xp} extra XP for every win (at most 1 XP per 10 NVC won).',
   '1,2× Auszahlung auf Crash- und Coinflip-Gewinne.': '1.2× payout on Crash and Coinflip wins.',
   '1. Reihe': '1st column',
   '1.000 Einsätze.': '1,000 bets.',
@@ -288,6 +288,7 @@ export const EN: Record<string, string> = {
   'Hohe Gewinne': 'Big wins',
   'Hohe Volatilität: 💎💎💎 zahlt das 750-fache des Linieneinsatzes.': 'High volatility: 💎💎💎 pays 750× the line bet.',
   'Höchste Karte': 'High card',
+  'Höchstens 10 Jahre – 0 = dauerhaft.': 'At most 10 years – 0 = permanent.',
   'Höchster Netto-Gewinn über alle Spiele.': 'Highest net profit across all games.',
   'Höher': 'Higher',
   'Höher oder tiefer?': 'Higher or lower?',

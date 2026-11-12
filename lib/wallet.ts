@@ -17,6 +17,8 @@ export type Entry = {
 
 export const MAX_AMOUNT = 1_000_000_000_000;
 const XP_PER_BET = 10;
+/** XP for a stake: 1 per 10 NVC, at most 10. Tiny bets give none, so level rewards can't be farmed with 1-NVC spam. */
+export const betXp = (stake: bigint) => Number(stake >= 100n ? BigInt(XP_PER_BET) : stake / 10n);
 export const LEVEL_REWARD = 500; // NVC per level reached, times the level
 
 export function assertAmount(amount: number, min = 1) {
@@ -55,7 +57,8 @@ async function book(entries: Entry[]) {
     for (const e of entries) {
       if (!Number.isSafeInteger(e.amount)) throw new Error(`non-integer ledger amount ${e.amount}`);
       const amount = BigInt(e.amount);
-      const xp = e.kind === 'BET' ? XP_PER_BET : e.kind === 'CANCEL' ? -XP_PER_BET : e.kind === 'WIN' ? happyHourXp : 0;
+      // Happy Hour: at most 1 XP per 10 NVC won, so 1-NVC wins can't farm the bonus either.
+      const xp = e.kind === 'BET' ? betXp(-amount) : e.kind === 'CANCEL' ? -betXp(amount) : e.kind === 'WIN' ? Math.min(happyHourXp, Number(amount / 10n)) : 0;
       if (amount < 0n && (e.kind === 'BET' || e.kind === 'BUYIN')) await checkLimit(tx, e.userId, -amount);
       xpGained.set(e.userId, (xpGained.get(e.userId) ?? 0) + xp);
       const { count } = await tx.user.updateMany({

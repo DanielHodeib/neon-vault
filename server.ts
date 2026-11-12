@@ -21,6 +21,10 @@ const handleRequest = app.getRequestHandler();
 async function main() {
   await app.prepare();
   await loadMaintenance();
+  // Expired logins are useless; drop them now and once a day so the table doesn't grow forever.
+  const dropExpiredSessions = () => db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(console.error);
+  void dropExpiredSessions();
+  setInterval(dropExpiredSessions, 86_400_000).unref();
 
   httpServer.on('request', (req, res) => {
     // socket.io answers its own polling requests

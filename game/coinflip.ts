@@ -16,6 +16,8 @@ type Lobby = { id: string; userId: string; username: string; side: Side; amount:
 const lobbies = new Map<string, Lobby>();
 const list = () => [...lobbies.values()].sort((a, b) => b.createdAt - a.createdAt);
 
+const creating = new Map<string, number>(); // userId -> lobbies whose stake is being debited
+
 export const registerCoinflip: Register = (io, socket) => {
   const { user } = socket.data;
   const emit = () => io.to('coinflip').emit('coinflip:lobbies', list());
@@ -45,8 +47,17 @@ export const registerCoinflip: Register = (io, socket) => {
     'coinflip:create',
     z.object({ amount, side: z.enum(['heads', 'tails']) }),
     async ({ amount, side }) => {
-      if (list().filter((l) => l.userId === user.id).length >= MAX_OPEN_PER_USER) throw new UserError(`Maximal ${MAX_OPEN_PER_USER} offene Lobbys.`);
-      await placeBet(user.id, amount, 'coinflip');
+      // Lobbies still being paid for count too, so parallel clicks can't pass the limit.
+      const pending = creating.get(user.id) ?? 0;
+      if (list().filter((l) => l.userId === user.id).length + pending >= MAX_OPEN_PER_USER) throw new UserError(`Maximal ${MAX_OPEN_PER_USER} offene Lobbys.`);
+      creating.set(user.id, pending + 1);
+      try {
+        await placeBet(user.id, amount, 'coinflip');
+      } finally {
+        const left = (creating.get(user.id) ?? 1) - 1;
+        if (left > 0) creating.set(user.id, left);
+        else creating.delete(user.id);
+      }
       const lobbyId = newId();
       lobbies.set(lobbyId, { id: lobbyId, userId: user.id, username: user.username, side, amount, createdAt: Date.now() });
       emit();
