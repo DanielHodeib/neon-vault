@@ -6,7 +6,7 @@ import { LobbyGames, LobbyLive } from '@/components/Lobby';
 import { levelOf } from '@/lib/ranks';
 import { Empty } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
-import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
+import { coins, gameName, timeAgo } from '@/lib/format';
 import { db } from '@/lib/hub';
 import { dailyStatus } from '@/lib/daily';
 import { netProfitSince, startOfDay } from '@/lib/wallet';
@@ -75,7 +75,7 @@ export default async function Lobby() {
                 <li key={w.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
                   <span className="min-w-0 truncate">
                     <Link href={`/profile/${w.user.username}`} className="hover:text-accent">{w.user.username}</Link>
-                    <span className="text-faint"> · {t(GAME_NAMES[w.game ?? ''] ?? w.game ?? '')} · {t(timeAgo(w.createdAt))}</span>
+                    <span className="text-faint"> · {t(gameName(w.game))} · {t(timeAgo(w.createdAt))}</span>
                   </span>
                   <span className="num shrink-0 text-gold">+{coins(w.amount)}</span>
                 </li>

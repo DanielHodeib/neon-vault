@@ -22,6 +22,7 @@ import {
   Settings,
   Shield,
   ShoppingBag,
+  Swords,
   Target,
   Trophy,
   UserRound,
@@ -89,6 +90,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
 
   const community: NavItem[] = [
     { href: '/friends', label: 'Freunde', icon: Users },
+    { href: '/arena', label: 'Arena', icon: Swords },
     { href: '/messages', label: 'Nachrichten', icon: Mail, badge: dmUnread },
     { href: '/tournament', label: 'Turnier', icon: Medal },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },

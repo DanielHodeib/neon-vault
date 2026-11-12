@@ -3,7 +3,7 @@ import { Check } from 'lucide-react';
 import { Empty, PageHeader, Section, Stat } from '@/components/ui';
 import { achievements, ALL_GAMES } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
-import { coins, GAME_NAMES } from '@/lib/format';
+import { coins, gameName } from '@/lib/format';
 import { dailyNet, playerStats } from '@/lib/stats';
 import { DailyChart } from '@/components/DailyChart';
 import { getT } from '@/lib/i18nServer';
@@ -44,7 +44,7 @@ export default async function StatsPage() {
               {rows.map(([game, g]) => (
                 <li key={game} className="grid grid-cols-[1fr_auto_auto] items-center gap-4 px-4 py-2.5 text-sm">
                   <span>
-                    {t(GAME_NAMES[game] ?? game)} <span className="text-xs text-faint">· {t('{n} Runden', { n: g.rounds })}</span>
+                    {t(gameName(game))} <span className="text-xs text-faint">· {t('{n} Runden', { n: g.rounds })}</span>
                   </span>
                   <span className="num text-muted">{coins(g.staked)}</span>
                   <span className={`num w-24 text-right ${g.net >= 0 ? 'text-win' : 'text-loss'}`}>{signed(g.net)}</span>

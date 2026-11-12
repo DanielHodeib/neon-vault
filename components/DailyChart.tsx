@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from 'react';
 
-import { coins, GAME_NAMES } from '@/lib/format';
+import { coins, gameName } from '@/lib/format';
 import { useLang, useT } from './I18n';
 
 type Day = { day: string; net: number; rounds: number; staked: number; won: number; topGame: string | null };
@@ -58,7 +58,7 @@ export function DailyChart({ days }: { days: Day[] }) {
                 <Row label={t('Runden')} value={coins(shown.rounds)} />
                 <Row label={t('Eingesetzt')} value={coins(shown.staked)} />
                 <Row label={t('Ausgezahlt')} value={coins(shown.won)} />
-                {shown.topGame && <Row label={t('Meist gespielt')} value={t(GAME_NAMES[shown.topGame] ?? shown.topGame)} />}
+                {shown.topGame && <Row label={t('Meist gespielt')} value={t(gameName(shown.topGame))} />}
               </dl>
             )}
           </div>

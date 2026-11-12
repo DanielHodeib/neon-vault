@@ -34,6 +34,11 @@ export const GAME_NAMES: Record<string, string> = {
   baccarat: 'Baccarat',
 };
 
+/** Ledger games that are not on the play page (stats and history still name them). */
+const EXTRA_GAME_NAMES: Record<string, string> = { duel: 'Duell', market: 'Wette' };
+/** Display name of any ledger game slug (German; translate with t()). */
+export const gameName = (slug: string | null | undefined) => (slug ? (GAME_NAMES[slug] ?? EXTRA_GAME_NAMES[slug] ?? slug) : '');
+
 export const THEMES = ['neon', 'ocean', 'violet', 'rose', 'sunset', 'gold', 'matrix', 'steel'] as const;
 export type Theme = (typeof THEMES)[number];
 /** Display name and swatch colour per theme (colours themselves live in app/globals.css). */

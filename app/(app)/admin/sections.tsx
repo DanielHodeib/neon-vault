@@ -27,7 +27,7 @@ import { MoodForm } from './MoodForm';
 import { DiscoSoundSelect, FxComposer } from './FxComposer';
 import { ActionForm, Avatar, Empty, RoleBadge, Section, SubmitButton } from '@/components/ui';
 import { adminStats } from '@/lib/adminStats';
-import { coins, compact, GAME_NAMES, timeAgo } from '@/lib/format';
+import { coins, compact, gameName, timeAgo } from '@/lib/format';
 import { FX } from '@/lib/fx';
 import { currentMood, db, hub, isMuted } from '@/lib/hub';
 import { levelOf } from '@/lib/ranks';
@@ -140,7 +140,7 @@ export async function OverviewTab() {
               {week.games.map((g) => (
                 <li key={g.game} className="px-4 py-2.5">
                   <div className="flex items-baseline justify-between gap-3">
-                    <span className="font-medium">{GAME_NAMES[g.game] ?? g.game}</span>
+                    <span className="font-medium">{gameName(g.game)}</span>
                     <span className="num text-xs text-muted">
                       {coins(g.rounds)} Runden · {compact(g.staked)} gesetzt ·{' '}
                       <span className={g.house >= 0 ? 'text-win' : 'text-loss'}>{g.house >= 0 ? '+' : ''}{compact(g.house)}</span>
@@ -173,7 +173,7 @@ export async function OverviewTab() {
               {bigWins.map((w) => (
                 <li key={w.id} className="flex items-center justify-between gap-3 px-4 py-2">
                   <span className="flex min-w-0 items-center gap-2"><Trophy size={13} className="shrink-0 text-gold" /><span className="truncate">{w.user.username}</span></span>
-                  <span className="num shrink-0 text-xs"><span className="text-win">+{compact(w.amount)}</span> <span className="text-faint">{GAME_NAMES[w.game ?? ''] ?? w.game}</span></span>
+                  <span className="num shrink-0 text-xs"><span className="text-win">+{compact(w.amount)}</span> <span className="text-faint">{gameName(w.game)}</span></span>
                 </li>
               ))}
             </ul>
@@ -189,7 +189,7 @@ export async function OverviewTab() {
               <span className="num text-right sm:order-last">
                 <span className={e.amount >= 0n ? 'text-win' : 'text-loss'}>{e.amount >= 0n ? '+' : ''}{coins(e.amount)}</span>
               </span>
-              <span className="text-xs text-muted">{KIND_LABEL[e.kind] ?? e.kind}{e.game && ` · ${GAME_NAMES[e.game] ?? e.game}`}</span>
+              <span className="text-xs text-muted">{KIND_LABEL[e.kind] ?? e.kind}{e.game && ` · ${gameName(e.game)}`}</span>
               <span className="truncate text-xs text-faint">{e.note ?? ''} · {timeAgo(e.createdAt)}</span>
             </li>
           ))}
@@ -319,7 +319,7 @@ export async function PlayersTab({ actor, q, selectedId }: { actor: User; q: str
               {history.map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3 px-4 py-2">
                   <span className="min-w-0 truncate text-xs text-muted">
-                    {KIND_LABEL[e.kind] ?? e.kind}{e.game && ` · ${GAME_NAMES[e.game] ?? e.game}`} · {timeAgo(e.createdAt)}
+                    {KIND_LABEL[e.kind] ?? e.kind}{e.game && ` · ${gameName(e.game)}`} · {timeAgo(e.createdAt)}
                   </span>
                   <span className={`num shrink-0 ${e.amount >= 0n ? 'text-win' : 'text-loss'}`}>{e.amount >= 0n ? '+' : ''}{coins(e.amount)}</span>
                 </li>

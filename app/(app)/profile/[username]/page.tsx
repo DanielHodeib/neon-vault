@@ -10,7 +10,7 @@ import { achievements, ALL_GAMES } from '@/lib/achievements';
 import { requireUser } from '@/lib/auth';
 import { shopItem } from '@/lib/shop';
 import { playerStats } from '@/lib/stats';
-import { coins, GAME_NAMES, timeAgo } from '@/lib/format';
+import { coins, gameName, timeAgo } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { displayRank, levelOf } from '@/lib/ranks';
 import { getT } from '@/lib/i18nServer';
@@ -99,7 +99,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat label="Level"><span className="num">{levelOf(user.xp)}</span></Stat>
         <Stat label="XP"><span className="num">{coins(user.xp)}</span></Stat>
-        <Stat label={t('Lieblingsspiel')}>{t(GAME_NAMES[favorite[0]?.game ?? ''] ?? '–')}</Stat>
+        <Stat label={t('Lieblingsspiel')}>{t(gameName(favorite[0]?.game) || '–')}</Stat>
         <Stat label="Guthaben">{user.showBalance || isMe ? <Coins value={Number(user.balance)} /> : <span className="text-faint">{t('privat')}</span>}</Stat>
       </div>
 
@@ -137,7 +137,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
             <>
               <p className="num text-3xl font-bold text-gold">+{coins(biggest.amount)}</p>
               <p className="mt-1 text-sm text-muted">
-                {t(GAME_NAMES[biggest.game ?? ''] ?? biggest.game ?? '')} · {t(timeAgo(biggest.createdAt))}
+                {t(gameName(biggest.game))} · {t(timeAgo(biggest.createdAt))}
               </p>
             </>
           ) : (
@@ -152,7 +152,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
                 return (
                   <li key={game} className="text-xs">
                     <span className="mb-1 flex justify-between">
-                      <span>{t(GAME_NAMES[game] ?? game)}</span>
+                      <span>{t(gameName(game))}</span>
                       <span className="num text-muted">{t('{n} Runden', { n: g.rounds })}</span>
                     </span>
                     <span className="block h-2 overflow-hidden rounded-full bg-raised">
@@ -174,7 +174,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
             {history.map((h) => (
               <li key={h.id} className="flex justify-between px-4 py-2.5 text-sm">
                 <span>
-                  {t(GAME_NAMES[h.game ?? ''] ?? h.game ?? '')} <span className="text-xs text-faint">· {t(timeAgo(h.createdAt))}</span>
+                  {t(gameName(h.game))} <span className="text-xs text-faint">· {t(timeAgo(h.createdAt))}</span>
                 </span>
                 <span className={`num ${h.amount > 0 ? 'text-win' : 'text-muted'}`}>{h.amount > 0 ? '+' : ''}{coins(h.amount)}</span>
               </li>
