@@ -281,6 +281,7 @@ const arpeggio = (notes: number[], step: number, opts?: Parameters<typeof tone>[
 /** Phone vibration with the sound (Android; iPhones ignore it). Muting the game sound also stops it. */
 function buzz(pattern: number | number[]) {
   if (muted || typeof navigator === 'undefined' || !('vibrate' in navigator)) return;
+  if (navigator.userActivation && !navigator.userActivation.hasBeenActive) return; // Chrome blocks (and logs) it before the first tap
   try {
     navigator.vibrate(pattern);
   } catch {
