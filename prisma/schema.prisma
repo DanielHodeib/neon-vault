@@ -77,6 +77,8 @@ model User {
   accent         String? // own accent colour (#rrggbb) over the theme's, null = theme colour
   likesGiven     ProfileLike[] @relation("LikeFrom")
   likesReceived  ProfileLike[] @relation("LikeTo")
+  markets        Market[]      @relation("MarketCreator")
+  marketBets     MarketBet[]
 }
 
 model Session {
@@ -253,4 +255,35 @@ model ProfileLike {
 
   @@id([fromId, toId])
   @@index([toId])
+}
+
+/** A friendly bet ("Wetten"): a question with two answers; the creator settles it. */
+model Market {
+  id        String      @id @default(cuid())
+  creatorId String
+  question  String
+  optionA   String
+  optionB   String
+  closesAt  DateTime // no more bets after this
+  status    String      @default("open") // open | settled | cancelled
+  outcome   String? // "A" | "B" once settled
+  createdAt DateTime    @default(now())
+  creator   User        @relation("MarketCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  bets      MarketBet[]
+
+  @@index([status, createdAt])
+}
+
+model MarketBet {
+  id        String   @id @default(cuid())
+  marketId  String
+  userId    String
+  option    String // "A" | "B"
+  amount    BigInt
+  createdAt DateTime @default(now())
+  market    Market   @relation(fields: [marketId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([marketId])
+  @@index([userId])
 }
