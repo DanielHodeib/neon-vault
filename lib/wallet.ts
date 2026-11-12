@@ -82,7 +82,7 @@ async function book(entries: Entry[]) {
     return new Map(rows.map((r) => [r.id, Number(r.balance)]));
   });
   balances.forEach((balance, userId) => emitToUser(userId, 'balance', balance));
-  for (const l of levelUps) void notify(l.userId, 'Level-Up!', `Level ${l.level} erreicht: +${l.reward.toLocaleString('de-DE')} NVC`).catch(console.error);
+  for (const l of levelUps) void notify(l.userId, 'Level-Up!', `Level ${l.level} erreicht: +${l.reward.toLocaleString('de-DE')} NVC`, { link: '/stats' }).catch(console.error);
   return balances;
 }
 

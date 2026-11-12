@@ -137,6 +137,8 @@ model Notification {
   userId    String
   title     String
   message   String
+  link      String? // page the notification opens when clicked
+  friendId  String? // open friend request from this user: accept/decline right in the panel
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

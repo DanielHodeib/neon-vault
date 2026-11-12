@@ -59,7 +59,7 @@ export async function settleLastWeek(now = new Date()) {
   await applyLedger(top.map((t, i) => ({ userId: t.userId, amount: TOURNAMENT_PRIZES[i], kind: 'BONUS' as const, note: prizeNote(last, i + 1) })));
   const { label } = TOURNAMENT_KINDS[kindOf(last)];
   systemMessage(`🏆 ${label} vorbei! ${top.map((t, i) => `${i + 1}. ${t.username}`).join(' · ')}`);
-  await Promise.all(top.map((t, i) => notify(t.userId, 'Turnier', `Platz ${i + 1} in „${label}“: +${TOURNAMENT_PRIZES[i].toLocaleString('de-DE')} NVC`)));
+  await Promise.all(top.map((t, i) => notify(t.userId, 'Turnier', `Platz ${i + 1} in „${label}“: +${TOURNAMENT_PRIZES[i].toLocaleString('de-DE')} NVC`, { link: '/tournament' })));
 }
 
 export function startTournaments() {

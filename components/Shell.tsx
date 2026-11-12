@@ -5,6 +5,7 @@ import {
   ArrowUpDown,
   Bell,
   ChevronDown,
+  ChevronRight,
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
@@ -48,6 +49,8 @@ import { useEffect, useState, type ReactNode } from 'react';
 
 import { clearNotifications, readNotifications, setLang, setTheme } from '@/app/actions/account';
 import { logout } from '@/app/actions/auth';
+import { respondFriend } from '@/app/actions/social';
+import { FormButton } from './FormButton';
 import { coins, THEME_INFO, THEMES, timeAgo } from '@/lib/format';
 import { atLeast } from '@/lib/roles';
 import { Chat } from './Chat';
@@ -74,7 +77,7 @@ const GAMES: NavItem[] = [
   { href: '/play/race', label: 'Rennen', icon: Flag },
 ];
 
-type Notification = { id: string; title: string; message: string; isRead: boolean; createdAt: string };
+type Notification = { id: string; title: string; message: string; link: string | null; friendId: string | null; isRead: boolean; createdAt: string };
 type User = { username: string; avatarUrl: string | null; frame: string | null; level: number; role: Role; theme: string };
 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
@@ -346,16 +349,36 @@ function Notifications({ items }: { items: Notification[] }) {
             </div>
             <div className="max-h-[60vh] overflow-y-auto">
               {items.length === 0 && <p className="py-8 text-center text-sm text-faint">{t('Keine Benachrichtigungen')}</p>}
-              {items.map((n) => (
-                <div key={n.id} className="rounded-lg px-2 py-2.5 hover:bg-raised">
-                  <p className="flex items-center gap-2 text-sm font-medium">
-                    {!n.isRead && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
-                    {t(n.title)}
-                  </p>
-                  <p className="text-sm text-muted">{t(n.message)}</p>
-                  <p className="mt-0.5 text-[11px] text-faint">{t(timeAgo(n.createdAt))}</p>
-                </div>
-              ))}
+              {items.map((n) => {
+                const body = (
+                  <>
+                    <p className="flex items-center gap-2 text-sm font-medium">
+                      {!n.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />}
+                      <span className="min-w-0 flex-1">{t(n.title)}</span>
+                      {n.link && <ChevronRight size={14} className="shrink-0 text-faint" />}
+                    </p>
+                    <p className="text-sm text-muted">{t(n.message)}</p>
+                    <p className="mt-0.5 text-[11px] text-faint">{t(timeAgo(n.createdAt))}</p>
+                  </>
+                );
+                return (
+                  <div key={n.id} className="rounded-lg hover:bg-raised">
+                    {n.link ? (
+                      <Link href={n.link} onClick={() => setOpen(false)} className="block px-2 py-2.5">
+                        {body}
+                      </Link>
+                    ) : (
+                      <div className="px-2 py-2.5">{body}</div>
+                    )}
+                    {n.friendId && (
+                      <div className="flex gap-2 px-2 pb-2.5">
+                        <FormButton action={respondFriend.bind(null, n.friendId, true)} className="btn-primary h-8 flex-1 text-xs">Annehmen</FormButton>
+                        <FormButton action={respondFriend.bind(null, n.friendId, false)} className="btn-secondary h-8 flex-1 text-xs">Ablehnen</FormButton>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>

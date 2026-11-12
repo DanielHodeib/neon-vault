@@ -78,7 +78,7 @@ async function crownKing(since: Date, bonus: number) {
   if (!king || king.profit <= 0) return systemMessage('King of the Hill vorbei – niemand hat Gewinn gemacht.');
   await applyLedger([{ userId: king.userId, amount: bonus, kind: 'BONUS', note: 'King of the Hill' }]);
   systemMessage(`${king.username} ist King of the Hill (+${king.profit.toLocaleString('de-DE')} NVC Netto-Gewinn) und bekommt ${bonus.toLocaleString('de-DE')} NVC!`);
-  await notify(king.userId, 'King of the Hill', `+${bonus.toLocaleString('de-DE')} NVC für den höchsten Netto-Gewinn.`);
+  await notify(king.userId, 'King of the Hill', `+${bonus.toLocaleString('de-DE')} NVC für den höchsten Netto-Gewinn.`, { link: '/stats' });
 }
 
 /** Bounty event: beating today's top player in a coinflip pays a bonus. */

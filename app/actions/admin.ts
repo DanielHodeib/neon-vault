@@ -202,7 +202,7 @@ export async function giftUser(userId: string, amount: number) {
     if (![1_000, 10_000, 100_000].includes(amount)) throw new UserError('Ungültiger Betrag.');
     const { actor, user } = await target('ADMIN', userId, { self: true });
     await applyLedger([{ userId: user.id, amount, kind: 'ADMIN', note: `Geschenk von ${actor.username}` }]);
-    if (user.id !== actor.id) await notify(user.id, 'Geschenk', `${actor.username} schenkt dir ${amount.toLocaleString('de-DE')} NVC.`);
+    if (user.id !== actor.id) await notify(user.id, 'Geschenk', `${actor.username} schenkt dir ${amount.toLocaleString('de-DE')} NVC.`, { link: '/stats' });
     refresh();
     return `+${amount.toLocaleString('de-DE')} NVC an ${user.username}.`;
   });

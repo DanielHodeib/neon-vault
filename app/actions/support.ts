@@ -69,7 +69,7 @@ export async function replyTicket(_: ActionState, form: FormData) {
       where: { id: ticketId },
       data: { status: asStaff ? 'ANSWERED' : 'OPEN', messages: { create: { senderId: user.id, content, isStaff: asStaff } } },
     });
-    if (asStaff && ticket.userId) await notify(ticket.userId, 'Support-Antwort', `Neue Antwort auf „${ticket.subject}“.`);
+    if (asStaff && ticket.userId) await notify(ticket.userId, 'Support-Antwort', `Neue Antwort auf „${ticket.subject}“.`, { link: `/support/${ticket.id}` });
     else pingStaff();
     if (ticket.userId) emitToUser(ticket.userId, 'tickets', null);
     refresh();

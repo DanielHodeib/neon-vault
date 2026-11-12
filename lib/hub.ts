@@ -90,8 +90,9 @@ export function broadcast(event: string, data: unknown) {
   hub.io?.emit(event, data);
 }
 
-export async function notify(userId: string, title: string, message: string) {
-  await db.notification.create({ data: { userId, title, message } });
+/** `link` = page the notification opens; `friendId` = open friend request from that user. */
+export async function notify(userId: string, title: string, message: string, extra: { link?: string; friendId?: string } = {}) {
+  await db.notification.create({ data: { userId, title, message, ...extra } });
   emitToUser(userId, 'notification', { title, message });
 }
 

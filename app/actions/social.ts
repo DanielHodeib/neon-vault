@@ -33,25 +33,33 @@ export async function sendFriendRequest(_: ActionState, form: FormData) {
     if (existing) {
       // They already asked us: sending back means accepting.
       await db.friendship.update({ where: { fromId_toId: { fromId: other.id, toId: me.id } }, data: { accepted: true } });
-      await notify(other.id, 'Freundschaft', `${me.username} hat deine Anfrage angenommen.`);
+      await notify(other.id, 'Freundschaft', `${me.username} hat deine Anfrage angenommen.`, { link: `/profile/${me.username}` });
+      await db.notification.updateMany({ where: { userId: me.id, friendId: other.id }, data: { friendId: null } });
       refresh();
       return `Du bist jetzt mit ${other.username} befreundet.`;
     }
     await db.friendship.create({ data: { fromId: me.id, toId: other.id } });
-    await notify(other.id, 'Freundschaftsanfrage', `${me.username} möchte mit dir befreundet sein.`);
+    await notify(other.id, 'Freundschaftsanfrage', `${me.username} möchte mit dir befreundet sein.`, { link: '/friends', friendId: me.id });
     refresh();
     return 'Anfrage gesendet.';
   });
 }
 
 export async function respondFriend(fromId: string, accept: boolean) {
-  const me = await requireUser();
-  const where = { fromId_toId: { fromId, toId: me.id } };
-  if (accept) {
-    await db.friendship.update({ where, data: { accepted: true } });
-    await notify(fromId, 'Freundschaft', `${me.username} hat deine Anfrage angenommen.`);
-  } else await db.friendship.delete({ where });
-  refresh();
+  return run(async () => {
+    const me = await requireUser();
+    const where = { fromId, toId: me.id, accepted: false };
+    // Either way the request is handled: its buttons in the notification panel go away.
+    await db.notification.updateMany({ where: { userId: me.id, friendId: fromId }, data: { friendId: null } });
+    refresh();
+    if (!accept) {
+      await db.friendship.deleteMany({ where });
+      return 'Anfrage abgelehnt.';
+    }
+    if (!(await db.friendship.updateMany({ where, data: { accepted: true } })).count) throw new UserError('Diese Anfrage gibt es nicht mehr.');
+    await notify(fromId, 'Freundschaft', `${me.username} hat deine Anfrage angenommen.`, { link: `/profile/${me.username}` });
+    return 'Ihr seid jetzt befreundet.';
+  });
 }
 
 export async function removeFriend(userId: string) {
@@ -87,7 +95,7 @@ export async function sendMoney(_: ActionState, form: FormData) {
       { userId: me.id, amount: -amount, kind: 'TRANSFER', counterpartyId: other.id, note: message },
       { userId: other.id, amount, kind: 'TRANSFER', counterpartyId: me.id, note: message },
     ]);
-    await notify(other.id, 'Geld erhalten', `${me.username} hat dir ${amount.toLocaleString('de-DE')} NVC gesendet${message ? `: „${message}“` : '.'}`);
+    await notify(other.id, 'Geld erhalten', `${me.username} hat dir ${amount.toLocaleString('de-DE')} NVC gesendet${message ? `: „${message}“` : '.'}`, { link: '/friends' });
     refresh();
     return `${amount.toLocaleString('de-DE')} NVC an ${other.username} gesendet.`;
   });

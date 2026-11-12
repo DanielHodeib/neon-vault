@@ -131,5 +131,5 @@ async function tip(fromId: string, fromName: string, text: string) {
     { userId: to.id, amount, kind: 'TRANSFER', counterpartyId: fromId, note: 'Trinkgeld' },
   ]);
   systemMessage(`${fromName} gibt ${to.username} ${amount.toLocaleString('de-DE')} NVC Trinkgeld.`);
-  await notify(to.id, 'Trinkgeld', `${fromName} hat dir ${amount.toLocaleString('de-DE')} NVC gegeben.`);
+  await notify(to.id, 'Trinkgeld', `${fromName} hat dir ${amount.toLocaleString('de-DE')} NVC gegeben.`, { link: '/friends' });
 }

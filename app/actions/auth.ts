@@ -30,7 +30,7 @@ export async function register(_: ActionState, form: FormData) {
         { userId: inviter.id, amount: INVITE_BONUS, kind: 'BONUS', note: `Einladung: ${username}` },
         { userId: user.id, amount: INVITE_BONUS, kind: 'BONUS', note: 'Einladungsbonus' },
       ]);
-      await notify(inviter.id, 'Einladung angenommen', `${username} ist über deinen Link dabei: +${INVITE_BONUS.toLocaleString('de-DE')} NVC.`);
+      await notify(inviter.id, 'Einladung angenommen', `${username} ist über deinen Link dabei: +${INVITE_BONUS.toLocaleString('de-DE')} NVC.`, { link: `/profile/${username}` });
     }
     await startSession(user.id);
   });

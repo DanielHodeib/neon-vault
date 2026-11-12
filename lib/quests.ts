@@ -44,5 +44,5 @@ export async function claimQuest(userId: string, key: string) {
   // The composite primary key makes a double claim fail even under a race.
   await db.questClaim.create({ data: { userId, questKey: key, periodStart: quest.periodStart } });
   await applyLedger([{ userId, amount: quest.reward, kind: 'QUEST', note: quest.title }]);
-  await notify(userId, 'Quest abgeschlossen', `${quest.title}: +${quest.reward} NVC`);
+  await notify(userId, 'Quest abgeschlossen', `${quest.title}: +${quest.reward} NVC`, { link: '/quests' });
 }

@@ -32,6 +32,7 @@ type Phase = 'idle' | 'spinning' | 'showing';
 
 const AUTO = [0, 10, 25, 50, 100];
 const STRIP = 10;
+const LINE_COLORS = ['#fbbf24', '#f472b6', '#60a5fa', '#34d399', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#facc15', '#e879f9'];
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const cellKey = ([c, r]: Cell) => `${c}:${r}`;
 const startGrid = (m: Machine) =>
@@ -220,10 +221,12 @@ export function Slots() {
   };
 
   const shownWins = step?.wins ?? [];
-  const focused = focus !== null ? shownWins[focus] : null;
+  // A single win is always "focused", so its line and label show without cycling.
+  const focused = focus !== null ? shownWins[focus] : shownWins.length === 1 ? shownWins[0] : null;
   const lit = new Set((focused ? [focused] : shownWins).flatMap((w) => w.cells.map(cellKey)));
   const reveal = new Set(step?.reveal?.map(cellKey));
-  const line = focused?.line !== undefined ? machine.lines?.[focused.line] : undefined;
+  // Paylines to draw: the focused one, or every winning one before cycling starts.
+  const drawn = machine.lines ? (focused ? [focused] : shownWins).filter((w) => w.line !== undefined) : [];
   const autoRunning = auto > 0 || (freeHere > 0 && autoFree && !!result);
   const lineBet = amount / lineCount(machine);
   const totalWeight = machine.symbols.reduce((sum, x) => sum + x.weight, 0);
@@ -288,17 +291,19 @@ export function Slots() {
               </div>
             );
           })}
-          {line && (
+          {drawn.length > 0 && (
             <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${machine.cols * 100} ${machine.rows * 100}`} preserveAspectRatio="none">
-              <polyline
-                points={line.map((row, c) => `${c * 100 + 50},${row * 100 + 50}`).join(' ')}
-                fill="none"
-                stroke="var(--color-gold)"
-                strokeWidth="6"
-                strokeLinejoin="round"
-                vectorEffect="non-scaling-stroke"
-                opacity=".9"
-              />
+              {drawn.map((w) => {
+                const points = machine.lines![w.line!].map((row, c) => `${c * 100 + 50},${row * 100 + 50}`);
+                const color = drawn.length > 1 ? LINE_COLORS[w.line! % LINE_COLORS.length] : 'var(--color-gold)';
+                return (
+                  <g key={w.line} stroke={color} fill="none" strokeLinejoin="round" strokeLinecap="round">
+                    {/* the whole payline, faint; solid only across the symbols that pay */}
+                    <polyline points={points.join(' ')} strokeWidth="2" strokeDasharray="3 7" vectorEffect="non-scaling-stroke" opacity=".55" />
+                    <polyline points={points.slice(0, w.count).join(' ')} strokeWidth="6" vectorEffect="non-scaling-stroke" opacity=".95" />
+                  </g>
+                );
+              })}
             </svg>
           )}
         </div>
