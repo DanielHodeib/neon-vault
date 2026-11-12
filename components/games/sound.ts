@@ -10,6 +10,36 @@ let muted = (() => {
   }
 })();
 const listeners = new Set<() => void>();
+const notify = () => listeners.forEach((fn) => fn());
+
+// Two volume buses: game effects and background music (components/games/music.ts), 0–1 each.
+const VOL_FX = 'nv-vol-fx';
+const VOL_MUSIC = 'nv-vol-music';
+const readVolume = (key: string, fallback: number) => {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : Math.min(1, Math.max(0, Number(raw) || 0));
+  } catch {
+    return fallback;
+  }
+};
+let fxVolume = readVolume(VOL_FX, 1);
+let musicVolume = readVolume(VOL_MUSIC, 0); // music starts switched off
+let fxBus: GainNode | null = null;
+let musicBus: GainNode | null = null;
+/** The effect and music buses of a context, created on first use. */
+function buses(c: AudioContext) {
+  if (!fxBus || fxBus.context !== c) {
+    fxBus = c.createGain();
+    fxBus.gain.value = fxVolume;
+    fxBus.connect(c.destination);
+    musicBus = c.createGain();
+    musicBus.gain.value = musicVolume;
+    musicBus.connect(c.destination);
+  }
+  return { fx: fxBus, music: musicBus! };
+}
 
 function tone(freq: number, dur: number, { type = 'triangle' as OscillatorType, gain = 0.05, at = 0 } = {}) {
   if (muted) return;
@@ -23,7 +53,7 @@ function tone(freq: number, dur: number, { type = 'triangle' as OscillatorType, 
     osc.frequency.setValueAtTime(freq, t);
     amp.gain.setValueAtTime(gain, t);
     amp.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    osc.connect(amp).connect(ctx.destination);
+    osc.connect(amp).connect(buses(ctx).fx);
     osc.start(t);
     osc.stop(t + dur);
   } catch {
@@ -47,7 +77,7 @@ function reelLoop(): () => void {
     osc.frequency.linearRampToValueAtTime(140, t + 1.2);
     amp.gain.setValueAtTime(0.0001, t);
     amp.gain.exponentialRampToValueAtTime(0.012, t + 0.15);
-    osc.connect(amp).connect(ctx.destination);
+    osc.connect(amp).connect(buses(ctx).fx);
     osc.start(t);
   } catch {
     // no audio: clicks below stay silent as well
@@ -81,7 +111,10 @@ function audio(): AudioContext | null {
 if (typeof window !== 'undefined') {
   const unlock = () => {
     const c = audio();
-    if (c?.state === 'running') ['pointerdown', 'keydown'].forEach((e) => window.removeEventListener(e, unlock, true));
+    if (c?.state === 'running') {
+      ['pointerdown', 'keydown'].forEach((e) => window.removeEventListener(e, unlock, true));
+      notify(); // background music may start now
+    }
   };
   ['pointerdown', 'keydown'].forEach((e) => window.addEventListener(e, unlock, true));
 }
@@ -111,7 +144,7 @@ function playBuffer(buffer: AudioBuffer, volume = 0.8, maxSeconds?: number) {
   src.buffer = buffer;
   const g = c.createGain();
   g.gain.value = volume;
-  src.connect(g).connect(c.destination);
+  src.connect(g).connect(buses(c).fx);
   src.start();
   if (maxSeconds && buffer.duration > maxSeconds) {
     const end = c.currentTime + maxSeconds;
@@ -138,7 +171,7 @@ function fadeIn(c: AudioContext, gain: number) {
   const g = c.createGain();
   g.gain.setValueAtTime(0.0001, c.currentTime);
   g.gain.exponentialRampToValueAtTime(gain, c.currentTime + 2);
-  g.connect(c.destination);
+  g.connect(buses(c).fx);
   return g;
 }
 
@@ -238,7 +271,7 @@ function thunder(level: number) {
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(0.12 * level, t + 0.06);
   g.gain.exponentialRampToValueAtTime(0.0001, t + 2.8);
-  src.connect(f).connect(g).connect(c.destination);
+  src.connect(f).connect(g).connect(buses(c).fx);
   src.start(t);
   src.stop(t + 3);
 }
@@ -326,6 +359,31 @@ export const soundPref = {
     } catch {
       // storage blocked: the choice lasts for this page only
     }
-    listeners.forEach((fn) => fn());
+    notify();
+  },
+  fxVolume: () => fxVolume,
+  musicVolume: () => musicVolume,
+  /** Volume 0–1 of the effects or the music, saved per browser. */
+  setVolume: (kind: 'fx' | 'music', value: number) => {
+    const v = Math.min(1, Math.max(0, value));
+    if (kind === 'fx') fxVolume = v;
+    else musicVolume = v;
+    const bus = kind === 'fx' ? fxBus : musicBus;
+    if (bus) bus.gain.setTargetAtTime(v, bus.context.currentTime, 0.05);
+    try {
+      localStorage.setItem(kind === 'fx' ? VOL_FX : VOL_MUSIC, String(v));
+    } catch {
+      // storage blocked: lasts for this page only
+    }
+    notify();
   },
 };
+
+/** Running audio context and its music bus, or null while muted, locked or unavailable (for music.ts). */
+export function musicOutput() {
+  if (muted || !ctx || ctx.state !== 'running') return null;
+  return { c: ctx, bus: buses(ctx).music };
+}
+
+/** A shared noise buffer (hi-hats in the music). */
+export const noiseFor = (c: AudioContext) => noise(c);

@@ -50,6 +50,7 @@ import { DEFAULT_SHORTCUTS, GAME_BY_SLUG, GAME_LIST } from './gameCatalog';
 import { GamesPanel, useGameShortcuts, usePlayerCounts } from './GamesPanel';
 import { WinTicker } from './WinTicker';
 import { InstallPrompt } from './InstallPrompt';
+import { SoundMenu } from './SoundMenu';
 import { useCountUp } from './useCountUp';
 
 type NavItem = { href: string; label: string; icon: LucideIcon; badge?: number };
@@ -185,6 +186,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
           {maintenance && <span className="hidden rounded-full bg-loss/15 px-3 py-1 text-xs text-loss sm:block">{t('Wartungsmodus')}</span>}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
+            <SoundMenu />
             <Notifications items={notifications} />
             <button onClick={toggleChat} className="btn-ghost hidden h-9 w-9 px-0 md:inline-flex" aria-label={t('Chat ein- oder ausblenden')}>
               <MessageSquare size={18} />
