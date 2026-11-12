@@ -12,6 +12,10 @@ export type Register = (io: Server, socket: GameSocket) => void;
 
 const MAX_EVENTS_PER_SECOND = 15;
 
+/** Runs after every successful event (game/watch.ts reports finished rounds to friends watching). */
+let afterEvent: ((socket: GameSocket, event: string, data: unknown, result: unknown) => void) | null = null;
+export const onAfterEvent = (fn: NonNullable<typeof afterEvent>) => void (afterEvent = fn);
+
 function rateLimited(socket: GameSocket) {
   const now = Date.now();
   if (now - socket.data.windowStart > 1000) Object.assign(socket.data, { windowStart: now, hits: 0 });
@@ -37,7 +41,9 @@ export function handle<S extends z.ZodTypeAny>(
       if (play && hub.maintenance.on && !atLeast(socket.data.user.role, 'SUPPORT')) throw new UserError('Wartungsmodus aktiv.');
       const parsed = schema.safeParse(raw ?? {});
       if (!parsed.success) throw new UserError('Ungültige Eingabe.');
-      reply({ ok: true, ...((await fn(parsed.data)) as object) });
+      const result = await fn(parsed.data);
+      reply({ ok: true, ...(result as object) });
+      afterEvent?.(socket, event, parsed.data, result);
     } catch (err) {
       if (!(err instanceof UserError)) console.error(`[socket ${event}]`, err);
       reply({ ok: false, error: err instanceof UserError ? err.message : 'Serverfehler.' });

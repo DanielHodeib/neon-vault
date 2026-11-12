@@ -62,7 +62,7 @@ type User = { username: string; avatarUrl: string | null; frame: string | null; 
 
 export function Shell({ user, notifications, maintenance, children }: { user: User; notifications: Notification[]; maintenance: boolean; children: ReactNode }) {
   const pathname = usePathname();
-  const { balance, event, rain, dmUnread } = useLive();
+  const { balance, event, rain, dmUnread, watchers } = useLive();
   const t = useT();
   // null = default (docked on wide screens, closed elsewhere)
   const [chat, setChat] = useState<boolean | null>(null);
@@ -186,6 +186,11 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
             </span>
           )}
           {maintenance && <span className="hidden rounded-full bg-loss/15 px-3 py-1 text-xs text-loss sm:block">{t('Wartungsmodus')}</span>}
+          {watchers > 0 && (
+            <span className="pop-in rounded-full border border-line px-2.5 py-1 text-xs text-muted" title={t('{n} Freunde schauen dir gerade zu', { n: watchers })}>
+              👀 <span className="num">{watchers}</span>
+            </span>
+          )}
 
           <div className="ml-auto flex items-center gap-1 sm:gap-2">
             <SoundMenu />

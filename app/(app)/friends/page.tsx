@@ -75,6 +75,9 @@ export default async function FriendsPage() {
                       <span className="truncate text-xs text-faint">{online ? t(online.activity) : 'offline'}</span>
                     </span>
                     <div className="flex gap-1">
+                      {online && online.activity !== 'Lobby' && (
+                        <Link href={`/watch/${encodeURIComponent(u.username)}`} className="btn-secondary h-8 text-xs">👀 {t('Zuschauen')}</Link>
+                      )}
                       <Link href={`/messages?u=${encodeURIComponent(u.username)}`} className="btn-ghost h-8 text-xs">{t('Nachricht')}</Link>
                       <FormButton action={removeFriend.bind(null, u.id)} confirm={t('{name} entfernen?', { name: u.username })} className="btn-ghost h-8 text-xs">Entfernen</FormButton>
                       <FormButton action={setBlocked.bind(null, u.id, true)} confirm={t('{name} blockieren?', { name: u.username })} className="btn-ghost h-8 text-xs">Blockieren</FormButton>

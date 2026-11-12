@@ -25,6 +25,8 @@ type Ctx = {
   rain: { amount: number; endsAt: number; players: number; by: string } | null;
   /** Big wins for the live ticker, newest first. */
   wins: BigWin[];
+  /** Friends watching you play right now. */
+  watchers: number;
   call: <T = Record<string, unknown>>(event: string, data?: unknown) => Promise<T | null>;
   /** Unread private messages; the messages page resets it. */
   dmUnread: number;
@@ -87,6 +89,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const [mood, setMood] = useState<Mood | null>(null);
   const [rain, setRain] = useState<Ctx['rain']>(null);
   const [wins, setWins] = useState<BigWin[]>([]);
+  const [watchers, setWatchers] = useState(0);
   const [dmUnread, setDmUnread] = useState(0);
   const held = useRef(0);
   const pending = useRef<number | null>(null);
@@ -118,6 +121,11 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       fx: (d: { effect: FxName | 'asset'; by: string; sound?: string }) => (d.effect === 'asset' ? void runAsset(d as FxAssetPayload) : runFx(d.effect, d.by, d.sound)),
       chatClear: () => setChat([]),
       rain: setRain,
+      watchers: (w: { count: number; joined?: string }) => {
+        setWatchers(w.count);
+        if (w.joined) toast(`👀 ${tPage('{name} schaut dir zu', { name: w.joined })}`);
+      },
+      cheer: (c: { from: string; emoji: string }) => toast(`${c.emoji} ${c.from}`, { duration: 2500, style: { fontSize: '1.1rem' } }),
       bigwin: (w: BigWin) => {
         setWins((list) => [w, ...list].slice(0, 20));
         if (w.amount >= CELEBRATE_MIN) celebrate(w, tPage);
@@ -185,8 +193,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
   const shiftBalance = useCallback((delta: number) => setBalance((b) => b + delta), []);
 
   const value = useMemo(
-    () => ({ socket, me, balance, online, chat, event, countdown, rain, wins, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
-    [socket, me, balance, online, chat, event, countdown, rain, wins, call, holdBalance, shiftBalance, dmUnread],
+    () => ({ socket, me, balance, online, chat, event, countdown, rain, wins, watchers, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
+    [socket, me, balance, online, chat, event, countdown, rain, wins, watchers, call, holdBalance, shiftBalance, dmUnread],
   );
   return (
     <SocketContext.Provider value={value}>
