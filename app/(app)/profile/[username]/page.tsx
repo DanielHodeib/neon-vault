@@ -57,15 +57,15 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
-      <div className="panel overflow-hidden">
+      <div className={`panel overflow-hidden ${shopItem(user.aura)?.className ?? ''}`}>
         <ZoomImage src={user.bannerUrl} label="Banner" className="block w-full">
           <div
-            className="h-28 bg-raised bg-cover bg-center sm:h-40"
+            className={`h-28 bg-cover bg-center sm:h-40 ${user.aura ? '' : 'bg-raised'}`}
             style={user.bannerUrl ? { backgroundImage: `url(${JSON.stringify(user.bannerUrl)})` } : { backgroundImage: `linear-gradient(120deg, ${rank.color}33, transparent 70%)` }}
           />
         </ZoomImage>
         <div className="flex flex-col gap-4 px-4 pb-5 sm:flex-row sm:items-end sm:px-6">
-          <ZoomImage src={user.avatarUrl} label="Avatar" className="relative -mt-10 block w-fit rounded-full border-4 border-surface sm:-mt-12">
+          <ZoomImage src={user.avatarUrl} label="Avatar" className="avatar-wiggle relative -mt-10 block w-fit rounded-full border-4 border-surface sm:-mt-12">
             <Avatar url={user.avatarUrl} name={user.username} size={84} frame={user.frame} />
           </ZoomImage>
           <div className="min-w-0 flex-1">

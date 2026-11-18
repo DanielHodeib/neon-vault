@@ -48,7 +48,7 @@ export default async function FriendsPage() {
 
           {incoming.length > 0 && (
             <Section title={`${t('Anfragen')} · ${incoming.length}`}>
-              <ul className="divide-y divide-line">
+              <ul className="stagger divide-y divide-line">
                 {incoming.map((u) => (
                   <li key={u.id} className="flex items-center justify-between gap-2 px-4 py-3 text-sm">
                     <UserLink name={u.username} />
@@ -64,7 +64,7 @@ export default async function FriendsPage() {
 
           <Section title={`${t('Freunde')} · ${friends.length}`}>
             {friends.length === 0 && <Empty>{t('Noch keine Freunde – füge oben jemanden hinzu.')}</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="stagger divide-y divide-line">
               {friends.map((u) => {
                 const online = hub.online.get(u.id);
                 return (
@@ -91,7 +91,7 @@ export default async function FriendsPage() {
 
           {blocks.length > 0 && (
             <Section title={t('Blockiert')}>
-              <ul className="divide-y divide-line">
+              <ul className="stagger divide-y divide-line">
                 {blocks.map((b) => (
                   <li key={b.toId} className="flex items-center justify-between px-4 py-3 text-sm">
                     <span className="text-muted">{b.to.username}</span>
@@ -126,7 +126,7 @@ export default async function FriendsPage() {
 
           <Section title={t('Verlauf')}>
             {transfers.length === 0 && <Empty>{t('Noch keine Überweisungen.')}</Empty>}
-            <ul className="divide-y divide-line">
+            <ul className="stagger divide-y divide-line">
               {transfers.map((tr) => (
                 <li key={tr.id} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
                   <span className="min-w-0">

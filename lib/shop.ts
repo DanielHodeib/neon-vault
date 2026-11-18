@@ -1,9 +1,9 @@
 // Cosmetics shop: pure catalog shared by server actions and UI. Prices in NVC.
 // Class names are written out in full so Tailwind picks them up.
-export type ShopSlot = 'frame' | 'title' | 'nameEffect' | 'bubble';
-export const SHOP_SLOTS: ShopSlot[] = ['frame', 'title', 'nameEffect', 'bubble'];
+export type ShopSlot = 'frame' | 'title' | 'nameEffect' | 'bubble' | 'aura';
+export const SHOP_SLOTS: ShopSlot[] = ['frame', 'title', 'nameEffect', 'bubble', 'aura'];
 
-// frame: ring gradient (className may animate it) · nameEffect/bubble: className on the name or the chat message
+// frame: ring gradient (className may animate it) · nameEffect/bubble: className on the name or the chat message · aura: animated layer behind the profile card
 type Item = { id: string; slot: ShopSlot; name: string; price: number; description: string; className?: string; frame?: string };
 
 export const SHOP_ITEMS: Item[] = [
@@ -16,6 +16,16 @@ export const SHOP_ITEMS: Item[] = [
   { id: 'frame-royal', slot: 'frame', name: 'Königlich', price: 150_000, description: 'Purpur und Gold für Hoheiten.', frame: 'conic-gradient(#7c3aed,#facc15,#a855f7,#facc15,#7c3aed)' },
   { id: 'frame-rainbow', slot: 'frame', name: 'Regenbogen-Wirbel', price: 300_000, description: 'Dreht sich ständig – animiert.', frame: 'conic-gradient(#f87171,#facc15,#4ade80,#38bdf8,#a78bfa,#f472b6,#f87171)', className: 'frame-spin' },
   { id: 'frame-galaxy', slot: 'frame', name: 'Galaxie', price: 400_000, description: 'Ein Wirbel aus Sternenstaub – animiert.', frame: 'conic-gradient(#1e1b4b,#7c3aed,#ec4899,#22d3ee,#1e1b4b)', className: 'frame-spin' },
+  { id: 'frame-heartbeat', slot: 'frame', name: 'Herzschlag', price: 35000, description: 'Pocht im Takt deiner Glückssträhne.', frame: 'conic-gradient(#fb7185,#f43f5e,#fda4af,#fb7185)', className: 'frame-glow' },
+  { id: 'frame-aurora', slot: 'frame', name: 'Nordlicht', price: 120000, description: 'Grün, Türkis, Violett – langsam kreisend.', frame: 'conic-gradient(#34d399,#22d3ee,#a78bfa,#34d399)', className: 'frame-spin' },
+  { id: 'frame-lava', slot: 'frame', name: 'Lava', price: 90000, description: 'Glühend, aber unter Kontrolle.', frame: 'conic-gradient(#7f1d1d,#f97316,#fde047,#f97316,#7f1d1d)', className: 'frame-glow' },
+  { id: 'frame-sakura', slot: 'frame', name: 'Kirschblüte', price: 55000, description: 'Atmet ruhig – rosa und sanft.', frame: 'linear-gradient(135deg,#fbcfe8,#f472b6)', className: 'frame-breathe' },
+  { id: 'frame-bolt', slot: 'frame', name: 'Blitzschlag', price: 180000, description: 'Schnell kreisender Funke.', frame: 'conic-gradient(#fef08a,#fff,#facc15,#fef08a)', className: 'frame-spin frame-fast' },
+  { id: 'frame-midnight', slot: 'frame', name: 'Mitternacht', price: 70000, description: 'Tiefblau mit einem Lichtstreif.', frame: 'linear-gradient(135deg,#1e1b4b,#4338ca)', className: 'frame-shine' },
+  { id: 'frame-emerald', slot: 'frame', name: 'Smaragd', price: 85000, description: 'Edelstein mit einem Glanzpunkt.', frame: 'linear-gradient(135deg,#6ee7b7,#047857)', className: 'frame-shine' },
+  { id: 'frame-phantom', slot: 'frame', name: 'Phantom', price: 110000, description: 'Atmet in Violett.', frame: 'linear-gradient(135deg,#a78bfa,#4c1d95)', className: 'frame-breathe' },
+  { id: 'frame-dawn', slot: 'frame', name: 'Morgenrot', price: 65000, description: 'Warmer Schein um dein Bild.', frame: 'linear-gradient(135deg,#fdba74,#f472b6)', className: 'frame-glow' },
+  { id: 'frame-chrome', slot: 'frame', name: 'Chrom', price: 130000, description: 'Poliert, mit wanderndem Glanz.', frame: 'linear-gradient(135deg,#f1f5f9,#64748b,#e2e8f0)', className: 'frame-shine' },
 
   { id: 'title-lucky', slot: 'title', name: 'Glückspilz', price: 15_000, description: 'Titel neben deinem Namen im Chat.' },
   { id: 'title-shark', slot: 'title', name: 'Kartenhai', price: 30_000, description: 'Für Poker- und Blackjack-Profis.' },
@@ -28,6 +38,16 @@ export const SHOP_ITEMS: Item[] = [
   { id: 'title-oracle', slot: 'title', name: 'Orakel', price: 120_000, description: 'Sieht jede Wette kommen.' },
   { id: 'title-vaultbreaker', slot: 'title', name: 'Tresorknacker', price: 200_000, description: 'Kein Tresor ist sicher.' },
   { id: 'title-vip', slot: 'title', name: 'VIP', price: 1_000_000, description: 'Der teuerste Titel im Haus.' },
+  { id: 'title-earlybird', slot: 'title', name: 'Frühaufsteher', price: 12000, description: 'Der Erste am Tisch.' },
+  { id: 'title-allin', slot: 'title', name: 'All-in', price: 45000, description: 'Nur wer wagt, gewinnt.' },
+  { id: 'title-hazard', slot: 'title', name: 'Hasardeur', price: 55000, description: 'Fortuna mag Mutige.' },
+  { id: 'title-bluffer', slot: 'title', name: 'Bluffmeister', price: 65000, description: 'Niemand liest dein Gesicht.' },
+  { id: 'title-unlucky', slot: 'title', name: 'Pechvogel', price: 8000, description: 'Es kann nur besser werden.' },
+  { id: 'title-collector', slot: 'title', name: 'Sammler', price: 150000, description: 'Hat fast alles im Shop.' },
+  { id: 'title-nvc-king', slot: 'title', name: 'Münzkönig', price: 300000, description: 'Rollt im Geld.' },
+  { id: 'title-ghost', slot: 'title', name: 'Geist', price: 25000, description: 'Man sieht dich kommen – und gehen.' },
+  { id: 'title-lucky7', slot: 'title', name: 'Glückszahl 7', price: 77000, description: 'Dreimal die Sieben, bitte.' },
+  { id: 'title-emperor', slot: 'title', name: 'Kaiser', price: 750000, description: 'Über allen anderen.' },
 
   { id: 'name-glow', slot: 'nameEffect', name: 'Leuchtender Name', price: 40_000, description: 'Dein Name glüht im Chat.', className: 'drop-shadow-[0_0_6px_currentColor]' },
   { id: 'name-rainbow', slot: 'nameEffect', name: 'Regenbogen-Name', price: 60_000, description: 'Alle Farben auf einmal.', className: 'bg-gradient-to-r from-red-400 via-yellow-300 to-sky-400 bg-clip-text text-transparent' },
@@ -36,6 +56,16 @@ export const SHOP_ITEMS: Item[] = [
   { id: 'name-fire', slot: 'nameEffect', name: 'Feuer-Name', price: 80_000, description: 'Heiß wie eine Glückssträhne.', className: 'bg-gradient-to-r from-yellow-300 via-orange-500 to-red-500 bg-clip-text text-transparent' },
   { id: 'name-shimmer', slot: 'nameEffect', name: 'Schimmer', price: 150_000, description: 'Ein Glanz wandert durch deinen Namen – animiert.', className: 'name-shimmer' },
   { id: 'name-pulse', slot: 'nameEffect', name: 'Neon-Puls', price: 200_000, description: 'Pulsiert in deiner Akzentfarbe – animiert.', className: 'name-pulse' },
+  { id: 'name-wave', slot: 'nameEffect', name: 'Farbwelle', price: 70000, description: 'Ein Regenbogen, der durch den Namen fließt – animiert.', className: 'name-flow name-wave' },
+  { id: 'name-aurora', slot: 'nameEffect', name: 'Polarlicht', price: 90000, description: 'Grün, Türkis und Violett im Fluss – animiert.', className: 'name-flow name-aurora' },
+  { id: 'name-hologram', slot: 'nameEffect', name: 'Hologramm', price: 110000, description: 'Cyan trifft Pink – animiert.', className: 'name-flow name-hologram' },
+  { id: 'name-royal', slot: 'nameEffect', name: 'Königsglanz', price: 140000, description: 'Purpur und Gold im Wechsel – animiert.', className: 'name-flow name-royal' },
+  { id: 'name-flame', slot: 'nameEffect', name: 'Flamme', price: 100000, description: 'Züngelt in Orange und Rot – animiert.', className: 'name-flow name-flame' },
+  { id: 'name-goldsweep', slot: 'nameEffect', name: 'Goldglanz', price: 170000, description: 'Ein Lichtreflex gleitet über Gold – animiert.', className: 'name-goldsweep' },
+  { id: 'name-icesweep', slot: 'nameEffect', name: 'Eisglanz', price: 90000, description: 'Ein kühler Reflex über Blau – animiert.', className: 'name-icesweep' },
+  { id: 'name-neonflicker', slot: 'nameEffect', name: 'Neon-Röhre', price: 130000, description: 'Flackert wie eine alte Leuchtreklame – animiert.', className: 'name-neonflicker' },
+  { id: 'name-toxic', slot: 'nameEffect', name: 'Toxisch', price: 80000, description: 'Leuchtet giftgrün – animiert.', className: 'name-toxic' },
+  { id: 'name-glitch', slot: 'nameEffect', name: 'Glitch', price: 160000, description: 'Zuckt ab und zu – animiert.', className: 'name-glitch' },
 
   { id: 'bubble-glass', slot: 'bubble', name: 'Glas', price: 20_000, description: 'Deine Nachrichten in mattem Glas.', className: 'rounded-lg bg-white/5 px-2 py-1 ring-1 ring-white/10' },
   { id: 'bubble-neon', slot: 'bubble', name: 'Neon-Rand', price: 45_000, description: 'Ein leuchtender Rahmen in deiner Akzentfarbe.', className: 'rounded-lg bg-accent/10 px-2 py-1 ring-1 ring-accent/60' },
@@ -43,7 +73,25 @@ export const SHOP_ITEMS: Item[] = [
   { id: 'bubble-gold', slot: 'bubble', name: 'Goldbarren', price: 90_000, description: 'Jede Nachricht ein kleiner Schatz.', className: 'rounded-lg bg-gradient-to-r from-amber-500/20 to-yellow-300/10 px-2 py-1 ring-1 ring-amber-300/40' },
   { id: 'bubble-matrix', slot: 'bubble', name: 'Matrix', price: 120_000, description: 'Grüner Code auf Schwarz.', className: 'rounded-lg bg-black/60 px-2 py-1 font-mono text-green-400 ring-1 ring-green-500/40' },
   { id: 'bubble-galaxy', slot: 'bubble', name: 'Galaxie', price: 250_000, description: 'Ein Stück Weltall um jede Zeile.', className: 'rounded-lg bg-gradient-to-r from-indigo-900/70 via-purple-800/50 to-fuchsia-800/40 px-2 py-1 ring-1 ring-fuchsia-400/30' },
+  { id: 'aura-pulse', slot: 'aura', name: 'Herzschlag', price: 40000, description: 'Dein Profil atmet in der Akzentfarbe.', className: 'aura aura-pulse' },
+  { id: 'aura-snow', slot: 'aura', name: 'Schneefall', price: 50000, description: 'Sanfter Schnee hinter deinem Profil.', className: 'aura aura-snow' },
+  { id: 'aura-waves', slot: 'aura', name: 'Wellen', price: 60000, description: 'Ruhige Wellen ziehen vorbei.', className: 'aura aura-waves' },
+  { id: 'aura-stars', slot: 'aura', name: 'Sternenhimmel', price: 70000, description: 'Funkelnde Sterne.', className: 'aura aura-stars' },
+  { id: 'aura-embers', slot: 'aura', name: 'Glut', price: 80000, description: 'Funken steigen auf.', className: 'aura aura-embers' },
+  { id: 'aura-sunset', slot: 'aura', name: 'Abendrot', price: 100000, description: 'Farbverlauf in Zeitlupe.', className: 'aura aura-sunset' },
+  { id: 'aura-matrix', slot: 'aura', name: 'Datenregen', price: 120000, description: 'Grüne Linien fallen.', className: 'aura aura-matrix' },
+  { id: 'aura-aurora', slot: 'aura', name: 'Polarlicht', price: 150000, description: 'Weiche Farbwolken driften durchs Bild.', className: 'aura aura-aurora' },
+  { id: 'aura-nebula', slot: 'aura', name: 'Nebel', price: 220000, description: 'Ein Farbnebel, der sich langsam dreht.', className: 'aura aura-nebula' },
+  { id: 'bubble-aurora', slot: 'bubble', name: 'Polarlicht', price: 140000, description: 'Fließende Farben hinter jeder Nachricht – animiert.', className: 'bub bub-flow bub-aurora' },
+  { id: 'bubble-fire', slot: 'bubble', name: 'Glut', price: 110000, description: 'Warme Flammen im Hintergrund – animiert.', className: 'bub bub-flow bub-fire' },
+  { id: 'bubble-ice', slot: 'bubble', name: 'Frost', price: 100000, description: 'Kühl schimmernd – animiert.', className: 'bub bub-flow bub-ice' },
+  { id: 'bubble-candy', slot: 'bubble', name: 'Zuckerwatte', price: 70000, description: 'Rosa und Blau im Wechsel – animiert.', className: 'bub bub-flow bub-candy' },
+  { id: 'bubble-sunset', slot: 'bubble', name: 'Abendrot', price: 120000, description: 'Sonnenuntergang in Zeitlupe – animiert.', className: 'bub bub-flow bub-sunset' },
+  { id: 'bubble-pulse', slot: 'bubble', name: 'Herzklopfen', price: 65000, description: 'Der Rand pulsiert in deiner Akzentfarbe – animiert.', className: 'bub bub-pulse' },
+  { id: 'bubble-terminal', slot: 'bubble', name: 'Terminal', price: 95000, description: 'Bernstein auf Schwarz mit blinkendem Cursor – animiert.', className: 'bub bub-terminal' },
+  { id: 'bubble-shine', slot: 'bubble', name: 'Hochglanz', price: 80000, description: 'Ein Lichtstreif gleitet über die Blase – animiert.', className: 'bub bub-shine' },
+  { id: 'bubble-holo', slot: 'bubble', name: 'Hologramm', price: 200000, description: 'Schillernder Rand – animiert.', className: 'bub bub-holo' },
 ];
 
-export const SLOT_LABEL: Record<ShopSlot, string> = { frame: 'Profilrahmen', title: 'Titel', nameEffect: 'Namenseffekt', bubble: 'Chat-Blase' };
+export const SLOT_LABEL: Record<ShopSlot, string> = { frame: 'Profilrahmen', title: 'Titel', nameEffect: 'Namenseffekt', bubble: 'Chat-Blase', aura: 'Profil-Aura' };
 export const shopItem = (id: string | null | undefined) => SHOP_ITEMS.find((i) => i.id === id);

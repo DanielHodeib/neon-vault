@@ -97,7 +97,7 @@ export function Chat({ onClose }: { onClose: () => void }) {
         {tab === 'chat'
           ? shown.map((m) =>
               m.userId ? (
-                <div key={m.id}>
+                <div key={m.id} className="chat-in">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {m.clanTag && <span className="text-xs text-faint">[{m.clanTag}]</span>}
                     <Link href={`/profile/${m.username}`} className={`text-[13px] font-semibold hover:underline ${shopItem(m.effect)?.className ?? ''}`} style={{ color: m.color ?? undefined }}>

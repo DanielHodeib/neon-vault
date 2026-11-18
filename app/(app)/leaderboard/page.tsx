@@ -14,7 +14,7 @@ function Board({ title, rows, tone }: { title: string; rows: { name: string; val
   return (
     <Section title={title}>
       {rows.length === 0 && <Empty>Noch keine Daten.</Empty>}
-      <ol className="divide-y divide-line">
+      <ol className="stagger divide-y divide-line">
         {rows.map((r, i) => (
           <li key={r.name} className="flex items-center justify-between px-4 py-2.5 text-sm">
             <span className="flex items-center gap-3">

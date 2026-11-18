@@ -58,6 +58,7 @@ model User {
   title      String?
   nameEffect String?
   bubble     String? // bought chat bubble style (lib/shop.ts id)
+  aura       String? // bought animated profile background (lib/shop.ts id)
 
   sessions       Session[]
   ledger         LedgerEntry[]   @relation("LedgerOwner")

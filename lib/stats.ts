@@ -63,3 +63,39 @@ export async function dailyNet(userId: string, days = 14) {
   }
   return [...byDay.values()].map(({ games, ...d }) => ({ ...d, topGame: [...games].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null }));
 }
+
+// ── History page: everything derived from the ledger ─────────────────────────────────────────────
+export const HISTORY_DAYS = 30;
+export type LedgerRow = { id: string; amount: number; kind: string; game: string | null; note: string | null; at: number };
+const slotOf = (h: number) => Math.floor(h / 6); // 0 night, 1 morning, 2 afternoon, 3 evening
+const VIENNA = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Vienna', hour: 'numeric', hourCycle: 'h23', weekday: 'short' });
+const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+export async function history(userId: string) {
+  const since = new Date(Date.now() - HISTORY_DAYS * 86_400_000);
+  const [rows, recent, biggestStake] = await Promise.all([
+    db.ledgerEntry.findMany({ where: { userId, createdAt: { gte: since }, kind: { in: GAME_KINDS } }, select: { amount: true, createdAt: true, kind: true, game: true } }),
+    db.ledgerEntry.findMany({ where: { userId }, orderBy: { createdAt: 'desc' }, take: 80, select: { id: true, amount: true, kind: true, game: true, note: true, createdAt: true } }),
+    db.ledgerEntry.aggregate({ where: { userId, kind: 'BET' }, _min: { amount: true } }),
+  ]);
+  // Per day (oldest first): net result of the day and the running total over the period.
+  const perDay = new Map<string, number>();
+  for (let i = HISTORY_DAYS - 1; i >= 0; i--) perDay.set(new Date(Date.now() - i * 86_400_000).toISOString().slice(0, 10), 0);
+  // heat[weekday][slot] = net result
+  const heat = Array.from({ length: 7 }, () => [0, 0, 0, 0]);
+  const rounds = Array.from({ length: 7 }, () => [0, 0, 0, 0]);
+  for (const r of rows) {
+    const day = r.createdAt.toISOString().slice(0, 10);
+    const amount = Number(r.amount);
+    if (perDay.has(day)) perDay.set(day, perDay.get(day)! + amount);
+    const parts = Object.fromEntries(VIENNA.formatToParts(r.createdAt).map((p) => [p.type, p.value]));
+    const wd = WEEKDAYS.indexOf(parts.weekday);
+    if (wd < 0) continue;
+    heat[wd][slotOf(Number(parts.hour))] += amount;
+    if (r.kind === 'BET') rounds[wd][slotOf(Number(parts.hour))]++;
+  }
+  let run = 0;
+  const curve = [...perDay].map(([day, net]) => ({ day, net, total: (run += net) }));
+  const ledger: LedgerRow[] = recent.map((r) => ({ id: r.id, amount: Number(r.amount), kind: r.kind, game: r.game, note: r.note, at: r.createdAt.getTime() }));
+  return { curve, heat, rounds, ledger, biggestStake: Math.abs(Number(biggestStake._min.amount ?? 0)) };
+}

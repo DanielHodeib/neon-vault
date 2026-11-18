@@ -23,7 +23,7 @@ export default async function ShopPage({ searchParams }: PageProps<'/shop'>) {
 
   return (
     <>
-      <PageHeader title="Shop" subtitle="Gib deine NVC für Rahmen, Titel, Namenseffekte und Chat-Blasen aus. Alles bleibt dir für immer." />
+      <PageHeader title="Shop" subtitle="Gib deine NVC für Rahmen, Titel, Namenseffekte, Chat-Blasen und Profil-Auren aus. Alles bleibt dir für immer." />
       <nav className="no-scrollbar mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface p-1" aria-label="Shop">
         {SHOP_SLOTS.map((s) => {
           const items = SHOP_ITEMS.filter((i) => i.slot === s);
@@ -38,17 +38,18 @@ export default async function ShopPage({ searchParams }: PageProps<'/shop'>) {
       <div className="space-y-4">
         {[slot].map((slot) => (
           <Section key={slot} title={t(SLOT_LABEL[slot])} action={user[slot] && <FormButton action={equipItem.bind(null, slot, null)} className="btn-ghost h-8 text-xs">Ablegen</FormButton>}>
-            <ul className="grid gap-px bg-line sm:grid-cols-2">
+            <ul className="stagger grid gap-px bg-line sm:grid-cols-2">
               {SHOP_ITEMS.filter((i) => i.slot === slot).sort((a, b) => a.price - b.price).map((item) => {
                 const has = owned.has(item.id);
                 const worn = user[slot] === item.id;
                 return (
-                  <li key={item.id} className="flex items-center gap-4 bg-surface px-4 py-4">
+                  <li key={item.id} className="flex items-center gap-4 bg-surface px-4 py-4 transition hover:bg-raised/60">
                     <div className="grid w-20 shrink-0 place-items-center">
                       {slot === 'frame' && <Avatar url={user.avatarUrl} name={user.username} size={48} frame={item.id} />}
                       {slot === 'title' && <span className="rounded bg-raised px-2 py-1 text-xs font-semibold text-gold">{t(item.name)}</span>}
                       {slot === 'nameEffect' && <span className={`text-sm font-semibold ${item.className}`}>{user.username}</span>}
                       {slot === 'bubble' && <span className={`w-fit text-xs ${item.className}`}>{t('Hallo 👋')}</span>}
+                      {slot === 'aura' && <span className={`block h-12 w-20 rounded-lg border border-line bg-bg ${item.className}`} />}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{t(item.name)}</p>
