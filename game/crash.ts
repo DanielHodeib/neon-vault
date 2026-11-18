@@ -13,6 +13,7 @@ const WAIT_MS = 7000;
 const AFTER_CRASH_MS = 4000;
 const TICK_MS = 100;
 const MAX_POINT = 1000;
+const FAST = 6; // once nobody is left in the round the curve runs this much faster
 
 /** 1 % of rounds bust at 1.00×; otherwise P(point ≥ x) = 0.99 / x. */
 export const crashPointFrom = (r: number) => Math.min(MAX_POINT, Math.max(1, Math.floor(99 / (1 - r)) / 100));
@@ -62,8 +63,14 @@ export function startCrash(io: Server) {
   const run = () => {
     Object.assign(round, { phase: 'running', startedAt: Date.now() });
     io.to('crash').emit('crash:state', crashState());
+    let curveMs = 0; // position on the curve; runs ahead of the clock while nobody is left in
+    let last = Date.now();
     const timer = setInterval(() => {
-      round.multiplier = Math.min(multiplierAt(Date.now() - round.startedAt), round.point);
+      const now = Date.now();
+      const someoneIn = [...round.bets.values()].some((b) => !b.cashedAt);
+      curveMs += (now - last) * (someoneIn ? 1 : FAST);
+      last = now;
+      round.multiplier = Math.min(multiplierAt(curveMs), round.point);
       for (const bet of round.bets.values()) {
         if (bet.paid && !bet.cashedAt && bet.auto && round.multiplier >= bet.auto && bet.auto <= round.point) void cashOut(io, bet, bet.auto).catch(console.error);
       }
