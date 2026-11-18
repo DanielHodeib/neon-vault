@@ -6,6 +6,7 @@ import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { bjTotal, isBlackjack, newDeck, rankValue } from './cards';
 import { id as newId, randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 const MAX_SEATS = 5;
 const BET_WINDOW_MS = 10_000;
@@ -138,7 +139,10 @@ export function registerBlackjack(io: Server): Register {
       }
       const won = s.hands.reduce((sum, h) => sum + (h.won ?? 0), 0) + (dealerBj ? s.insurance * 3 : 0);
       s.net = s.hands.length ? won - s.hands.reduce((sum, h) => sum + h.bet, 0) - s.insurance : null;
-      if (s.userId) void payout(s.userId, won, 'blackjack').catch(console.error);
+      if (s.userId) {
+        void payout(s.userId, won, 'blackjack').catch(console.error);
+        if (s.hands.length) watchRound(s.userId, 'blackjack', s.hands.reduce((sum, h) => sum + h.bet, 0), won, s.hands.map((h) => h.result).join('/'));
+      }
     }
     emit(t);
     schedule(t, RESULT_MS, () => resetRound(t));

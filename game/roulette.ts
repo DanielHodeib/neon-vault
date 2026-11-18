@@ -6,6 +6,7 @@ import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 const BET_MS = 15_000;
 const SPIN_MS = 6_000;
@@ -77,6 +78,7 @@ export function startRoulette(io: Server) {
     for (const [userId, p] of table.players) {
       const win = p.bets.reduce((sum, b) => sum + b.amount * rouletteMultiplier(b, n), 0);
       await payout(userId, win, 'roulette').catch(console.error);
+      watchRound(userId, 'roulette', p.bets.reduce((s, b) => s + b.amount, 0), win, String(n));
     }
     setTimeout(betting, RESULT_MS);
   };

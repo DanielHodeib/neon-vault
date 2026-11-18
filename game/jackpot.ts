@@ -6,6 +6,7 @@ import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { JACKPOT_CLOSE_MS, JACKPOT_DRAW_MS, JACKPOT_FEE, JACKPOT_ROUND_MS } from '@/lib/wheel';
 import { rand } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 /** Index whose cumulative range [start, start + total) contains `roll` (0 ≤ roll < sum). */
 export function pickWeighted(totals: number[], roll: number) {
@@ -60,6 +61,7 @@ export const registerJackpot: Register = (io, socket) => {
     emit();
     io.to('jackpot').emit('jackpot:result', round.winner);
     await payout(userId, win, 'jackpot').catch(console.error);
+    for (const [id, q] of entries) watchRound(id, 'jackpot', q.total, id === userId ? win : 0, `${Math.round((q.total / pot) * 100)} %`);
     systemMessage(`${p.username} gewinnt den Jackpot: ${win.toLocaleString('de-DE')} NVC!`);
     setTimeout(() => {
       Object.assign(round, { id: round.id + 1, phase: 'open', endsAt: null, players: new Map(), winner: null });

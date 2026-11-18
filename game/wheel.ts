@@ -6,6 +6,7 @@ import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { WHEEL_BET_MS, WHEEL_BONUS_MS, WHEEL_BONUS_SEGMENTS, WHEEL_BONUS_TRIGGER, WHEEL_MULTIPLIERS, WHEEL_RESULT_MS, WHEEL_SEGMENTS, WHEEL_SPIN_MS } from '@/lib/wheel';
 import { randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 const betSchema = z.object({ multiplier: z.number().refine((m) => WHEEL_MULTIPLIERS.includes(m)), amount });
 type WheelBet = z.infer<typeof betSchema>;
@@ -59,6 +60,7 @@ export function startWheel(io: Server) {
       const pays = m === WHEEL_BONUS_TRIGGER && table.bonusIndex !== null ? WHEEL_BONUS_SEGMENTS[table.bonusIndex] : m;
       const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.multiplier === m ? b.amount * pays : 0), 0));
       await payout(userId, win, 'wheel').catch(console.error);
+      watchRound(userId, 'wheel', p.bets.reduce((s, b) => s + b.amount, 0), win, `${m}×`);
     }
     setTimeout(betting, WHEEL_RESULT_MS);
   };

@@ -7,6 +7,7 @@ import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { rand } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 const WAIT_MS = 7000;
 const AFTER_CRASH_MS = 4000;
@@ -47,6 +48,7 @@ async function cashOut(io: Server, bet: Bet, at: number) {
   io.to('crash').emit('crash:state', crashState());
   const win = boostedWin('crash', bet.userId, bet.amount * at);
   await payout(bet.userId, win, 'crash');
+  watchRound(bet.userId, 'crash', bet.amount, win, `${at.toFixed(2)}×`, at);
   return win;
 }
 
@@ -76,6 +78,7 @@ export function startCrash(io: Server) {
     round.phase = 'crashed';
     round.history = [round.point, ...round.history].slice(0, 20);
     io.to('crash').emit('crash:state', crashState());
+    for (const bet of round.bets.values()) if (bet.paid && !bet.cashedAt) watchRound(bet.userId, 'crash', bet.amount, 0, `💥 ${round.point.toFixed(2)}×`);
     for (const bet of round.bets.values()) if (bet.paid && !bet.cashedAt) void cashback(bet.userId, bet.amount, 'crash').catch(console.error);
     setTimeout(newRound, AFTER_CRASH_MS);
   };

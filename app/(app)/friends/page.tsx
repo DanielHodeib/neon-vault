@@ -75,7 +75,7 @@ export default async function FriendsPage() {
                       <span className="truncate text-xs text-faint">{online ? t(online.activity) : 'offline'}</span>
                     </span>
                     <div className="flex gap-1">
-                      {online && online.activity !== 'Lobby' && (
+                      {online && (
                         <Link href={`/watch/${encodeURIComponent(u.username)}`} className="btn-secondary h-8 text-xs">👀 {t('Zuschauen')}</Link>
                       )}
                       <Link href={`/messages?u=${encodeURIComponent(u.username)}`} className="btn-ghost h-8 text-xs">{t('Nachricht')}</Link>

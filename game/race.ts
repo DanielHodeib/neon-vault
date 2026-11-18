@@ -7,6 +7,7 @@ import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { pickWeighted } from './jackpot';
 import { rand, randInt } from './rng';
 import { amount, empty, handle, type Register } from './socket';
+import { watchRound } from './watch';
 
 type RaceBet = { horse: number; amount: number };
 type Player = { username: string; bets: RaceBet[] };
@@ -79,6 +80,7 @@ export function startRace(io: Server) {
     for (const [userId, p] of table.players) {
       const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.horse === w ? b.amount * table.field[w].odds : 0), 0));
       await payout(userId, win, 'race').catch(console.error);
+      watchRound(userId, 'race', p.bets.reduce((s, b) => s + b.amount, 0), win, HORSES[w].name);
     }
     setTimeout(betting, RACE_RESULT_MS);
   };
