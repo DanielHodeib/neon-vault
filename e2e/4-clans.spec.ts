@@ -23,6 +23,15 @@ test('clans: found, join, tag follows the clan, leave', async ({ browser }) => {
   await go(b, '/clans');
   await b.getByRole('button', { name: 'Beitreten' }).click();
   await expect(b.getByText(`Willkommen bei [${tag}]!`)).toBeVisible();
+  // perks tab and clan chat between both members
+  await go(b, '/clans?tab=perks');
+  await expect(b.getByRole('heading', { name: 'Clan-Level 1' })).toBeVisible();
+  await go(a, '/clans?tab=chat');
+  await go(b, '/clans?tab=chat');
+  const input = b.locator('input[aria-label="Nachricht an den Clan …"]:visible');
+  await input.fill('Hallo Clan');
+  await input.press('Enter');
+  await expect(a.getByText('Hallo Clan').locator('visible=true')).toBeVisible();
   await go(b, `/profile/${nameB}`);
   await expect(b.getByText(`[${tag}]`).first()).toBeVisible();
 

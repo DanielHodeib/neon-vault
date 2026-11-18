@@ -25,6 +25,7 @@ import { refundMines, registerMines } from './mines';
 import { registerPlinko } from './plinko';
 import { refundArcade, registerArcade } from './arcade';
 import { refundDuels, registerDuel } from './duel';
+import { registerClanChat } from './clanChat';
 import { registerWatch } from './watch';
 import { refundWheel, registerWheel, startWheel } from './wheel';
 import { empty, handle, type GameSocket } from './socket';
@@ -37,7 +38,7 @@ export function setupRealtime(io: Server) {
   startRoulette(io);
   startWheel(io);
   startRace(io);
-  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerHilo, registerWheel, registerJackpot, registerRace, registerDm, registerArcade, registerDuel, registerWatch, registerBlackjack(io), registerPoker(io)];
+  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerHilo, registerWheel, registerJackpot, registerRace, registerDm, registerArcade, registerDuel, registerWatch, registerClanChat, registerBlackjack(io), registerPoker(io)];
 
   // The session cookie is the only source of identity; nothing from the client is trusted.
   io.use(async (socket, next) => {

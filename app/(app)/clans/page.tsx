@@ -1,11 +1,13 @@
 import { Crown, DoorOpen, Lock, Shield } from 'lucide-react';
 import Link from 'next/link';
 
-import { answerRequest, cancelRequest, createClan, disbandClan, joinClan, kickMember, leaveClan, transferLeader, updateClan } from '@/app/actions/clans';
+import { answerRequest, cancelRequest, claimClanGoal, createClan, disbandClan, joinClan, kickMember, leaveClan, transferLeader, updateClan } from '@/app/actions/clans';
 import { FormButton } from '@/components/FormButton';
 import { ActionForm, Avatar, Empty, PageHeader, Section, SubmitButton, UserLink } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
-import { CLAN_COST, CLAN_MAX_MEMBERS } from '@/lib/clans';
+import { ClanChat } from '@/components/ClanChat';
+import { CLAN_COST, CLAN_GOALS, CLAN_LEVEL_XP, CLAN_MIN_OWN_VOLUME, CLAN_PERKS, clanLevel, goalReward, perksOf } from '@/lib/clans';
+import { weekKey, weekStakes } from '@/lib/clanStats';
 import { coins } from '@/lib/format';
 import { db, hub } from '@/lib/hub';
 import { getT } from '@/lib/i18nServer';
@@ -19,13 +21,19 @@ export default async function ClansPage({ searchParams }: PageProps<'/clans'>) {
   const t = await getT();
   const me = await requireUser();
   const wanted = (await searchParams).tab;
-  const tabs: ('mine' | 'all' | 'found')[] = me.clanId ? ['mine', 'all'] : ['all', 'found'];
+  const tabs: ('mine' | 'perks' | 'chat' | 'all' | 'found')[] = me.clanId ? ['mine', 'perks', 'chat', 'all'] : ['all', 'found'];
   const tab = tabs.find((x) => x === wanted) ?? tabs[0];
-  const label = { mine: 'Mein Clan', all: 'Alle Clans', found: 'Gründen' };
+  const label = { mine: 'Mein Clan', perks: 'Vorteile', chat: 'Clan-Chat', all: 'Alle Clans', found: 'Gründen' };
 
   const clans = await db.clan.findMany({ include: { members: { select: { id: true, username: true, xp: true, avatarUrl: true, frame: true }, orderBy: { xp: 'desc' } }, requests: true } });
-  const ranked = clans.map((c) => ({ ...c, xp: c.members.reduce((s, m) => s + m.xp, 0) })).sort((a, b) => b.xp - a.xp);
+  const ranked = clans.map((c) => {
+    const xp = c.members.reduce((s, m) => s + m.xp, 0);
+    return { ...c, xp, level: clanLevel(xp) };
+  }).sort((a, b) => b.xp - a.xp);
   const mine = ranked.find((c) => c.id === me.clanId);
+  const [clanVolume, ownVolume, claimed] = mine
+    ? await Promise.all([weekStakes(mine.members.map((m) => m.id)), weekStakes([me.id]), db.clanClaim.findMany({ where: { userId: me.id, week: weekKey() } })])
+    : [0, 0, []];
   const asked = new Set(clans.filter((c) => c.requests.some((r) => r.userId === me.id)).map((c) => c.id));
 
   return (
@@ -54,14 +62,14 @@ export default async function ClansPage({ searchParams }: PageProps<'/clans'>) {
                   <span className="block truncate text-xs text-muted">{c.description || t('Keine Beschreibung.')}</span>
                 </span>
                 <span className="num text-xs text-muted">
-                  {c.members.length}/{CLAN_MAX_MEMBERS} · {coins(c.xp)} XP
+                  Lv {c.level} · {c.members.length}/{perksOf(c.level).maxMembers} · {coins(c.xp)} XP
                 </span>
                 {c.id === me.clanId ? (
                   <span className="chip-active">{t('Dein Clan')}</span>
                 ) : me.clanId ? null : asked.has(c.id) ? (
                   <FormButton action={cancelRequest.bind(null, c.id)} className="btn-ghost h-8 text-xs">{t('Angefragt – zurückziehen')}</FormButton>
                 ) : (
-                  <FormButton action={joinClan.bind(null, c.id)} disabled={c.members.length >= CLAN_MAX_MEMBERS} className="btn-secondary h-8 text-xs">
+                  <FormButton action={joinClan.bind(null, c.id)} disabled={c.members.length >= perksOf(c.level).maxMembers} className="btn-secondary h-8 text-xs">
                     {c.open ? t('Beitreten') : t('Anfragen')}
                   </FormButton>
                 )}
@@ -92,9 +100,80 @@ export default async function ClansPage({ searchParams }: PageProps<'/clans'>) {
               <input type="checkbox" name="open" defaultChecked /> {t('Jeder darf direkt beitreten')}
             </label>
             <SubmitButton>{t('Gründen')} · {coins(CLAN_COST)} NVC</SubmitButton>
-            <p className="text-xs text-faint">{t('Bis zu {n} Mitglieder. Du leitest den Clan und nimmst Anfragen an.', { n: CLAN_MAX_MEMBERS })}</p>
+            <p className="text-xs text-faint">{t('Bis zu {n} Mitglieder. Du leitest den Clan und nimmst Anfragen an.', { n: CLAN_PERKS[0].maxMembers })}</p>
           </ActionForm>
         </Section>
+      )}
+
+      {tab === 'chat' && mine && <ClanChat />}
+
+      {tab === 'perks' && mine && (
+        <div className="space-y-4">
+          <section className="panel p-5">
+            <div className="flex items-baseline justify-between gap-3">
+              <h2 className="text-lg font-semibold">{t('Clan-Level {n}', { n: mine.level })}</h2>
+              <span className="num text-sm text-muted">
+                {coins(mine.xp)} XP{CLAN_LEVEL_XP[mine.level] ? ` / ${coins(CLAN_LEVEL_XP[mine.level])}` : ''}
+              </span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-raised">
+              <div className="grow-x h-full rounded-full bg-accent" style={{ width: `${CLAN_LEVEL_XP[mine.level] ? Math.min(100, ((mine.xp - CLAN_LEVEL_XP[mine.level - 1]) / (CLAN_LEVEL_XP[mine.level] - CLAN_LEVEL_XP[mine.level - 1])) * 100) : 100}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-faint">{t('Der Clan steigt mit der XP aller Mitglieder auf – jede Runde von jedem zählt.')}</p>
+          </section>
+
+          <Section title="Wochenziele" pad>
+            <p className="mb-3 text-sm text-muted">
+              {t('Alle Einsätze des Clans diese Woche: {n} NVC. Jedes erreichte Ziel kann jedes Mitglied einmal abholen (mindestens {m} NVC eigener Einsatz).', { n: coins(clanVolume), m: coins(CLAN_MIN_OWN_VOLUME) })}
+            </p>
+            <ul className="space-y-3">
+              {CLAN_GOALS.map((g) => {
+                const reached = clanVolume >= g.volume;
+                const done = claimed.some((c) => c.tier === g.tier);
+                return (
+                  <li key={g.tier} className="rounded-xl border border-line p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                      <span className="font-medium">{coins(g.volume)} NVC</span>
+                      <span className="num text-gold">+{coins(goalReward(g.tier, mine.level))} NVC {t('pro Mitglied')}</span>
+                      {done ? (
+                        <span className="chip-active">{t('Abgeholt')}</span>
+                      ) : (
+                        <FormButton action={claimClanGoal.bind(null, g.tier)} disabled={!reached || ownVolume < CLAN_MIN_OWN_VOLUME} className="btn-primary h-8 text-xs">
+                          {t('Abholen')}
+                        </FormButton>
+                      )}
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-raised">
+                      <div className={`grow-x h-full rounded-full ${reached ? 'bg-win' : 'bg-accent/60'}`} style={{ width: `${Math.min(100, (clanVolume / g.volume) * 100)}%` }} />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            {ownVolume < CLAN_MIN_OWN_VOLUME && <p className="mt-3 text-xs text-faint">{t('Dein eigener Einsatz diese Woche: {n} NVC.', { n: coins(ownVolume) })}</p>}
+          </Section>
+
+          <Section title="Vorteile pro Level">
+            <ul className="divide-y divide-line text-sm">
+              {CLAN_PERKS.map((p, i) => (
+                <li key={i} className={`px-4 py-3 ${mine.level >= i + 1 ? '' : 'opacity-50'}`}>
+                  <p className="flex items-center justify-between font-medium">
+                    <span>{t('Level {n}', { n: i + 1 })}</span>
+                    <span className="num text-xs text-faint">{coins(CLAN_LEVEL_XP[i])} XP</span>
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {[
+                      t('{n} Mitglieder', { n: p.maxMembers }),
+                      i === 0 ? t('Clan-Chat und Wochenziele') : null,
+                      p.goalBonus ? t('+{p} % auf Wochenziel-Belohnungen', { p: Math.round(p.goalBonus * 100) }) : null,
+                      p.shopDiscount ? t('{p} % Rabatt im Shop', { p: Math.round(p.shopDiscount * 100) }) : null,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        </div>
       )}
 
       {tab === 'mine' && mine && (
@@ -109,7 +188,7 @@ export default async function ClansPage({ searchParams }: PageProps<'/clans'>) {
                 <p className="text-sm text-muted">{mine.description || t('Keine Beschreibung.')}</p>
               </div>
               <div className="num text-right text-sm text-muted">
-                <p>{mine.members.length}/{CLAN_MAX_MEMBERS} {t('Mitglieder')}</p>
+                <p>Lv {mine.level} · {mine.members.length}/{perksOf(mine.level).maxMembers} {t('Mitglieder')}</p>
                 <p>{coins(mine.xp)} XP</p>
               </div>
             </div>

@@ -313,3 +313,13 @@ model ClanRequest {
 
   @@id([clanId, userId])
 }
+
+/// A weekly clan goal a player already claimed (one per player, week and tier).
+model ClanClaim {
+  userId    String
+  week      String
+  tier      Int
+  createdAt DateTime @default(now())
+
+  @@id([userId, week, tier])
+}

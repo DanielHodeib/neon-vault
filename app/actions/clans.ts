@@ -5,16 +5,19 @@ import { z } from 'zod';
 
 import { parse, run, type ActionState } from '@/lib/action';
 import { requireUser } from '@/lib/auth';
-import { CLAN_COST, CLAN_MAX_MEMBERS, CLAN_NAME, CLAN_TAG } from '@/lib/clans';
+import { CLAN_COST, CLAN_GOALS, CLAN_MIN_OWN_VOLUME, CLAN_NAME, CLAN_TAG, goalReward, perksOf } from '@/lib/clans';
+import { clanLevelOf, weekKey, weekStakes } from '@/lib/clanStats';
 import { db, notify, UserError } from '@/lib/hub';
+import { dropClanHistory, leaveClanRoom } from '@/game/clanChat';
 import { applyLedger } from '@/lib/wallet';
 
 const checkbox = z.literal('on').optional().transform(Boolean);
 
 /** Puts a player into a clan (and copies the tag next to their name); fails when full or already in one. */
 async function addMember(clan: { id: string; tag: string }, userId: string) {
+  const { level } = await clanLevelOf(clan.id); // outside the transaction: it runs on its own connection
   await db.$transaction(async (tx) => {
-    if ((await tx.user.count({ where: { clanId: clan.id } })) >= CLAN_MAX_MEMBERS) throw new UserError('Der Clan ist voll.');
+    if ((await tx.user.count({ where: { clanId: clan.id } })) >= perksOf(level).maxMembers) throw new UserError('Der Clan ist voll.');
     const { count } = await tx.user.updateMany({ where: { id: userId, clanId: null }, data: { clanId: clan.id, clanTag: clan.tag } });
     if (!count) throw new UserError('Du bist schon in einem Clan.');
     await tx.clanRequest.deleteMany({ where: { userId } });
@@ -110,8 +113,10 @@ export async function leaveClan() {
     if (clan?.leaderId === me.id) {
       if (clan._count.members > 1) throw new UserError('Übergib erst die Leitung an jemanden – oder löse den Clan auf.');
       await db.clan.delete({ where: { id: clan.id } });
+      dropClanHistory(clan.id);
     }
     await db.user.update({ where: { id: me.id }, data: { clanId: null, clanTag: null } });
+    leaveClanRoom(me.id, clan?.id ?? me.clanId);
     refresh();
     return 'Du hast den Clan verlassen.';
   });
@@ -124,6 +129,7 @@ export async function kickMember(clanId: string, userId: string) {
     if (userId === me.id) throw new UserError('Dich selbst kannst du nicht rauswerfen.');
     const { count } = await db.user.updateMany({ where: { id: userId, clanId }, data: { clanId: null, clanTag: null } });
     if (!count) throw new UserError('Spieler nicht gefunden.');
+    leaveClanRoom(userId, clanId);
     await notify(userId, 'Aus dem Clan entfernt', `Du wurdest aus [${clan.tag}] ${clan.name} entfernt.`).catch(console.error);
     refresh();
     return 'Entfernt.';
@@ -157,9 +163,40 @@ export async function disbandClan(clanId: string) {
   return run(async () => {
     const me = await requireUser();
     await leaderOf(clanId, me.id);
+    const members = await db.user.findMany({ where: { clanId }, select: { id: true } });
     await db.user.updateMany({ where: { clanId }, data: { clanTag: null } }); // clanId itself is cleared by the relation
     await db.clan.delete({ where: { id: clanId } });
+    for (const m of members) leaveClanRoom(m.id, clanId);
+    dropClanHistory(clanId);
     refresh();
     return 'Clan aufgelöst.';
+  });
+}
+
+/** Pays a reached weekly goal to one member, once per week and tier; needs some play of their own. */
+export async function claimClanGoal(tier: number) {
+  return run(async () => {
+    const me = await requireUser();
+    const goal = CLAN_GOALS.find((g) => g.tier === tier);
+    if (!goal || !me.clanId) throw new UserError('Ziel nicht verfügbar.');
+    const members = (await db.user.findMany({ where: { clanId: me.clanId }, select: { id: true } })).map((m) => m.id);
+    const [clanVolume, own, { level }] = await Promise.all([weekStakes(members), weekStakes([me.id]), clanLevelOf(me.clanId)]);
+    if (clanVolume < goal.volume) throw new UserError('Das Ziel ist noch nicht erreicht.');
+    if (own < CLAN_MIN_OWN_VOLUME) throw new UserError('Spiel selbst mit – ab 1.000 NVC Einsatz diese Woche bekommst du die Belohnung.');
+    const week = weekKey();
+    try {
+      await db.clanClaim.create({ data: { userId: me.id, week, tier } }); // the primary key stops a second claim
+    } catch {
+      throw new UserError('Die hast du diese Woche schon abgeholt.');
+    }
+    const reward = goalReward(tier, level);
+    try {
+      await applyLedger([{ userId: me.id, amount: reward, kind: 'BONUS', note: `Clan-Ziel ${tier}` }]);
+    } catch (err) {
+      await db.clanClaim.delete({ where: { userId_week_tier: { userId: me.id, week, tier } } });
+      throw err;
+    }
+    refresh();
+    return `+${reward.toLocaleString('de-DE')} NVC vom Clan-Ziel!`;
   });
 }

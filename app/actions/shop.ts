@@ -5,6 +5,8 @@ import { refresh } from 'next/cache';
 import { run } from '@/lib/action';
 import { requireUser } from '@/lib/auth';
 import { db, UserError } from '@/lib/hub';
+import { clanLevelOf } from '@/lib/clanStats';
+import { shopPrice } from '@/lib/clans';
 import { SHOP_SLOTS, shopItem, type ShopSlot } from '@/lib/shop';
 import { applyLedger } from '@/lib/wallet';
 
@@ -22,7 +24,7 @@ export async function buyItem(id: string) {
       throw new UserError('Das hast du schon.');
     }
     try {
-      await applyLedger([{ userId: user.id, amount: -item.price, kind: 'SHOP', note: item.name }]);
+      await applyLedger([{ userId: user.id, amount: -shopPrice(item.price, (await clanLevelOf(user.clanId)).level), kind: 'SHOP', note: item.name }]);
     } catch (err) {
       await db.shopPurchase.delete({ where: { userId_item: { userId: user.id, item: item.id } } });
       throw err;

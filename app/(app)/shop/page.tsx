@@ -5,6 +5,8 @@ import { FormButton } from '@/components/FormButton';
 import { Avatar, PageHeader, Section } from '@/components/ui';
 import { requireUser } from '@/lib/auth';
 import { coins } from '@/lib/format';
+import { clanLevelOf } from '@/lib/clanStats';
+import { shopPrice } from '@/lib/clans';
 import { db } from '@/lib/hub';
 import { SHOP_ITEMS, SHOP_SLOTS, SLOT_LABEL, type ShopSlot } from '@/lib/shop';
 import { getT } from '@/lib/i18nServer';
@@ -20,6 +22,7 @@ export default async function ShopPage({ searchParams }: PageProps<'/shop'>) {
   const slot: ShopSlot = SHOP_SLOTS.find((s) => s === wanted) ?? 'frame';
   const owned = new Set((await db.shopPurchase.findMany({ where: { userId: user.id }, select: { item: true } })).map((p) => p.item));
   const balance = Number(user.balance);
+  const clanLevel = user.clanId ? (await clanLevelOf(user.clanId)).level : 1;
 
   return (
     <>
@@ -40,6 +43,7 @@ export default async function ShopPage({ searchParams }: PageProps<'/shop'>) {
           <Section key={slot} title={t(SLOT_LABEL[slot])} action={user[slot] && <FormButton action={equipItem.bind(null, slot, null)} className="btn-ghost h-8 text-xs">Ablegen</FormButton>}>
             <ul className="stagger grid gap-px bg-line sm:grid-cols-2">
               {SHOP_ITEMS.filter((i) => i.slot === slot).sort((a, b) => a.price - b.price).map((item) => {
+                const price = shopPrice(item.price, clanLevel);
                 const has = owned.has(item.id);
                 const worn = user[slot] === item.id;
                 return (
@@ -62,11 +66,12 @@ export default async function ShopPage({ searchParams }: PageProps<'/shop'>) {
                     ) : (
                       <FormButton
                         action={buyItem.bind(null, item.id)}
-                        confirm={t('{item} für {n} NVC kaufen?', { item: t(item.name), n: coins(item.price) })}
-                        disabled={balance < item.price}
+                        confirm={t('{item} für {n} NVC kaufen?', { item: t(item.name), n: coins(price) })}
+                        disabled={balance < price}
                         className="btn-primary h-9 text-xs"
                       >
-                        <span className="num">{coins(item.price)}</span>
+                        <span className="num">{coins(price)}</span>
+                        {price < item.price && <span className="num ml-1.5 text-[10px] line-through opacity-60">{coins(item.price)}</span>}
                       </FormButton>
                     )}
                   </li>
