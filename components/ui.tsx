@@ -7,6 +7,8 @@ import { useActionState, useEffect, type ReactNode } from 'react';
 import { useFormStatus } from 'react-dom';
 import toast from 'react-hot-toast';
 
+import { errorToast } from '@/lib/toastOnce';
+
 import type { ActionState } from '@/lib/action';
 import { coins } from '@/lib/format';
 import { ROLE_STYLE } from '@/lib/roles';
@@ -75,7 +77,7 @@ export function ActionForm({
 }) {
   const [state, formAction] = useActionState(action, undefined);
   useEffect(() => {
-    if (state?.error) toast.error(tPage(state.error));
+    if (state?.error) errorToast(tPage(state.error));
     if (state?.success) toast.success(tPage(state.success));
   }, [state]);
   return (
@@ -88,7 +90,7 @@ export function ActionForm({
 /** Calls a server action that returns ActionState and toasts it. */
 export async function toastAction(promise: Promise<ActionState | void>) {
   const state = await promise;
-  if (state?.error) toast.error(tPage(state.error));
+  if (state?.error) errorToast(tPage(state.error));
   if (state?.success) toast.success(tPage(state.success));
 }
 
@@ -162,7 +164,7 @@ export function BetInput({ value, onChange, balance, min = 1 }: { value: number;
           inputMode="numeric"
           min={min}
           value={value || ''}
-          onChange={(e) => onChange(Math.floor(Number(e.target.value)) || 0)}
+          onChange={(e) => onChange(Math.min(Math.floor(Number(e.target.value)) || 0, Math.max(balance, 0)))}
         />
         {[['½', value / 2], ['2×', value * 2], ['Max', balance]].map(([label, v]) => (
           <button key={label} type="button" className="border-l border-line px-3 text-xs font-medium text-muted hover:text-fg" onClick={() => set(Number(v))}>

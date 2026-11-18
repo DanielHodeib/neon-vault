@@ -47,7 +47,6 @@ export function Plinko() {
   const [results, setResults] = useState<(Drop & { bet: number })[]>([]);
   const [now, setNow] = useState(0);
   const [hit, setHit] = useState<{ id: number; slot: number; net: number } | null>(null);
-  const [session, setSession] = useState({ balls: 0, net: 0 });
   const nextId = useRef(0);
   const table = PLINKO[risk];
 
@@ -63,18 +62,20 @@ export function Plinko() {
 
   const drop = async () => {
     const bet = amount;
+    if (bet < 1 || bet > balance) return;
     const release = holdBalance();
     const res = await call<Drop>('plinko:drop', { amount: bet, risk });
     if (!res) return release();
     shiftBalance(-bet); // the stake is gone right away …
     const ball: Ball = { ...res, bet, id: nextId.current++, start: performance.now() };
+    sound.release();
+    res.path.forEach((_, k) => setTimeout(() => sound.plink(k), (k / res.path.length) * DURATION));
     setBalls((b) => [...b, ball]);
     setTimeout(() => {
       shiftBalance(res.payout); // … and the payout arrives when the ball lands
       setBalls((b) => b.filter((x) => x.id !== ball.id));
       setResults((r) => [{ ...res, bet }, ...r].slice(0, 12));
       setHit({ id: ball.id, slot: res.slot, net: res.payout - bet });
-      setSession((s) => ({ balls: s.balls + 1, net: s.net + res.payout - bet }));
       release();
       if (res.multiplier >= 2) sound.win(res.multiplier >= 10 ? 2 : 1);
       else if (res.multiplier >= 1) sound.gem();
@@ -92,25 +93,21 @@ export function Plinko() {
         })}
       </svg>
       <div className="mx-auto grid max-w-xl gap-px" style={{ gridTemplateColumns: `repeat(${table.length}, minmax(0, 1fr))`, paddingInline: `${(GAP / WIDTH) * 100}%` }}>
-        {table.map((m, i) => (
-          <span key={i} className="relative">
-            <span key={hit?.slot === i ? hit.id : undefined} className={`num block rounded py-1 text-center text-[9px] font-medium sm:text-xs ${tone(m)} ${hit?.slot === i ? 'pop-in ring-2 ring-fg/70' : ''}`}>{m}</span>
-            {hit?.slot === i && (
-              <span key={hit.id} className={`plinko-float num pointer-events-none absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-xs font-semibold whitespace-nowrap sm:text-sm ${hit.net >= 0 ? 'text-win' : 'text-loss'}`}>
-                {signed(hit.net)}
-              </span>
-            )}
-          </span>
-        ))}
+        {table.map((m, i) => {
+          const hot = hit?.slot === i;
+          return (
+            // the whole cell remounts on every hit, which restarts its animation (no stray copies)
+            <span key={hot ? `${i}-${hit.id}` : i} className="relative">
+              <span className={`num block rounded py-1 text-center text-[9px] font-medium sm:text-xs ${tone(m)} ${hot ? 'pop-in ring-2 ring-fg/70' : ''}`}>{m}</span>
+              {hot && (
+                <span className={`plinko-float num pointer-events-none absolute bottom-full left-1/2 mb-1 -translate-x-1/2 text-xs font-semibold whitespace-nowrap sm:text-sm ${hit.net >= 0 ? 'text-win' : 'text-loss'}`}>
+                  {signed(hit.net)}
+                </span>
+              )}
+            </span>
+          );
+        })}
       </div>
-      {session.balls > 0 && (
-        <p className="mx-auto mt-3 flex max-w-xl justify-between text-xs text-muted">
-          <span>{t('{n} Bälle in dieser Sitzung', { n: session.balls })}</span>
-          <span>
-            {t('Netto')} <span className={`num font-semibold ${session.net >= 0 ? 'text-win' : 'text-loss'}`}>{signed(session.net)}</span>
-          </span>
-        </p>
-      )}
     </div>
   );
 
@@ -125,7 +122,7 @@ export function Plinko() {
           ))}
         </div>
       </div>
-      <button className="btn-primary h-12 w-full text-base" onClick={drop}>{t('Ball fallen lassen')}</button>
+      <button className="btn-primary h-12 w-full text-base" disabled={amount < 1 || amount > balance} onClick={drop}>{t('Ball fallen lassen')}</button>
       <p className="text-xs text-faint">{PLINKO_ROWS} Reihen · bis {Math.max(...table)}×</p>
     </div>
   );

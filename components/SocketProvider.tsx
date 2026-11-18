@@ -3,6 +3,8 @@
 import { usePathname, useRouter } from 'next/navigation';
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import toast from 'react-hot-toast';
+
+import { errorToast } from '@/lib/toastOnce';
 import { io, type Socket } from 'socket.io-client';
 
 import { GAME_NAMES } from '@/lib/format';
@@ -174,8 +176,8 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       new Promise<T | null>((resolve) => {
         if (!socket) return resolve(null);
         socket.timeout(10_000).emit(name, data ?? {}, (err: Error | null, res: { ok: boolean; error?: string } & T) => {
-          if (err) toast.error(tPage('Keine Antwort vom Server.'));
-          else if (!res.ok) toast.error(tPage(res.error ?? 'Fehler'));
+          if (err) errorToast(tPage('Keine Antwort vom Server.'));
+          else if (!res.ok) errorToast(tPage(res.error ?? 'Fehler'));
           resolve(err || !res.ok ? null : res);
         });
       }),
@@ -196,7 +198,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     setTimeout(release, maxMs); // never freeze for good, e.g. if the game unmounts mid-animation
     return release;
   }, []);
-  const shiftBalance = useCallback((delta: number) => setBalance((b) => b + delta), []);
+  const shiftBalance = useCallback((delta: number) => setBalance((b) => Math.max(0, b + delta)), []);
 
   const value = useMemo(
     () => ({ socket, me, balance, online, chat, event, countdown, rain, wins, watchers, call, holdBalance, shiftBalance, dmUnread, setDmUnread }),
