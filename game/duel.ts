@@ -1,7 +1,6 @@
 import { z } from 'zod';
 
 import { DUEL_EXPIRE_MS, DUEL_FEE, DUEL_GAMES, DUEL_MAX_OPEN, DUEL_ROUNDS, duelTotal, type DuelGame, type DuelPublic, type DuelResult, type DuelRound } from '@/lib/duel';
-import { systemMessage } from '@/lib/events';
 import { db, notify, UserError } from '@/lib/hub';
 import { MACHINES } from '@/lib/slots';
 import { PLINKO, PLINKO_ROWS, type PlinkoRisk } from '@/lib/solo';
@@ -131,7 +130,6 @@ export const registerDuel: Register = (io, socket) => {
       recent = [result, ...recent].slice(0, 12);
       io.to('arena').emit('duel:result', result);
       emit();
-      if (prize >= 50_000) systemMessage(`${winner === duel.from.id ? duel.from.name : user.username} gewinnt ein Duell um ${prize.toLocaleString('de-DE')} NVC!`);
       return { result };
     },
     { play: true },

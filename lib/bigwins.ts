@@ -7,7 +7,7 @@ const SPOILER_DELAY_MS = 4_000;
 
 /** Called after every game payout; cheap for small wins (no query). */
 export async function announceWin(userId: string, game: string, amount: number) {
-  if (amount < TICKER_MIN) return;
+  if (amount < TICKER_MIN && game !== 'jackpot') return;
   const user = await db.user.findUnique({ where: { id: userId }, select: { username: true } });
   if (!user) return;
   const win: BigWin = { id: `${Date.now()}-${userId}`, username: user.username, game, amount, at: Date.now() };

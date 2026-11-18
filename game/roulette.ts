@@ -1,7 +1,6 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { REDS, WHEEL } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -78,7 +77,6 @@ export function startRoulette(io: Server) {
     for (const [userId, p] of table.players) {
       const win = p.bets.reduce((sum, b) => sum + b.amount * rouletteMultiplier(b, n), 0);
       await payout(userId, win, 'roulette').catch(console.error);
-      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC beim Roulette auf ${n}!`);
     }
     setTimeout(betting, RESULT_MS);
   };

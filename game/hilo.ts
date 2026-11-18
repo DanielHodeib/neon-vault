@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { HILO_MAX, HILO_SKIPS, hiloChance, hiloStep, hiloStrict } from '@/lib/solo';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -90,7 +89,6 @@ export const registerHilo: Register = (_io, socket) => {
     rounds.delete(user.id); // before the await so it can't pay twice
     const win = Math.floor(round.bet * round.multiplier);
     await payout(user.id, win, 'hilo');
-    if (win >= 50_000) systemMessage(`${user.username} gewinnt ${win.toLocaleString('de-DE')} NVC bei Hi-Lo (${round.multiplier}×)!`);
     return { payout: win, multiplier: round.multiplier };
   });
 };

@@ -1,7 +1,6 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { applyLedger, assertAmount } from '@/lib/wallet';
 import { bestHand, describeHand, handName, newDeck, rankValue } from './cards';
@@ -242,8 +241,6 @@ export function registerPoker(io: Server): Register {
     t.seats.forEach((s, i) => (s.stack += won[i]));
     t.phase = 'showdown';
     for (const r of t.results) say(t, null, `${r.name} gewinnt ${r.won.toLocaleString('de-DE')}${r.hand ? ` mit ${r.hand}` : ''}`);
-    const big = t.results.find((r) => r.won >= 50_000);
-    if (big) systemMessage(`${big.name} gewinnt einen ${big.won.toLocaleString('de-DE')} NVC Pot beim Poker!`);
     void emit(t);
     schedule(t, NEXT_HAND_MS, () => endHand(t));
   };

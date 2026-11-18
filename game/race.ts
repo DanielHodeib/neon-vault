@@ -1,7 +1,6 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { HORSES, RACE_BET_MS, RACE_RESULT_MS, RACE_RUN_MS, raceOdds } from '@/lib/race';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -80,7 +79,6 @@ export function startRace(io: Server) {
     for (const [userId, p] of table.players) {
       const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.horse === w ? b.amount * table.field[w].odds : 0), 0));
       await payout(userId, win, 'race').catch(console.error);
-      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC mit ${HORSES[w].name} beim Rennen!`);
     }
     setTimeout(betting, RACE_RESULT_MS);
   };

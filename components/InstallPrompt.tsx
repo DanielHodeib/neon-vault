@@ -12,13 +12,25 @@ const noSubscribe = () => () => {};
 // iPhone/iPad Safari has no install event; there it's "Share → Add to Home Screen".
 const isIos = () => /iphone|ipad|ipod/i.test(navigator.userAgent) && !('MSStream' in window);
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || (navigator as Navigator & { standalone?: boolean }).standalone === true;
+// In-app browsers (WhatsApp, Instagram …) have no "Add to Home Screen"; other iOS browsers hide it in their own menu.
+const iosBrowser = () => {
+  const ua = navigator.userAgent;
+  if (/FBAN|FBAV|Instagram|WhatsApp|Line\/|Discord|Snapchat|TikTok|musical_ly|Twitter|GSA\//i.test(ua)) return 'inapp';
+  if (/CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)) return 'other';
+  return 'safari';
+};
+const IOS_HINT = {
+  safari: 'Tippe unten auf „Teilen“, scrolle runter und wähle „Zum Home-Bildschirm“.',
+  other: 'Tippe auf „Teilen“ (Adressleiste oder ⋯) und dann „Zum Home-Bildschirm“. Fehlt es, öffne die Seite in Safari.',
+  inapp: 'Öffne die Seite zuerst in Safari (⋯ → „In Safari öffnen“) – hier gibt es „Zum Home-Bildschirm“ nicht.',
+} as const;
 
 /** Phone-only banner: install the casino as an app (Android prompt, iOS hint). Dismissed for good with ×. */
 export function InstallPrompt() {
   const t = useT();
   const [dismissed, setDismissed] = usePref('nv-install-dismissed', '0');
   const [event, setEvent] = useState<InstallEvent | null>(null);
-  const ios = useSyncExternalStore(noSubscribe, () => isIos() && !isStandalone(), () => false);
+  const ios = useSyncExternalStore(noSubscribe, () => (isIos() && !isStandalone() ? iosBrowser() : null), () => null);
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
@@ -37,7 +49,7 @@ export function InstallPrompt() {
       </span>
       <p className="min-w-0 flex-1 text-xs">
         <span className="block font-semibold">{t('Neon Vault als App')}</span>
-        <span className="text-muted">{event ? t('Vollbild, ohne Browserleiste, direkt vom Homescreen.') : t('Tippe auf „Teilen“ und dann „Zum Home-Bildschirm“.')}</span>
+        <span className="text-muted">{event ? t('Vollbild, ohne Browserleiste, direkt vom Homescreen.') : t(IOS_HINT[ios!])}</span>
       </p>
       {event && (
         <button

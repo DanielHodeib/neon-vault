@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { eventParam, systemMessage } from '@/lib/events';
+import { eventParam } from '@/lib/events';
 import { db, UserError } from '@/lib/hub';
 import { payout, placeBet } from '@/lib/wallet';
 import { MACHINES, pickSpecial, spin } from './slots';
@@ -51,7 +51,6 @@ export const registerSlots: Register = (_io, socket) => {
         });
       }
       await payout(user.id, win, 'slots');
-      if (win >= 50_000) systemMessage(`${user.username} knackt ${win.toLocaleString('de-DE')} NVC an ${machine.name}!`);
       return { ...result, freeWon: result.freeSpins, win, bet, free: isFree, special: isFree ? special : result.special, freeSpins: await freeSpins() };
     },
     { play: true },

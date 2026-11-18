@@ -28,9 +28,8 @@ export const DAILY_SEGMENTS = [
 /** +10 % per consecutive day, capped at ×1.9 from day 10. */
 export const streakMultiplier = (streak: number) => 1 + Math.min(Math.max(streak, 1) - 1, 9) / 10;
 
-/** Live ticker: wins from this size (one round) show up; from CELEBRATE_MIN everyone gets the full-screen moment. */
+/** Live ticker: wins from this size (one round) show up. */
 export const TICKER_MIN = 5_000;
-export const CELEBRATE_MIN = 100_000;
 
 /** Emoji reactions in the live games; everyone in the same room sees them rise over the board. */
 export const REACTION_ROOMS = ['crash', 'roulette', 'race', 'wheel', 'jackpot', 'coinflip'] as const;

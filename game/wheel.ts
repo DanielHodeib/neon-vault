@@ -1,7 +1,6 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { WHEEL_BET_MS, WHEEL_BONUS_MS, WHEEL_BONUS_SEGMENTS, WHEEL_BONUS_TRIGGER, WHEEL_MULTIPLIERS, WHEEL_RESULT_MS, WHEEL_SEGMENTS, WHEEL_SPIN_MS } from '@/lib/wheel';
@@ -60,7 +59,6 @@ export function startWheel(io: Server) {
       const pays = m === WHEEL_BONUS_TRIGGER && table.bonusIndex !== null ? WHEEL_BONUS_SEGMENTS[table.bonusIndex] : m;
       const win = Math.floor(p.bets.reduce((sum, b) => sum + (b.multiplier === m ? b.amount * pays : 0), 0));
       await payout(userId, win, 'wheel').catch(console.error);
-      if (win >= 50_000) systemMessage(`${p.username} gewinnt ${win.toLocaleString('de-DE')} NVC am Glücksrad auf ${String(pays).replace('.', ',')}x!`);
     }
     setTimeout(betting, WHEEL_RESULT_MS);
   };

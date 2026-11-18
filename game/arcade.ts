@@ -20,14 +20,12 @@ import {
   type TowerRisk,
   type VideoPokerHand,
 } from '@/lib/arcade';
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
 import { newDeck, rankValue, score5 } from './cards';
 import { rand, randInt, shuffle } from './rng';
 import { amount, empty, handle, type Register } from './socket';
 
-const shout = (won: number, text: string) => won >= 50_000 && systemMessage(text);
 
 // ── Rubbellos ────────────────────────────────────────────────────────────────────────────────────
 
@@ -122,7 +120,6 @@ export const registerArcade: Register = (_io, socket) => {
       const card = scratchCard();
       const won = Math.floor(amount * card.multiplier);
       await payout(user.id, won, 'scratch');
-      shout(won, `${user.username} rubbelt ${won.toLocaleString('de-DE')} NVC frei (${card.multiplier}×)!`);
       return { ...card, payout: won };
     },
     { play: true },
@@ -139,7 +136,6 @@ export const registerArcade: Register = (_io, socket) => {
       const { hits, multiplier } = kenoResult(picks, drawn);
       const won = Math.floor(amount * multiplier);
       await payout(user.id, won, 'keno');
-      shout(won, `${user.username} trifft ${hits} von ${picks.length} beim Keno: ${won.toLocaleString('de-DE')} NVC!`);
       return { drawn, hits, multiplier, payout: won };
     },
     { play: true },
@@ -155,7 +151,6 @@ export const registerArcade: Register = (_io, socket) => {
       const result = limboResult();
       const won = result >= t ? Math.floor(amount * t) : 0;
       await payout(user.id, won, 'limbo');
-      shout(won, `${user.username} trifft ${t}× bei Limbo: ${won.toLocaleString('de-DE')} NVC!`);
       return { result, target: t, payout: won };
     },
     { play: true },
@@ -173,7 +168,6 @@ export const registerArcade: Register = (_io, socket) => {
       // A push hands the stake back as a cancelled bet, not as a win.
       if (back === 1) await cancelBet(user.id, won, 'baccarat');
       else await payout(user.id, won, 'baccarat');
-      shout(won, `${user.username} gewinnt ${won.toLocaleString('de-DE')} NVC beim Baccarat!`);
       return { ...hand, side, multiplier: back, payout: won };
     },
     { play: true },
@@ -190,7 +184,6 @@ export const registerArcade: Register = (_io, socket) => {
     const multiplier = towerMultiplier(t.risk, t.floor);
     const won = Math.floor(t.bet * multiplier);
     await payout(user.id, won, 'tower');
-    shout(won, `${user.username} steigt mit ${won.toLocaleString('de-DE')} NVC vom Tower (${multiplier}×)!`);
     return { multiplier, payout: won, traps: t.traps };
   };
 
@@ -274,7 +267,6 @@ export const registerArcade: Register = (_io, socket) => {
     const multiplier = hand ? VP_MULT[hand] : 0;
     const won = Math.floor(h.bet * multiplier);
     await payout(user.id, won, 'vpoker');
-    shout(won, `${user.username} zieht ${VIDEO_POKER_PAYS.find((p) => p.key === hand)?.name} beim Video Poker: ${won.toLocaleString('de-DE')} NVC!`);
     return { cards, hand, multiplier, payout: won };
   });
 };

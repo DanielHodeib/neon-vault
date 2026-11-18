@@ -60,7 +60,7 @@ export const registerJackpot: Register = (io, socket) => {
     emit();
     io.to('jackpot').emit('jackpot:result', round.winner);
     await payout(userId, win, 'jackpot').catch(console.error);
-    if (win >= 50_000) systemMessage(`${p.username} gewinnt den Jackpot: ${win.toLocaleString('de-DE')} NVC!`);
+    systemMessage(`${p.username} gewinnt den Jackpot: ${win.toLocaleString('de-DE')} NVC!`);
     setTimeout(() => {
       Object.assign(round, { id: round.id + 1, phase: 'open', endsAt: null, players: new Map(), winner: null });
       emit();

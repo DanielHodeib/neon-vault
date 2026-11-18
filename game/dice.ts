@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { DICE_MAX, DICE_MIN, diceChance, diceMultiplier } from '@/lib/solo';
 import { payout, placeBet } from '@/lib/wallet';
 import { randInt } from './rng';
@@ -21,7 +20,6 @@ export const registerDice: Register = (_io, socket) => {
       const multiplier = diceMultiplier(diceChance(target, side));
       const won = win ? Math.floor(amount * multiplier) : 0;
       await payout(user.id, won, 'dice');
-      if (won >= 50_000) systemMessage(`${user.username} gewinnt ${won.toLocaleString('de-DE')} NVC beim Dice (${multiplier}×)!`);
       return { roll, win, multiplier, payout: won };
     },
     { play: true },

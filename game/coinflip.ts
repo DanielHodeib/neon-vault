@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { boostedWin, bounty, cashback, eventParam, systemMessage } from '@/lib/events';
+import { boostedWin, bounty, cashback, eventParam } from '@/lib/events';
 import { COINFLIP_SOLO_PAYOUT } from '@/lib/games';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -36,7 +36,6 @@ export const registerCoinflip: Register = (io, socket) => {
       const result: Side = randInt(2) === 0 ? 'heads' : 'tails';
       const win = result === side ? Math.floor(amount * COINFLIP_SOLO_PAYOUT) : 0;
       await payout(user.id, win, 'coinflip');
-      if (win >= 50_000) systemMessage(`${user.username} gewinnt ${win.toLocaleString('de-DE')} NVC im Coinflip!`);
       return { result, win };
     },
     { play: true },
@@ -100,7 +99,6 @@ export const registerCoinflip: Register = (io, socket) => {
       await bounty(winner, loser, winnerName).catch(console.error);
       emit();
       io.to('coinflip').emit('coinflip:result', { lobby, opponent: user.username, result, winner: winnerName, prize });
-      if (prize >= 50_000) systemMessage(`${winnerName} gewinnt ${prize.toLocaleString('de-DE')} NVC im Coinflip!`);
     },
     { play: true },
   );

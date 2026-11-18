@@ -10,7 +10,6 @@ import type { FxAssetPayload, FxName, Mood } from '@/lib/fx';
 import { MoodLayer } from './Mood';
 import { tPage } from '@/lib/i18n';
 import type { BigWin, ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
-import { CELEBRATE_MIN } from '@/lib/games';
 import { celebrate, runAsset, runFx } from './fx';
 
 type Online = { id: string; username: string; activity: string };
@@ -128,7 +127,7 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
       cheer: (c: { from: string; emoji: string }) => toast(`${c.emoji} ${c.from}`, { duration: 2500, style: { fontSize: '1.1rem' } }),
       bigwin: (w: BigWin) => {
         setWins((list) => [w, ...list].slice(0, 20));
-        if (w.amount >= CELEBRATE_MIN) celebrate(w, tPage);
+        if (w.game === 'jackpot') celebrate(w, tPage);
       },
       dm: (m: { from: string; text: string }) => {
         if (m.from === me.username || window.location.pathname.startsWith('/messages')) return;

@@ -1,6 +1,5 @@
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
 import { UserError } from '@/lib/hub';
 import { MINES_MAX, MINES_MIN, MINES_TILES, minesMultiplier } from '@/lib/solo';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
@@ -28,7 +27,6 @@ export const registerMines: Register = (_io, socket) => {
     const multiplier = minesMultiplier(round.mines, round.revealed.size);
     const win = Math.floor(round.bet * multiplier);
     await payout(user.id, win, 'mines');
-    if (win >= 50_000) systemMessage(`${user.username} räumt ${win.toLocaleString('de-DE')} NVC in Mines ab (${multiplier}×)!`);
     return { multiplier, payout: win, bombs: [...round.bombs] };
   };
 
