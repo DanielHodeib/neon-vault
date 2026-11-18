@@ -1,6 +1,6 @@
 'use client';
 
-import { ChartColumn, CornerDownLeft, Headphones, House, Mail, Medal, Search, Settings, ShoppingBag, Swords, Target, Trophy, UserRound, Users, type LucideIcon } from 'lucide-react';
+import { ChartColumn, CornerDownLeft, Headphones, House, Mail, Medal, Search, Settings, Shield, ShoppingBag, Swords, Target, Trophy, UserRound, Users, type LucideIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -17,6 +17,7 @@ const PAGES: Omit<Item, 'key'>[] = [
   { label: 'Nachrichten', hint: 'Seite', href: '/messages', icon: Mail },
   { label: 'Turnier', hint: 'Seite', href: '/tournament', icon: Medal },
   { label: 'Bestenliste', hint: 'Seite', href: '/leaderboard', icon: Trophy },
+  { label: 'Clans', hint: 'Seite', href: '/clans', icon: Shield },
   { label: 'Quests', hint: 'Seite', href: '/quests', icon: Target },
   { label: 'Shop', hint: 'Seite', href: '/shop', icon: ShoppingBag },
   { label: 'Statistik', hint: 'Seite', href: '/stats', icon: ChartColumn },

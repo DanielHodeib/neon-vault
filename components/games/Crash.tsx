@@ -70,13 +70,6 @@ export function Crash() {
 
   const stage = (
     <div className="space-y-3">
-      <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
-        {state.history.map((h, i) => (
-          <span key={i} className={`num shrink-0 rounded-md px-2 py-1 text-xs ${h >= 2 ? 'bg-win/10 text-win' : 'bg-raised text-muted'}`}>
-            {h.toFixed(2)}×
-          </span>
-        ))}
-      </div>
       <div className="panel relative overflow-hidden">
         <svg viewBox={`0 0 ${W} ${H}`} className="block aspect-[2/1] w-full" preserveAspectRatio="none">
           <defs>
@@ -109,6 +102,13 @@ export function Crash() {
             </div>
           )}
         </div>
+      </div>
+      <div className="no-scrollbar flex gap-1.5 overflow-x-auto">
+        {state.history.map((h, i) => (
+          <span key={i} className={`num shrink-0 rounded-md px-2 py-1 text-xs ${h >= 2 ? 'bg-win/10 text-win' : 'bg-raised text-muted'}`}>
+            {h.toFixed(2)}×
+          </span>
+        ))}
       </div>
     </div>
   );

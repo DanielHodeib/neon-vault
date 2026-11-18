@@ -39,7 +39,9 @@ model User {
   avatarUrl String?
   bannerUrl String?
   bio       String  @default("")
-  clanTag   String?
+  clanTag   String? // cache of the clan's tag (lib/clans.ts keeps it in sync)
+  clanId    String?
+  clan      Clan?   @relation("ClanMembers", fields: [clanId], references: [id], onDelete: SetNull)
   chatColor String?
   rankTag   String  @default("BRONZE")
 
@@ -288,4 +290,26 @@ model MarketBet {
 
   @@index([marketId])
   @@index([userId])
+}
+
+/// Players' groups: one leader, free or request-only joining, tag shown next to the name.
+model Clan {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  tag         String        @unique
+  description String        @default("")
+  open        Boolean       @default(true)
+  leaderId    String
+  createdAt   DateTime      @default(now())
+  members     User[]        @relation("ClanMembers")
+  requests    ClanRequest[]
+}
+
+model ClanRequest {
+  clanId    String
+  userId    String
+  createdAt DateTime @default(now())
+  clan      Clan     @relation(fields: [clanId], references: [id], onDelete: Cascade)
+
+  @@id([clanId, userId])
 }

@@ -1,4 +1,5 @@
 import { Lock } from 'lucide-react';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import { sendFriendRequest } from '@/app/actions/social';
@@ -71,7 +72,7 @@ export default async function ProfilePage({ params }: PageProps<'/profile/[usern
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-                {user.clanTag && <span className="text-faint">[{user.clanTag}] </span>}
+                {user.clanTag && <Link href="/clans?tab=all" className="text-faint hover:text-accent">[{user.clanTag}] </Link>}
                 <span className={shopItem(user.nameEffect)?.className}>{user.username}</span>
               </h1>
               {shopItem(user.title) && <span className="rounded bg-raised px-2 py-0.5 text-xs font-semibold text-gold">{t(shopItem(user.title)!.name)}</span>}

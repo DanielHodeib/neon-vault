@@ -30,7 +30,6 @@ export async function updateProfile(_: ActionState, form: FormData) {
         avatarUrl: optionalUrl,
         bannerUrl: optionalUrl,
         bio: z.string().max(240),
-        clanTag: z.string().trim().toUpperCase().regex(/^[A-Z0-9]{0,5}$/, 'Clan-Tag: bis zu 5 Buchstaben/Zahlen.'),
         chatColor: z.string().regex(/^#[0-9a-fA-F]{6}$/),
         rankTag: z.string(),
       }),
@@ -43,7 +42,7 @@ export async function updateProfile(_: ActionState, form: FormData) {
     if (!rank || !rankAllowed(rank, user.xp, Number(user.balance), ownerFriend)) throw new UserError('Diesen Rang hast du noch nicht freigeschaltet.');
     await db.user.update({
       where: { id: user.id },
-      data: { ...data, avatarUrl: data.avatarUrl || null, bannerUrl: data.bannerUrl || null, clanTag: data.clanTag || null },
+      data: { ...data, avatarUrl: data.avatarUrl || null, bannerUrl: data.bannerUrl || null },
     });
     // Drop uploads the profile no longer points at.
     const keep = [data.avatarUrl, data.bannerUrl].filter((u) => u.startsWith('/media/')).map((u) => u.slice('/media/'.length));

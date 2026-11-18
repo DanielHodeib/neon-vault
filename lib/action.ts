@@ -31,6 +31,7 @@ const hits = new Map<string, number[]>();
 
 // shortcut: in-memory, per process; fine for one server, use Redis when scaling out.
 export async function rateLimit(name: string, max: number, windowMs: number) {
+  if (process.env.RATE_LIMIT_OFF) return; // click tests register many accounts from one address
   const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
   const key = `${name}:${ip}`;
   const now = Date.now();

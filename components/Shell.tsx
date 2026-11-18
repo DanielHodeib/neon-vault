@@ -95,6 +95,7 @@ export function Shell({ user, notifications, maintenance, children }: { user: Us
     { href: '/messages', label: 'Nachrichten', icon: Mail, badge: dmUnread },
     { href: '/tournament', label: 'Turnier', icon: Medal },
     { href: '/leaderboard', label: 'Bestenliste', icon: Trophy },
+    { href: '/clans', label: 'Clans', icon: Shield },
     { href: '/quests', label: 'Quests', icon: Target },
     { href: '/shop', label: 'Shop', icon: ShoppingBag },
   ];

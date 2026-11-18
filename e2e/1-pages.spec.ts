@@ -20,7 +20,7 @@ test('register, log out, log in again', async ({ page }) => {
 test('every page opens without a crash', async ({ page }) => {
   const errors = trackErrors(page);
   await register(page, newName('paul'));
-  for (const path of ['/', '/arena', '/arena?tab=bets', '/friends', '/messages', '/tournament', '/leaderboard', '/quests', '/shop', '/shop?tab=bubble', '/stats', '/settings', '/support']) {
+  for (const path of ['/', '/arena', '/arena?tab=bets', '/friends', '/messages', '/tournament', '/leaderboard', '/quests', '/shop', '/shop?tab=bubble', '/shop?tab=aura', '/stats', '/stats?tab=games', '/clans', '/clans?tab=found', '/settings', '/support']) {
     const res = await go(page, path);
     expect(res?.status(), path).toBe(200);
     await expect(page.locator('main')).toBeVisible();

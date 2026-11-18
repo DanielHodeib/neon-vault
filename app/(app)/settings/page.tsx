@@ -47,16 +47,12 @@ export default async function SettingsPage() {
               <label className="label">{t('Über mich')}</label>
               <textarea className="input h-auto py-2" name="bio" maxLength={240} rows={3} defaultValue={user.bio} />
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-[1fr_auto_1fr]">
-              <div>
-                <label className="label">{t('Clan-Tag')}</label>
-                <input className="input uppercase" name="clanTag" maxLength={5} defaultValue={user.clanTag ?? ''} />
-              </div>
+            <div className="grid grid-cols-[auto_1fr] gap-3">
               <div>
                 <label className="label">{t('Chat-Farbe')}</label>
                 <input className="h-10 w-full cursor-pointer rounded-lg border border-line bg-bg p-1 sm:w-14" type="color" name="chatColor" defaultValue={user.chatColor ?? '#e8eaed'} />
               </div>
-              <div className="col-span-2 sm:col-span-1">
+              <div>
                 <label className="label">{t('Angezeigter Rang')}</label>
                 <select className="input" name="rankTag" defaultValue={user.rankTag}>
                   {ranks.map((r) => <option key={r.tag} value={r.tag}>{r.tag.replace(/_/g, ' ')}</option>)}

@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // Click tests: a fresh server with an empty database (prisma/e2e.db) on port 3200.
 // Run with `npm run e2e` (first time: `npx playwright install chromium`).
 const PORT = 3200;
-const env = 'DATABASE_URL="file:./e2e.db?connection_limit=1" BACKUP_DIR=prisma/e2e-backups NEXT_DIST_DIR=.next-e2e';
+const env = 'DATABASE_URL="file:./e2e.db?connection_limit=1" BACKUP_DIR=prisma/e2e-backups NEXT_DIST_DIR=.next-e2e RATE_LIMIT_OFF=1';
 
 export default defineConfig({
   testDir: 'e2e',
