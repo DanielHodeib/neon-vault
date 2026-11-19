@@ -10,6 +10,12 @@ export const canManage = (actor: Role, target: Role) => ROLES.indexOf(actor) > R
 /** Only the owner may give themselves money/XP; nobody may ban, demote or delete themselves. */
 export const canEditSelf = (role: Role) => role === 'OWNER';
 
+/** May `actor` act on `target`? `self` additionally allows the owner's own account (money, XP, quests). */
+export function mayManage(actor: { id: string; role: Role }, target: { id: string; role: Role }, { self = false } = {}) {
+  if (self && target.id === actor.id && canEditSelf(actor.role)) return true;
+  return canManage(actor.role, target.role);
+}
+
 export const ROLE_STYLE: Record<Role, string> = {
   OWNER: 'border-gold/40 text-gold',
   ADMIN: 'border-loss/40 text-loss',

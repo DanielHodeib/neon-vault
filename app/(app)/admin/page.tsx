@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/ui';
 import { requireRole } from '@/lib/auth';
 import { atLeast } from '@/lib/roles';
-import { FunTab, LiveTab, OverviewTab, PlayersTab, ServerTab, StatusPills } from './sections';
+import { AuditLog, FunTab, LiveTab, OverviewTab, PlayersTab, ServerTab, StatusPills } from './sections';
 
 export const metadata = { title: 'Admin' };
 
@@ -41,7 +41,12 @@ export default async function AdminPage({ searchParams }: PageProps<'/admin'>) {
       {tab === 'overview' && <OverviewTab />}
       {tab === 'players' && <PlayersTab actor={actor} q={params.q ?? ''} selectedId={params.user} />}
       {tab === 'live' && <LiveTab actor={actor} />}
-      {tab === 'server' && <ServerTab actor={actor} />}
+      {tab === 'server' && (
+        <div className="space-y-4">
+          <ServerTab actor={actor} />
+          <AuditLog />
+        </div>
+      )}
       {tab === 'fun' && <FunTab q={params.q ?? ''} selectedId={params.user} />}
     </>
   );

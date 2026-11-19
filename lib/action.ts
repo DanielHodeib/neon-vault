@@ -5,6 +5,7 @@ import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 
 import { UserError } from './hub';
+import { createLimiter } from './limiter';
 
 export type ActionState = { error?: string; success?: string } | undefined;
 
@@ -27,18 +28,19 @@ export function parse<S extends z.ZodTypeAny>(schema: S, data: FormData | Record
   return result.data;
 }
 
-const hits = new Map<string, number[]>();
+// One limiter per rule name, on globalThis because Next may load this module more than once.
+const g = globalThis as typeof globalThis & { __limiters?: Map<string, ReturnType<typeof createLimiter>> };
+const limiters = (g.__limiters ??= new Map());
 
 // shortcut: in-memory, per process; fine for one server, use Redis when scaling out.
-export async function rateLimit(name: string, max: number, windowMs: number) {
+/** Limits a rule per client address, or per `key` (user id, username) when given. */
+export async function rateLimit(name: string, max: number, windowMs: number, key?: string) {
   if (process.env.RATE_LIMIT_OFF) return; // click tests register many accounts from one address
-  const ip = (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
-  const key = `${name}:${ip}`;
-  const now = Date.now();
-  const recent = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-  if (recent.length >= max) throw new UserError('Zu viele Versuche – bitte kurz warten.');
-  if (hits.size > 10_000) hits.clear(); // keep memory bounded
-  hits.set(key, [...recent, now]);
+  const who = key ?? (await headers()).get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'local';
+  const id = `${name}:${max}:${windowMs}`;
+  let limiter = limiters.get(id);
+  if (!limiter) limiters.set(id, (limiter = createLimiter(max, windowMs)));
+  if (!limiter.hit(who)) throw new UserError('Zu viele Versuche – bitte kurz warten.');
 }
 
 export const usernameSchema = z

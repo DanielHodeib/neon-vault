@@ -1,7 +1,8 @@
 import type { Server } from 'socket.io';
 import { z } from 'zod';
 
-import { systemMessage } from '@/lib/events';
+import { CHAT_KEEP, systemMessage } from '@/lib/events';
+import { saveChat } from '@/lib/chatlog';
 import { REACTION_ROOMS, REACTIONS } from '@/lib/games';
 import { currentMood, db, hub, isMuted, notify, UserError, type ChatMessage } from '@/lib/hub';
 import { displayRank } from '@/lib/ranks';
@@ -44,7 +45,7 @@ export function setupRealtime(io: Server) {
   io.use(async (socket, next) => {
     const user = await userFromToken(readCookie(socket.handshake.headers.cookie, SESSION_COOKIE)).catch(() => null);
     if (!user) return next(new Error('unauthorized'));
-    socket.data = { user: { id: user.id, username: user.username, role: user.role }, hits: 0, windowStart: 0 };
+    socket.data = { user: { id: user.id, username: user.username, role: user.role } };
     next();
   });
 
@@ -88,8 +89,9 @@ export function setupRealtime(io: Server) {
         bubble: u.bubble,
         at: Date.now(),
       };
-      hub.chat = [...hub.chat.slice(-49), msg];
+      hub.chat = [...hub.chat.slice(-(CHAT_KEEP - 1)), msg];
       hub.chatActive.set(u.id, msg.at);
+      await saveChat('global', msg, CHAT_KEEP);
       io.emit('chat', msg);
     });
 

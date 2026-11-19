@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Click-test build, results and report (npm run e2e):
     ".next-e2e/**",
+    ".next-prod/**",
+    // Compiled server (scripts/build-server.mjs):
+    "dist/**",
     "test-results/**",
     "playwright-report/**",
     "graphify-out/**",

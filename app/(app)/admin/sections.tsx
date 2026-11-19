@@ -399,6 +399,30 @@ export async function LiveTab({ actor }: { actor: User }) {
   );
 }
 
+/** The last 50 admin actions: who did what to whom. */
+export async function AuditLog() {
+  const rows = await db.auditLog.findMany({ orderBy: { at: 'desc' }, take: 50 });
+  return (
+    <Section title="Protokoll">
+      {rows.length === 0 ? (
+        <Empty>Noch keine Einträge.</Empty>
+      ) : (
+        <ul className="divide-y divide-line text-sm">
+          {rows.map((r) => (
+            <li key={r.id} className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 px-4 py-2.5">
+              <span className="font-medium">{r.actorName}</span>
+              <span>{r.action}</span>
+              {r.targetName && <span className="text-muted">→ {r.targetName}</span>}
+              {r.detail && <span className="text-muted">({r.detail})</span>}
+              <span className="num ml-auto text-xs text-faint">{timeAgo(r.at)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
 export function ServerTab({ actor }: { actor: User }) {
   const info = serverInfo();
   const isOwner = actor.role === 'OWNER';

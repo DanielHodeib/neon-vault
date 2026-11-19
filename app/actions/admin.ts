@@ -1,7 +1,6 @@
 'use server';
 
 import type { Role } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 import { refresh } from 'next/cache';
 import { z } from 'zod';
 
@@ -13,7 +12,11 @@ import { backupNow } from '@/lib/backup';
 import { FX, IMAGE_STYLES, MOODS, type FxAssetPayload, type Mood, type MoodName } from '@/lib/fx';
 import { sniffAudio, sniffImage } from '@/lib/media';
 import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } from '@/lib/hub';
-import { canEditSelf, canManage, ROLES } from '@/lib/roles';
+import { canManage, mayManage, ROLES } from '@/lib/roles';
+import { audit } from '@/lib/audit';
+import { dropChat } from '@/lib/chatlog';
+import { setMute } from '@/lib/moderation';
+import { hashPassword } from '@/lib/password';
 import { applyLedger } from '@/lib/wallet';
 
 const PERMANENT = new Date('9999-12-31');
@@ -23,8 +26,7 @@ async function target(min: Role, userId: string, { self = false } = {}) {
   const actor = await requireRole(min);
   const user = await db.user.findUnique({ where: { id: userId } });
   if (!user) throw new UserError('Spieler nicht gefunden.');
-  const ownAccount = self && user.id === actor.id && canEditSelf(actor.role);
-  if (!ownAccount && !canManage(actor.role, user.role)) throw new UserError('Keine Berechtigung für diesen Spieler.');
+  if (!mayManage(actor, user, { self })) throw new UserError('Keine Berechtigung für diesen Spieler.');
   return { actor, user };
 }
 
@@ -41,14 +43,16 @@ export async function banUser(_: ActionState, form: FormData) {
       db.session.deleteMany({ where: { userId: user.id } }),
     ]);
     disconnectUser(user.id);
+    await audit(actor, 'Sperre', user, `${hours === 0 ? 'dauerhaft' : `${hours} h`}${reason ? ` – ${reason}` : ''}`);
     refresh();
     return `${user.username} gesperrt (${hours === 0 ? 'dauerhaft' : `${hours} h`}) von ${actor.username}.`;
   });
 }
 
 export async function unbanUser(userId: string) {
-  const { user } = await target('MODERATOR', userId);
+  const { actor, user } = await target('MODERATOR', userId);
   await db.user.update({ where: { id: user.id }, data: { bannedUntil: null, banReason: null } });
+  await audit(actor, 'Sperre aufgehoben', user);
   refresh();
 }
 
@@ -59,6 +63,7 @@ export async function setRole(userId: string, role: Role) {
     await db.user.update({ where: { id: user.id }, data: { role } });
     disconnectUser(user.id); // reconnect picks up the new role
     await notify(user.id, 'Neue Rolle', `Du bist jetzt ${role}.`);
+    await audit(actor, 'Rolle', user, `${user.role} → ${role}`);
     refresh();
     return `${user.username} ist jetzt ${role}.`;
   });
@@ -80,24 +85,28 @@ export async function adjustUser(_: ActionState, form: FormData) {
     if (balance) await applyLedger([{ userId: user.id, amount: balance, kind: 'ADMIN', note: `von ${actor.username}` }]);
     if (xp) await db.user.update({ where: { id: user.id }, data: { xp: Math.max(0, user.xp + xp) } });
     if (password) {
-      await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(password, 10) } });
+      await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
       await db.session.deleteMany({ where: { userId: user.id } });
       disconnectUser(user.id);
     }
+    const changes = [balance && `${balance > 0 ? '+' : ''}${balance} NVC`, xp && `${xp > 0 ? '+' : ''}${xp} XP`, password && 'Passwort'].filter(Boolean);
+    if (changes.length) await audit(actor, 'Spieler geändert', user, changes.join(', '));
     refresh();
     return 'Gespeichert.';
   });
 }
 
 export async function resetUser(userId: string, what: 'quests' | 'social') {
-  const { user } = await target('ADMIN', userId, { self: what === 'quests' });
+  const { actor, user } = await target('ADMIN', userId, { self: what === 'quests' });
+  await audit(actor, 'Zurückgesetzt', user, what === 'quests' ? 'Quests' : 'Freunde & Blockierte');
   if (what === 'quests') await db.questClaim.deleteMany({ where: { userId: user.id } });
   else await db.$transaction([db.friendship.deleteMany({ where: { OR: [{ fromId: user.id }, { toId: user.id }] } }), db.block.deleteMany({ where: { OR: [{ fromId: user.id }, { toId: user.id }] } })]);
   refresh();
 }
 
 export async function deleteUser(userId: string) {
-  const { user } = await target('ADMIN', userId);
+  const { actor, user } = await target('ADMIN', userId);
+  await audit(actor, 'Konto gelöscht', user);
   await db.user.delete({ where: { id: user.id } });
   disconnectUser(user.id);
   refresh();
@@ -105,7 +114,7 @@ export async function deleteUser(userId: string) {
 
 export async function setMaintenanceAction(_: ActionState, form: FormData) {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     const { on, minutes, delay } = parse(
       z.object({
         on: z.enum(['true', 'false']),
@@ -114,6 +123,7 @@ export async function setMaintenanceAction(_: ActionState, form: FormData) {
       }),
       form,
     );
+    await audit(actor, on === 'true' ? 'Wartung an' : 'Wartung aus', null, on === 'true' ? `${minutes ? `${minutes} Min.` : 'offen'}${delay ? `, Countdown ${delay} Min.` : ''}` : undefined);
     if (on === 'true' && delay > 0) {
       startCountdown('maintenance', delay * 60, { minutes });
       return `Wartung startet in ${delay} Min. – alle sehen den Countdown.`;
@@ -147,6 +157,7 @@ export async function eventAction(_: ActionState, form: FormData) {
         { amount: num('p_amount'), seconds: num('p_seconds'), players: num('p_players') },
       );
       if (!startRain(amount, seconds, players, actor.username)) throw new UserError('Es regnet schon.');
+      await audit(actor, 'Chat-Rain', null, `${amount} NVC, ${seconds} s, ${players} Spieler`);
       return 'Chat-Rain gestartet.';
     }
 
@@ -156,14 +167,16 @@ export async function eventAction(_: ActionState, form: FormData) {
     // Each setting is clamped to its own range in startEvent.
     const params = Object.fromEntries(EVENT_INFO[key].params.map((p) => [p.key, num(`p_${p.key}`) ?? p.def]));
     if (!startEvent(key, minutes, params)) throw new UserError('Es läuft schon ein Event – erst stoppen.');
+    await audit(actor, 'Event gestartet', null, `${EVENT_INFO[key].label}, ${minutes} Min.`);
     return `${EVENT_INFO[key].label} gestartet.`;
   });
 }
 
 export async function stopEventAction() {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     if (!stopEvent()) throw new UserError('Kein Event aktiv.');
+    await audit(actor, 'Event gestoppt');
     return 'Event gestoppt.';
   });
 }
@@ -189,8 +202,9 @@ export async function cancelCountdownAction() {
 /** Restarts the app after a countdown. On the server systemd starts it again right away. */
 export async function restartAction(seconds: number) {
   return run(async () => {
-    await requireRole('OWNER');
+    const actor = await requireRole('OWNER');
     if (![30, 60, 120, 300].includes(seconds)) throw new UserError('Ungültige Zeit.');
+    await audit(actor, 'Neustart', null, `in ${seconds} s`);
     startCountdown('restart', seconds, { onDone: () => process.kill(process.pid, 'SIGINT') });
     return `Neustart in ${seconds} Sekunden angekündigt.`;
   });
@@ -202,6 +216,7 @@ export async function giftUser(userId: string, amount: number) {
     if (![1_000, 10_000, 100_000].includes(amount)) throw new UserError('Ungültiger Betrag.');
     const { actor, user } = await target('ADMIN', userId, { self: true });
     await applyLedger([{ userId: user.id, amount, kind: 'ADMIN', note: `Geschenk von ${actor.username}` }]);
+    await audit(actor, 'Geschenk', user, `${amount} NVC`);
     if (user.id !== actor.id) await notify(user.id, 'Geschenk', `${actor.username} schenkt dir ${amount.toLocaleString('de-DE')} NVC.`, { link: '/stats' });
     refresh();
     return `+${amount.toLocaleString('de-DE')} NVC an ${user.username}.`;
@@ -212,9 +227,9 @@ export async function giftUser(userId: string, amount: number) {
 export async function muteUser(userId: string, minutes: number) {
   return run(async () => {
     if (![0, 5, 30, 120].includes(minutes)) throw new UserError('Ungültige Dauer.');
-    const { user } = await target('MODERATOR', userId);
-    if (minutes === 0) hub.muted.delete(user.id);
-    else hub.muted.set(user.id, Date.now() + minutes * 60_000);
+    const { actor, user } = await target('MODERATOR', userId);
+    await setMute(user.id, minutes);
+    await audit(actor, minutes ? 'Stumm' : 'Stumm aufgehoben', user, minutes ? `${minutes} Min.` : undefined);
     emitToUser(user.id, 'toast', minutes ? `Du bist ${minutes} Minuten im Chat stummgeschaltet.` : 'Du darfst wieder im Chat schreiben.');
     refresh();
     return minutes ? `${user.username} ist ${minutes} Min. stumm.` : `${user.username} darf wieder schreiben.`;
@@ -225,6 +240,8 @@ export async function clearChatAction() {
   return run(async () => {
     const actor = await requireRole('MODERATOR');
     hub.chat = [];
+    await dropChat('global');
+    await audit(actor, 'Chat geleert');
     broadcast('chatClear', null);
     systemMessage(`Chat wurde von ${actor.username} geleert.`);
     return 'Chat geleert.';
@@ -233,8 +250,9 @@ export async function clearChatAction() {
 
 export async function backupAction() {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     await backupNow({ force: true });
+    await audit(actor, 'Backup');
     return 'Backup gespeichert.';
   });
 }

@@ -113,7 +113,7 @@ export async function leaveClan() {
     if (clan?.leaderId === me.id) {
       if (clan._count.members > 1) throw new UserError('Übergib erst die Leitung an jemanden – oder löse den Clan auf.');
       await db.clan.delete({ where: { id: clan.id } });
-      dropClanHistory(clan.id);
+      await dropClanHistory(clan.id);
     }
     await db.user.update({ where: { id: me.id }, data: { clanId: null, clanTag: null } });
     leaveClanRoom(me.id, clan?.id ?? me.clanId);
@@ -167,7 +167,7 @@ export async function disbandClan(clanId: string) {
     await db.user.updateMany({ where: { clanId }, data: { clanTag: null } }); // clanId itself is cleared by the relation
     await db.clan.delete({ where: { id: clanId } });
     for (const m of members) leaveClanRoom(m.id, clanId);
-    dropClanHistory(clanId);
+    await dropClanHistory(clanId);
     refresh();
     return 'Clan aufgelöst.';
   });

@@ -33,3 +33,5 @@ npm-debug.log*
 
 # code knowledge graph (graphify), local only
 /graphify-out/
+/dist/
+/.next-prod/

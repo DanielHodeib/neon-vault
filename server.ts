@@ -7,9 +7,11 @@ import { Server } from 'socket.io';
 import { closeAndRefund, setupRealtime } from './game';
 import { startBackups } from './lib/backup';
 import { startTournaments } from './lib/tournament';
-import { loadMaintenance, startCountdown, startEventScheduler } from './lib/events';
+import { CHAT_KEEP, loadMaintenance, startCountdown, startEventScheduler } from './lib/events';
 import { loadBigWins } from './lib/bigwins';
-import { db } from './lib/hub';
+import { loadChat } from './lib/chatlog';
+import { db, hub, type ChatMessage } from './lib/hub';
+import { loadMutes } from './lib/moderation';
 
 // One process serves the Next app and Socket.IO, so both share the DB client and game state.
 const dev = process.env.NODE_ENV !== 'production';
@@ -23,6 +25,8 @@ async function main() {
   await app.prepare();
   await loadMaintenance();
   await loadBigWins();
+  hub.chat = await loadChat<ChatMessage>('global', CHAT_KEEP);
+  await loadMutes();
   // Expired logins are useless; drop them now and once a day so the table doesn't grow forever.
   const dropExpiredSessions = () => db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(console.error);
   void dropExpiredSessions();

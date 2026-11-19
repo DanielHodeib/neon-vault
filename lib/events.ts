@@ -40,9 +40,11 @@ export async function cashback(userId: string, lost: number, game: string) {
   if (back) await payout(userId, back, game, 'REFUND');
 }
 
+export const CHAT_KEEP = 50; // messages shown to newcomers (and kept across restarts)
+
 export function systemMessage(text: string) {
   const msg: ChatMessage = { id: `${Date.now()}${randomInt(1e6)}`, userId: null, username: 'SYSTEM', text, at: Date.now() };
-  hub.chat = [...hub.chat.slice(-49), msg];
+  hub.chat = [...hub.chat.slice(-(CHAT_KEEP - 1)), msg];
   broadcast('chat', msg);
 }
 

@@ -1,12 +1,11 @@
 'use server';
 
-import bcrypt from 'bcryptjs';
 import { refresh } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
-import { parse, passwordSchema, run, type ActionState } from '@/lib/action';
+import { parse, passwordSchema, rateLimit, run, type ActionState } from '@/lib/action';
 import { endSession, requireUser, startSession } from '@/lib/auth';
 import { db, disconnectUser, UserError } from '@/lib/hub';
 import { spinDaily } from '@/lib/daily';
@@ -15,6 +14,7 @@ import { ACCENT_RE, THEMES } from '@/lib/format';
 import { IMAGE_URL } from '@/lib/media';
 import { RANKS, rankAllowed } from '@/lib/ranks';
 import { changeLimit } from '@/lib/limits';
+import { hashPassword, verifyPassword } from '@/lib/password';
 import { isLang, LANG_COOKIE } from '@/lib/i18n';
 import { achievements } from '@/lib/achievements';
 import { playerStats } from '@/lib/stats';
@@ -84,8 +84,9 @@ export async function changePassword(_: ActionState, form: FormData) {
   return run(async () => {
     const user = await requireUser();
     const { current, next } = parse(z.object({ current: z.string(), next: passwordSchema }), form);
-    if (!(await bcrypt.compare(current, user.passwordHash))) throw new UserError('Aktuelles Passwort ist falsch.');
-    await db.user.update({ where: { id: user.id }, data: { passwordHash: await bcrypt.hash(next, 10), sessions: { deleteMany: {} } } });
+    await rateLimit('password', 5, 15 * 60_000, user.id); // somebody on a stolen session must not guess the password
+    if (!(await verifyPassword(current, user.passwordHash)).ok) throw new UserError('Aktuelles Passwort ist falsch.');
+    await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(next), sessions: { deleteMany: {} } } });
     disconnectUser(user.id);
     await startSession(user.id); // every other device is signed out, this one stays in
     return 'Passwort geändert. Andere Geräte wurden abgemeldet.';
@@ -96,7 +97,8 @@ export async function deleteAccount(_: ActionState, form: FormData) {
   const result = await run(async () => {
     const user = await requireUser();
     const { password } = parse(z.object({ password: z.string() }), form);
-    if (!(await bcrypt.compare(password, user.passwordHash))) throw new UserError('Passwort ist falsch.');
+    await rateLimit('password', 5, 15 * 60_000, user.id);
+    if (!(await verifyPassword(password, user.passwordHash)).ok) throw new UserError('Passwort ist falsch.');
     await endSession();
     await db.user.delete({ where: { id: user.id } });
     disconnectUser(user.id);

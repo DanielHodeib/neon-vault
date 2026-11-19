@@ -1,12 +1,12 @@
 'use server';
 
-import bcrypt from 'bcryptjs';
 import { redirect } from 'next/navigation';
 import { z } from 'zod';
 
 import { parse, passwordSchema, rateLimit, run, usernameSchema, type ActionState } from '@/lib/action';
 import { endSession, startSession } from '@/lib/auth';
 import { db, notify, UserError } from '@/lib/hub';
+import { fakeVerify, hashPassword, verifyPassword } from '@/lib/password';
 import { isBanned } from '@/lib/session';
 import { applyLedger } from '@/lib/wallet';
 
@@ -23,7 +23,7 @@ export async function register(_: ActionState, form: FormData) {
     if (password !== confirm) throw new UserError('Passwörter stimmen nicht überein.');
     if (await db.user.findUnique({ where: { username } })) throw new UserError('Benutzername ist vergeben.');
     const user = await db.user
-      .create({ data: { username, passwordHash: await bcrypt.hash(password, 10) } })
+      .create({ data: { username, passwordHash: await hashPassword(password) } })
       .catch((err: { code?: string }) => {
         // Two sign-ups with the same name at once: the unique index catches the second one.
         if (err.code === 'P2002') throw new UserError('Benutzername ist vergeben.');
@@ -54,8 +54,11 @@ export async function login(_: ActionState, form: FormData) {
   const result = await run(async () => {
     await rateLimit('login', 10, 15 * 60_000);
     const { username, password } = parse(z.object({ username: z.string().trim(), password: z.string() }), form);
+    await rateLimit('login-name', 10, 15 * 60_000, username.toLowerCase()); // many addresses against one account
     const user = await db.user.findUnique({ where: { username } });
-    if (!user || !(await bcrypt.compare(password, user.passwordHash))) throw new UserError('Benutzername oder Passwort falsch.');
+    const check = user ? await verifyPassword(password, user.passwordHash) : (await fakeVerify(password), null);
+    if (!user || !check?.ok) throw new UserError('Benutzername oder Passwort falsch.');
+    if (check.upgrade) await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
     if (isBanned(user)) {
       const until = user.bannedUntil!.getFullYear() > 9000 ? 'dauerhaft' : `bis ${user.bannedUntil!.toLocaleString('de-DE')}`;
       throw new UserError(`Gesperrt ${until}${user.banReason ? ` – Grund: ${user.banReason}` : ''}.`);

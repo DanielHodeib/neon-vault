@@ -3,11 +3,12 @@ import type { Server, Socket } from 'socket.io';
 import { z } from 'zod';
 
 import { hub, UserError } from '@/lib/hub';
+import { createLimiter } from '@/lib/limiter';
 import { atLeast } from '@/lib/roles';
 
 export type Player = { id: string; username: string; role: Role };
 export type Ack = (res: Record<string, unknown>) => void;
-export type GameSocket = Socket & { data: { user: Player; hits: number; windowStart: number } };
+export type GameSocket = Socket & { data: { user: Player } };
 export type Register = (io: Server, socket: GameSocket) => void;
 
 const MAX_EVENTS_PER_SECOND = 15;
@@ -16,11 +17,9 @@ const MAX_EVENTS_PER_SECOND = 15;
 let afterEvent: ((socket: GameSocket, event: string, data: unknown, result: unknown) => void) | null = null;
 export const onAfterEvent = (fn: NonNullable<typeof afterEvent>) => void (afterEvent = fn);
 
-function rateLimited(socket: GameSocket) {
-  const now = Date.now();
-  if (now - socket.data.windowStart > 1000) Object.assign(socket.data, { windowStart: now, hits: 0 });
-  return ++socket.data.hits > MAX_EVENTS_PER_SECOND;
-}
+// Per player, not per socket: ten open tabs share one budget.
+const eventLimiter = createLimiter(MAX_EVENTS_PER_SECOND, 1000);
+const rateLimited = (socket: GameSocket) => !eventLimiter.hit(socket.data.user.id);
 
 /**
  * Validated, rate-limited socket handler. Thrown UserErrors go back to the

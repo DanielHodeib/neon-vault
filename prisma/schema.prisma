@@ -34,6 +34,7 @@ model User {
 
   bannedUntil DateTime?
   banReason   String?
+  mutedUntil  DateTime? // chat mute; the server also keeps it in hub.muted (lib/moderation.ts)
 
   // profile
   avatarUrl String?
@@ -322,4 +323,27 @@ model ClanClaim {
   createdAt DateTime @default(now())
 
   @@id([userId, week, tier])
+}
+
+/// Recent chat of one channel ('global' or 'clan:<id>'); survives restarts. `data` is the message as JSON.
+model ChatLog {
+  id      String   @id @default(cuid())
+  channel String
+  data    String
+  at      DateTime @default(now())
+
+  @@index([channel, at])
+}
+
+/// Who did what in the admin area (bans, roles, money, events ...).
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorName  String
+  action     String
+  targetName String?
+  detail     String?
+  at         DateTime @default(now())
+
+  @@index([at])
 }
