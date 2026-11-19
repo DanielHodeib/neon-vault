@@ -4,47 +4,22 @@ import { refresh } from 'next/cache';
 
 import { run } from '@/lib/action';
 import { requireUser } from '@/lib/auth';
-import { db, UserError } from '@/lib/hub';
-import { clanLevelOf } from '@/lib/clanStats';
-import { shopPrice } from '@/lib/clans';
-import { SHOP_SLOTS, shopItem, type ShopSlot } from '@/lib/shop';
-import { applyLedger } from '@/lib/wallet';
+import type { ShopSlot } from '@/lib/shop';
+import * as shop from '@/lib/shopService';
 
-// Item ids arrive from the browser (bound arguments), so each one is checked against the catalog.
+// Thin wrappers: who is asking (cookie) and the page refresh live here, the rules in lib/shopService.ts.
 
 export async function buyItem(id: string) {
   return run(async () => {
-    const user = await requireUser();
-    const item = shopItem(id);
-    if (!item) throw new UserError('Unbekannter Artikel.');
-    // The purchase row first: its primary key stops a double click from paying twice.
-    try {
-      await db.shopPurchase.create({ data: { userId: user.id, item: item.id } });
-    } catch {
-      throw new UserError('Das hast du schon.');
-    }
-    try {
-      await applyLedger([{ userId: user.id, amount: -shopPrice(item.price, (await clanLevelOf(user.clanId)).level), kind: 'SHOP', note: item.name }]);
-    } catch (err) {
-      await db.shopPurchase.delete({ where: { userId_item: { userId: user.id, item: item.id } } });
-      throw err;
-    }
-    await db.user.update({ where: { id: user.id }, data: { [item.slot]: item.id } });
+    const name = await shop.buyItem(await requireUser(), id);
     refresh();
-    return `${item.name} gekauft und angelegt.`;
+    return `${name} gekauft und angelegt.`;
   });
 }
 
 export async function equipItem(slot: ShopSlot, id: string | null) {
   return run(async () => {
-    const user = await requireUser();
-    if (!SHOP_SLOTS.includes(slot)) throw new UserError('Ungültig.');
-    if (id !== null) {
-      const item = shopItem(id);
-      if (!item || item.slot !== slot) throw new UserError('Unbekannter Artikel.');
-      if (!(await db.shopPurchase.findUnique({ where: { userId_item: { userId: user.id, item: id } } }))) throw new UserError('Den Artikel besitzt du nicht.');
-    }
-    await db.user.update({ where: { id: user.id }, data: { [slot]: id } });
+    await shop.equipItem((await requireUser()).id, slot, id);
     refresh();
     return id ? 'Angelegt.' : 'Abgelegt.';
   });
