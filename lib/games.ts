@@ -3,9 +3,6 @@
 /** Solo coinflip against the house pays 1.96× (2 % edge). Events don't boost it, so it can't be farmed. */
 export const COINFLIP_SOLO_PAYOUT = 1.96;
 
-/** Crash curve; identical on server and client. */
-export const multiplierAt = (ms: number) => Math.floor(100 * Math.exp(0.00006 * ms)) / 100;
-
 export const WHEEL = [0, 32, 15, 19, 4, 21, 2, 25, 17, 34, 6, 27, 13, 36, 11, 30, 8, 23, 10, 5, 24, 16, 33, 1, 20, 14, 31, 9, 22, 18, 29, 7, 28, 12, 35, 3, 26];
 export const REDS = new Set([1, 3, 5, 7, 9, 12, 14, 16, 18, 19, 21, 23, 25, 27, 30, 32, 34, 36]);
 
@@ -32,6 +29,6 @@ export const streakMultiplier = (streak: number) => 1 + Math.min(Math.max(streak
 export const TICKER_MIN = 5_000;
 
 /** Emoji reactions in the live games; everyone in the same room sees them rise over the board. */
-export const REACTION_ROOMS = ['crash', 'roulette', 'race', 'wheel', 'jackpot', 'coinflip'] as const;
+export const REACTION_ROOMS = ['roulette', 'race', 'wheel', 'jackpot', 'coinflip'] as const;
 export type ReactionRoom = (typeof REACTION_ROOMS)[number];
 export const REACTIONS = ['🔥', '😱', '💀', '🚀', '😂', '💰'] as const;

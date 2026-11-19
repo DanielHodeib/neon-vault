@@ -15,7 +15,7 @@ const mono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono-face' }
 
 export const metadata: Metadata = {
   title: { default: 'Neon Vault', template: '%s · Neon Vault' },
-  description: 'Social Casino mit Spielgeld – Crash, Slots, Blackjack, Roulette, Poker und mehr mit Freunden.',
+  description: 'Social Casino mit Spielgeld – Avia Masters, Slots, Blackjack, Roulette, Poker und mehr mit Freunden.',
   appleWebApp: { capable: true, title: 'Neon Vault', statusBarStyle: 'black-translucent' },
 };
 

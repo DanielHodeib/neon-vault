@@ -1,6 +1,6 @@
 # Neon Vault
 
-Social Casino mit Spielgeld (NVC): Crash, Slots, Blackjack, Roulette, Poker und Coinflip. Dazu Chat, Freunde, Quests, Bestenlisten, Support-Tickets und ein Admin-Bereich.
+Social Casino mit Spielgeld (NVC): Avia Masters, Slots, Blackjack, Roulette, Poker und Coinflip. Dazu Chat, Freunde, Quests, Bestenlisten, Support-Tickets und ein Admin-Bereich.
 
 ## Einrichten (einmalig)
 

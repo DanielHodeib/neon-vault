@@ -1,4 +1,4 @@
-import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, Flag, Gauge, Grid3x3, PiggyBank, Rocket, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, Flag, Gauge, Grid3x3, PiggyBank, Plane, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
 
 // Every game once: sidebar, games panel, lobby and phone sheet all read this list.
 export type GameCategory = 'live' | 'tables' | 'solo';
@@ -11,7 +11,6 @@ export const CATEGORIES: { key: GameCategory; label: string; hint: string }[] = 
 ];
 
 export const GAME_LIST: GameEntry[] = [
-  { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97', category: 'live' },
   { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c', category: 'live' },
   { slug: 'race', name: 'Pferderennen', text: 'Alle wetten, live', icon: Flag, tint: '#fb7185', category: 'live' },
   { slug: 'wheel', name: 'Glücksrad', text: 'Alle drehen gemeinsam', icon: FerrisWheel, tint: '#34d399', category: 'live' },
@@ -20,6 +19,7 @@ export const GAME_LIST: GameEntry[] = [
   { slug: 'blackjack', name: 'Blackjack', text: 'Solo oder am Tisch', icon: Spade, tint: '#7aa2ff', category: 'tables' },
   { slug: 'poker', name: 'Poker', text: "Texas Hold'em", icon: Club, tint: '#c084fc', category: 'tables' },
   { slug: 'baccarat', name: 'Baccarat', text: 'Spieler oder Bank', icon: Crown, tint: '#fda4af', category: 'tables', isNew: true },
+  { slug: 'avia', name: 'Avia Masters', text: 'Items sammeln, auf dem Träger landen', icon: Plane, tint: '#3ddc97', category: 'solo', isNew: true },
   { slug: 'slots', name: 'Slots', text: '8 Automaten', icon: Cherry, tint: '#e4c06a', category: 'solo' },
   { slug: 'mines', name: 'Mines', text: 'Felder aufdecken, Bomben meiden', icon: Bomb, tint: '#f87171', category: 'solo' },
   { slug: 'plinko', name: 'Plinko', text: 'Kugel fallen lassen', icon: Triangle, tint: '#f472b6', category: 'solo' },
@@ -35,4 +35,4 @@ export const GAME_LIST: GameEntry[] = [
 export const GAME_BY_SLUG = new Map(GAME_LIST.map((g) => [g.slug, g]));
 
 /** Games for the sidebar shortcut list when the player has no favourites or history yet. */
-export const DEFAULT_SHORTCUTS = ['crash', 'slots', 'blackjack', 'roulette', 'mines'];
+export const DEFAULT_SHORTCUTS = ['avia', 'slots', 'blackjack', 'roulette', 'mines'];

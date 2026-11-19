@@ -23,6 +23,14 @@ test('dice', async () => {
   await expect(main().getByText(/^\d{1,2},\d{2}$/).first()).toBeVisible(); // the rolled number, win or lose
 });
 
+test('avia masters', async () => {
+  await go(page, '/play/avia');
+  await button('Turbo').click();
+  await button('Starten').click();
+  await expect(main().getByText(/Gelandet mit ×|Ins Wasser gestürzt/)).toBeVisible({ timeout: 15_000 });
+  await expect(button('Starten')).toBeEnabled();
+});
+
 test('plinko', async () => {
   await go(page, '/play/plinko');
   await button('Ball fallen lassen').click();

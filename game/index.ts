@@ -12,7 +12,7 @@ import { applyLedger, assertAmount, settleInflight } from '@/lib/wallet';
 import { readCookie, SESSION_COOKIE, userFromToken } from '@/lib/session';
 import { refundBlackjack, registerBlackjack } from './blackjack';
 import { refundCoinflip, registerCoinflip } from './coinflip';
-import { refundCrash, registerCrash, startCrash } from './crash';
+import { registerAvia } from './avia';
 import { refundPoker, registerPoker } from './poker';
 import { id } from './rng';
 import { refundRoulette, registerRoulette, startRoulette } from './roulette';
@@ -35,11 +35,10 @@ const onlineList = () => [...hub.online.values()].map(({ id, username, activity 
 
 export function setupRealtime(io: Server) {
   hub.io = io;
-  startCrash(io);
   startRoulette(io);
   startWheel(io);
   startRace(io);
-  const handlers = [registerCrash, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerHilo, registerWheel, registerJackpot, registerRace, registerDm, registerArcade, registerDuel, registerWatch, registerClanChat, registerBlackjack(io), registerPoker(io)];
+  const handlers = [registerAvia, registerRoulette, registerCoinflip, registerSlots, registerMines, registerDice, registerPlinko, registerHilo, registerWheel, registerJackpot, registerRace, registerDm, registerArcade, registerDuel, registerWatch, registerClanChat, registerBlackjack(io), registerPoker(io)];
 
   // The session cookie is the only source of identity; nothing from the client is trusted.
   io.use(async (socket, next) => {
@@ -125,7 +124,7 @@ export function setupRealtime(io: Server) {
 export async function closeAndRefund() {
   await new Promise<void>((resolve) => (hub.io ? hub.io.close(() => resolve()) : resolve()));
   await settleInflight();
-  for (const refund of [refundCrash, refundRoulette, refundCoinflip, refundMines, refundHilo, refundWheel, refundJackpot, refundRace, refundBlackjack, refundPoker, refundArcade, refundDuels]) await refund();
+  for (const refund of [refundRoulette, refundCoinflip, refundMines, refundHilo, refundWheel, refundJackpot, refundRace, refundBlackjack, refundPoker, refundArcade, refundDuels]) await refund();
 }
 
 /** Chat command `/tip Name 100`: gives NVC to another player and announces it. */

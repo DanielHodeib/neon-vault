@@ -22,6 +22,7 @@ const ROUND_EVENTS: Record<string, string> = {
   'keno:play': 'keno',
   'vpoker:draw': 'vpoker',
   'limbo:play': 'limbo',
+  'avia:play': 'avia',
   'baccarat:play': 'baccarat',
 };
 
@@ -43,6 +44,7 @@ function describe(game: string, data: Record<string, unknown>, res: Record<strin
     detail = grid ? grid.map((col) => col[Math.floor(col.length / 2)]).join('') : '';
   } else if (game === 'dice') detail = `${n(res.roll)?.toFixed(2)} ${data.side === 'under' ? '<' : '>'} ${data.target}`;
   else if (game === 'limbo') detail = `${n(res.result)?.toFixed(2)}× / ${t2(n(res.target))}`;
+  else if (game === 'avia') detail = res.landed ? 'gelandet' : 'ins Wasser';
   else if (game === 'keno') detail = `${res.hits} Treffer`;
   else if (game === 'baccarat') detail = `${res.playerTotal}:${res.bankerTotal}`;
   else if (game === 'coinflip') detail = res.result === 'heads' ? 'Kopf' : 'Zahl';
@@ -69,7 +71,7 @@ export function reportRound(socket: GameSocket, event: string, data: unknown, re
   socket.nsp.to(room(userId)).emit('watch:round', { ...round, id: `${Date.now()}-${seq++}`, at: Date.now() } satisfies WatchedRound);
 }
 
-/** Rounds of the shared tables (crash, roulette, wheel, race, blackjack) have no socket reply, so they report here. */
+/** Rounds of the shared tables (roulette, wheel, race, blackjack) have no socket reply, so they report here. */
 export function watchRound(userId: string, game: string, bet: number, won: number, detail = '', multiplier: number | null = null) {
   if (!viewers(userId) || (bet <= 0 && won <= 0)) return;
   hub.io?.to(room(userId)).emit('watch:round', { id: `${Date.now()}-${seq++}`, at: Date.now(), game, bet, won, multiplier, detail, lost: won === 0 } satisfies WatchedRound);

@@ -14,13 +14,13 @@ import { spin } from './slots';
 test('boost: extra coins stop at the per-player cap of the event', () => {
   hub.event = { type: 'BOOST', label: '', description: '', params: { factor: 2, cap: 5_000 }, startedAt: 0, endsAt: Date.now() + 60_000 };
   hub.eventBonusPaid = new Map();
-  assert.equal(boostedWin('crash', 'u1', 1_000), 2_000); // 1000 extra
-  assert.equal(boostedWin('crash', 'u1', 10_000), 14_000); // only 4000 extra left
-  assert.equal(boostedWin('crash', 'u1', 10_000), 10_000); // cap reached
-  assert.equal(boostedWin('crash', 'u2', 1_000), 2_000); // other players have their own cap
-  assert.equal(boostedWin('slots', 'u2', 1_000), 1_000); // only crash and coinflip are boosted
+  assert.equal(boostedWin('avia', 'u1', 1_000), 2_000); // 1000 extra
+  assert.equal(boostedWin('avia', 'u1', 10_000), 14_000); // only 4000 extra left
+  assert.equal(boostedWin('avia', 'u1', 10_000), 10_000); // cap reached
+  assert.equal(boostedWin('avia', 'u2', 1_000), 2_000); // other players have their own cap
+  assert.equal(boostedWin('slots', 'u2', 1_000), 1_000); // only Avia Masters and coinflip are boosted
   hub.event = null;
-  assert.equal(boostedWin('crash', 'u3', 1_000), 1_000);
+  assert.equal(boostedWin('avia', 'u3', 1_000), 1_000);
 });
 
 test('events: boost and cashback have a per-player cap, jackpot rush stays at or below 1.5×', () => {

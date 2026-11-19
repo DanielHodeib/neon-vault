@@ -231,7 +231,7 @@ body {
 @keyframes g-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.18); } }
 @keyframes g-wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-10deg); } 75% { transform: rotate(10deg); } }
 .group:hover .game-icon svg { animation-duration: .9s; animation-iteration-count: infinite; animation-timing-function: ease-in-out; animation-name: g-wiggle; }
-.group:hover .game-icon[data-game=crash] svg { animation-name: g-rise; }
+.group:hover .game-icon[data-game=avia] svg { animation-name: g-rise; }
 .group:hover .game-icon[data-game=roulette] svg, .group:hover .game-icon[data-game=wheel] svg { animation-name: g-spin; animation-timing-function: linear; animation-duration: 1.4s; }
 .group:hover .game-icon[data-game=dice] svg { animation-name: g-roll; }
 .group:hover .game-icon[data-game=plinko] svg, .group:hover .game-icon[data-game=race] svg { animation-name: g-drop; animation-duration: .6s; }

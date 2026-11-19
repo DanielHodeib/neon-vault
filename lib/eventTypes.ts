@@ -9,7 +9,7 @@ type EventInfo = { label: string; description: string; minutes: number; params: 
 export const EVENT_INFO: Record<EventType, EventInfo> = {
   CASHBACK: {
     label: 'Cashback-Mania',
-    description: '{percent} % Cashback auf verlorene Crash- und Coinflip-Einsätze (bis {cap} NVC pro Spieler).',
+    description: '{percent} % Cashback auf verlorene Avia-Masters- und Coinflip-Einsätze (bis {cap} NVC pro Spieler).',
     minutes: 10,
     params: [
       { key: 'percent', label: 'Cashback', def: 10, min: 1, max: 25, unit: '%' },
@@ -18,7 +18,7 @@ export const EVENT_INFO: Record<EventType, EventInfo> = {
   },
   BOOST: {
     label: 'Multiplier-Boost',
-    description: '{factor}× Auszahlung auf Crash- und Coinflip-Gewinne (Extra bis {cap} NVC pro Spieler).',
+    description: '{factor}× Auszahlung auf Avia-Masters- und Coinflip-Gewinne (Extra bis {cap} NVC pro Spieler).',
     minutes: 10,
     params: [
       { key: 'factor', label: 'Faktor', def: 1.2, min: 1.05, max: 2, step: 0.05, unit: '×' },
