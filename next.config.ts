@@ -1,5 +1,23 @@
 import type { NextConfig } from 'next';
 
+const dev = process.env.NODE_ENV !== 'production';
+// Content-Security-Policy: nothing but our own origin may run scripts or connect. Next's inline bootstrap scripts need
+// 'unsafe-inline' (a nonce setup would make every page dynamic). img-src keeps https: only for the few old external
+// avatar URLs; new ones can't be set any more, so this can become 'self' once those are re-uploaded.
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${dev ? " 'unsafe-eval'" : ''}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob: https:",
+  "media-src 'self' blob: data:",
+  "font-src 'self' data:",
+  `connect-src 'self'${dev ? ' ws://localhost:* http://localhost:*' : ''}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 const nextConfig: NextConfig = {
   devIndicators: false,
   // The click tests (e2e/) run their own dev server next to a normal one; it gets its own build folder.
@@ -11,6 +29,7 @@ const nextConfig: NextConfig = {
     {
       source: '/:path*',
       headers: [
+        { key: 'Content-Security-Policy', value: csp },
         { key: 'X-Frame-Options', value: 'DENY' },
         { key: 'X-Content-Type-Options', value: 'nosniff' },
         { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },

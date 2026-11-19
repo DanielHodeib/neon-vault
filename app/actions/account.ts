@@ -35,6 +35,10 @@ export async function updateProfile(_: ActionState, form: FormData) {
       }),
       form,
     );
+    // Pictures come from our own upload; an old external address may stay, a new one may not.
+    for (const [next, old] of [[data.avatarUrl, user.avatarUrl], [data.bannerUrl, user.bannerUrl]] as const) {
+      if (next?.startsWith('https://') && next !== old) throw new UserError('Bitte lade das Bild hoch – fremde Bild-Adressen sind nicht mehr erlaubt.');
+    }
     const ownerFriend = (await db.friendship.count({
       where: { accepted: true, OR: [{ fromId: user.id, to: { role: 'OWNER' } }, { toId: user.id, from: { role: 'OWNER' } }] },
     })) > 0;

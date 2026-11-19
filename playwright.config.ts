@@ -11,7 +11,7 @@ export default defineConfig({
   expect: { timeout: 20_000 },
   fullyParallel: false,
   workers: 1, // one shared server and database; tests run in order
-  retries: 0,
+  retries: process.env.CI ? 1 : 0, // the slots test can wait on free spins
   reporter: [['list'], ['html', { open: 'never' }]],
   use: { baseURL: `http://localhost:${PORT}`, trace: 'retain-on-failure', locale: 'de-DE' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],

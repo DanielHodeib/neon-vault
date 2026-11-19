@@ -21,7 +21,7 @@ async function resize(file: File, [w, h]: readonly [number, number]) {
   return new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('encode'))), 'image/jpeg', 0.85));
 }
 
-/** Avatar/banner picker: upload a file, or paste a direct image URL with live preview. */
+/** Avatar/banner picker: upload only (external URLs would leak every viewer's IP to a third party). */
 export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'banner'; name: string; label: string; initial: string | null }) {
   const t = useT();
   const [url, setUrl] = useState(initial ?? '');
@@ -69,18 +69,7 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
           <button type="button" className="btn-secondary" onClick={() => fileInput.current?.click()} disabled={busy}>
             {busy ? t('Lädt …') : t('Datei wählen')}
           </button>
-          <input
-            className="input min-w-40 flex-1"
-            name={name}
-            value={url}
-            onChange={(e) => {
-              setUrl(e.target.value.trim());
-              setBroken(false);
-            }}
-            placeholder={t('oder Bild-URL einfügen')}
-            inputMode="url"
-            readOnly={uploaded}
-          />
+          <input type="hidden" name={name} value={url} />
           {url && (
             <button type="button" className="btn-ghost w-10 px-0" aria-label={t('Bild entfernen')} onClick={() => (setUrl(''), setBroken(false))}>
               <X size={16} />
@@ -89,11 +78,6 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
         </div>
       </div>
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={(e) => upload(e.target.files?.[0])} />
-      {broken && (
-        <p className="mt-1.5 text-xs text-loss">
-          {t('Unter dieser Adresse liegt kein Bild – das ist wohl eine Webseite. Rechtsklick (am Handy: lange drücken) auf das Bild → „Bildadresse kopieren“, oder lade die Datei hoch.')}
-        </p>
-      )}
       {uploaded && <p className="mt-1.5 text-xs text-faint">{t('Hochgeladen und gespeichert. Mit ✕ entfernen und danach „Profil speichern“.')}</p>}
     </div>
   );

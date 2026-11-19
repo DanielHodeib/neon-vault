@@ -88,7 +88,7 @@ Ab jetzt läuft alles auf dem Server. Den Mac-Server und Tailscale Funnel brauch
 
 ## Später: Updates einspielen
 
-Passiert automatisch: Der Server schaut alle 2 Minuten auf GitHub nach. Nach einem `git push origin main` ist die neue Version also spätestens nach etwa 5 Minuten live. Die neue Version wird neben der laufenden gebaut und getestet. Schlagen die Tests fehl, bleibt die alte Version online. Danach sehen alle 60 Sekunden lang einen Countdown, dann wird umgeschaltet (wenige Sekunden Pause). Die vorherige Version bleibt als `~/neon-vault.old` liegen.
+Passiert automatisch: Der Server schaut alle 2 Minuten auf GitHub nach. Nach einem `git push origin main` ist die neue Version also spätestens nach etwa 5 Minuten live. Der Server wartet, bis der GitHub-Check (CI) für den Commit grün ist; ist er rot, passiert nichts. Die neue Version wird neben der laufenden gebaut und getestet. Schlagen die Tests fehl, bleibt die alte Version online. Danach sehen alle 60 Sekunden lang einen Countdown, dann wird umgeschaltet (wenige Sekunden Pause). Die vorherige Version bleibt als `~/neon-vault.old` liegen. Vor dem Umschalten gibt es einen Datenbank-Snapshot (`~/neon-data/backups/pre-update-*.db`, die letzten 5). Startet die neue Version nicht, geht der Server selbst auf die alte Version und den Snapshot zurück; der fehlgeschlagene Stand liegt in `~/neon-vault.failed`, und dieser Commit wird nicht noch einmal versucht (Datei `~/neon-failed-sha` löschen, um es doch zu probieren).
 
 Sofort von Hand aktualisieren:
 
@@ -109,6 +109,17 @@ Die Datenbank liegt auf dem Server in `~/neon-data/dev.db`, also außerhalb des 
 | `sudo systemctl status neon-vault` | Läuft die App? |
 | `ls ~/neon-data/backups` | Tägliche Datenbank-Backups (14 Tage) |
 | `cd neon-vault && npm run set-role -- Name OWNER` | Rolle vergeben |
+
+## Zweites Backup an einem anderen Ort
+
+Ein Backup auf demselben Server geht mit dem Server verloren. Darum kann die App nach jedem täglichen Backup einen Befehl ausführen, der es woanders hin kopiert. In `~/neon-vault/.env` eintragen (eine der Varianten):
+
+```
+OFFSITE_BACKUP_CMD="bash /home/ubuntu/neon-vault/deploy/offsite-backup.sh rclone:meinremote:neon-vault"
+OFFSITE_BACKUP_CMD="bash /home/ubuntu/neon-vault/deploy/offsite-backup.sh rsync:user@anderer-rechner:neon-backups/"
+```
+
+`rclone` einmal mit `rclone config` einrichten (z. B. Backblaze B2 oder Google Drive; am besten mit einem „crypt“-Remote, dann sind die Kopien verschlüsselt). `rsync` braucht einen SSH-Schlüssel ohne Passwort zu einem Rechner, den du kontrollierst. Danach `sudo systemctl restart neon-vault`; der Erfolg steht im Log (`Off-Site-Backup fertig`).
 
 ## Backup auf den Mac holen
 

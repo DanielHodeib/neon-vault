@@ -1,5 +1,7 @@
+import { execFile } from 'node:child_process';
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import path from 'node:path';
+import { promisify } from 'node:util';
 
 import { db } from './hub';
 
@@ -30,9 +32,20 @@ export async function backupNow({ force = false } = {}) {
   for (const old of outdated([...files, name])) await rm(/*turbopackIgnore: true*/ path.join(/*turbopackIgnore: true*/ dir, old), { force: true });
 }
 
+/**
+ * Second copy somewhere else (a backup on the same disk dies with it). OFFSITE_BACKUP_CMD is a shell command from
+ * the server's own .env, run after every daily backup with BACKUP_DIR set; see deploy/offsite-backup.sh.
+ */
+export async function offsiteCopy() {
+  const cmd = process.env.OFFSITE_BACKUP_CMD;
+  if (!cmd) return;
+  await promisify(execFile)('bash', ['-c', cmd], { timeout: 10 * 60_000, env: { ...process.env, BACKUP_DIR: backupDir() } });
+  console.log('> Off-Site-Backup fertig');
+}
+
 /** Backup at start, then once a day. */
 export function startBackups() {
-  const run = () => void backupNow().catch((err) => console.error('[backup]', err));
+  const run = () => void backupNow().then(offsiteCopy).catch((err) => console.error('[backup]', err));
   run();
   setInterval(run, DAY).unref();
 }
