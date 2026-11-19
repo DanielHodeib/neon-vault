@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { EVENT_INFO } from '../lib/eventTypes';
 import { boostedWin } from '../lib/events';
 import { hub } from '../lib/hub';
-import { QUESTS } from '../lib/quests';
+import { DAILY_BONUS, DAILY_COUNT, QUESTS, WEEKLY_BONUS, WEEKLY_COUNT } from '../lib/quests';
 import { MACHINES } from '../lib/slots';
 import { LEVEL_REWARD, LEVEL_REWARD_MAX } from '../lib/wallet';
 import { spin } from './slots';
@@ -41,9 +41,11 @@ test('slots: even with the strongest jackpot rush no machine pays back clearly m
 });
 
 test('quests and levels: free coins stay moderate', () => {
-  const daily = QUESTS.filter((q) => !q.weekly).reduce((s, q) => s + q.reward, 0);
-  const weekly = QUESTS.filter((q) => q.weekly).reduce((s, q) => s + q.reward, 0);
-  assert.ok(daily <= 30_000, `daily ${daily}`);
-  assert.ok(weekly <= 200_000, `weekly ${weekly}`);
+  // Worst case: the best-paid quests of a period all show up together, plus the all-done bonus.
+  const best = (weekly: boolean, n: number) => QUESTS.filter((q) => q.weekly === weekly).map((q) => q.reward).sort((a, b) => b - a).slice(0, n).reduce((s, r) => s + r, 0);
+  const daily = best(false, DAILY_COUNT) + DAILY_BONUS;
+  const weekly = best(true, WEEKLY_COUNT) + WEEKLY_BONUS;
+  assert.ok(daily <= 35_000, `daily ${daily}`);
+  assert.ok(weekly <= 230_000, `weekly ${weekly}`);
   assert.equal(Math.min(100 * LEVEL_REWARD, LEVEL_REWARD_MAX), 10_000);
 });
