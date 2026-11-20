@@ -1,21 +1,26 @@
 'use client';
 
 import { Gift, Square, Volume2, VolumeX, Zap } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { coins } from '@/lib/format';
 import { BIG_WIN, lineCount, MACHINES, SLOT_MAX_WIN, topSymbol, type Machine } from '@/lib/slots';
 import { useJoin, useLive } from '../SocketProvider';
-import { BetInput, Section } from '../ui';
+import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound, soundPref } from './sound';
 import { useT } from '@/components/I18n';
 import { useCountUp } from '../useCountUp';
+import { BigWin, Meter, Badge, Odd, pct } from './SlotsParts';
+import { SlotsInfo } from './SlotsInfo';
 
 type Cell = [number, number];
+
 type Win = { symbol: string; count: number; cells: Cell[]; amount: number; line?: number; ways?: number };
+
 type Step = { grid: string[][]; wins: Win[]; mult: number; reveal?: Cell[] };
+
 type FreeSpins = { machine: string; spins: number; bet: number; special: string | null } | null;
+
 type Result = {
   steps: Step[];
   multiplier: number;
@@ -29,16 +34,21 @@ type Result = {
   chaos?: number;
   expand?: { symbol: string; cols: number[]; amount: number };
 };
+
 type Phase = 'idle' | 'spinning' | 'showing';
 
 const AUTO = [0, 10, 25, 50, 100];
+
 const STRIP = 10;
+
 const LINE_COLORS = ['#fbbf24', '#f472b6', '#60a5fa', '#34d399', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#facc15', '#e879f9'];
+
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 const cellKey = ([c, r]: Cell) => `${c}:${r}`;
+
 const startGrid = (m: Machine) =>
   Array.from({ length: m.cols }, (_, c) => Array.from({ length: m.rows }, (_, r) => m.symbols[(c * 2 + r) % m.symbols.length].icon));
-
 
 export function Slots() {
   const t = useT();
@@ -67,7 +77,11 @@ export function Slots() {
   const muted = useSyncExternalStore(soundPref.subscribe, soundPref.muted, soundPref.server);
   const busy = useRef(false);
   const alive = useRef(true);
-  useEffect(() => () => void (alive.current = false), []);
+  // Set it to true again on every mount: React can hide a page and show the same instance later (effects re-run, refs stay).
+  useEffect(() => {
+    alive.current = true;
+    return () => void (alive.current = false);
+  }, []);
 
   useJoin<{ freeSpins: FreeSpins }>('slots:state', useCallback((r) => setFree(r.freeSpins), []));
 
@@ -214,8 +228,6 @@ export function Slots() {
   // Paylines to draw: the focused one, or every winning one before cycling starts.
   const drawn = machine.lines ? (focused ? [focused] : shownWins).filter((w) => w.line !== undefined) : [];
   const autoRunning = auto > 0 || (freeHere > 0 && autoFree && !!result);
-  const lineBet = amount / lineCount(machine);
-  const totalWeight = machine.symbols.reduce((sum, x) => sum + x.weight, 0);
   const shownWin = useCountUp(result?.win ?? 0);
 
   const cabinet = (
@@ -431,100 +443,11 @@ export function Slots() {
     </div>
   );
 
-  const extra = (
-    <>
-      <Section title={t('Gewinntabelle')} action={<span className="text-xs text-muted">{t('bei {n} NVC Einsatz', { n: coins(amount) })}</span>} pad>
-        <p className="mb-3 text-sm text-muted">{t(machine.feature)}</p>
-        <p className="mb-2 text-[11px] text-faint">{t('Prozent = Chance, dass ein Feld dieses Symbol zeigt.')}</p>
-        <ul className="grid gap-x-6 gap-y-2 sm:grid-cols-2">
-          {[...machine.symbols].reverse().map((s) => (
-            <li key={s.icon} className="flex items-center gap-3 text-sm">
-              <span className="w-8 text-center text-2xl">{s.icon}</span>
-              <span className="num w-12 shrink-0 text-right text-[11px] text-faint" title={t('Chance pro Feld')}>{pct((s.weight / totalWeight) * 100)} %</span>
-              <span className="min-w-0 flex-1 text-xs text-muted">
-                {s.mystery ? t('Mystery – alle werden zum selben Symbol') : s.wild && !s.pays ? t('Wild – ersetzt alle Symbole') : (
-                  <>
-                    {s.wild && <span className="text-gold">Wild{s.scatter && ' + Scatter'} · </span>}
-                    {s.scatter && !s.wild && <span className="text-gold">Scatter · </span>}
-                    {Object.entries(s.pays ?? {}).map(([n, p]) => (
-                      <span key={n} className="mr-2 whitespace-nowrap">
-                        {n}× <span className="num text-fg">{coins(Math.floor(s.scatter ? p * amount : machine.lines ? p * lineBet : (p * amount) / machine.waysDivisor!))}</span>
-                      </span>
-                    ))}
-                  </>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-        {!machine.lines && <p className="mt-3 text-xs text-faint">{t('Werte pro Weg. Mehrere gleiche Symbole auf einer Walze multiplizieren die Wege.')}</p>}
-      </Section>
-      {session.spins > 0 && (
-        <Section title={t('Diese Sitzung')} pad>
-          <dl className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-            <Stat label="Spins" value={String(session.spins)} />
-            <Stat label="Eingesetzt" value={coins(session.bet)} />
-            <Stat label="Gewonnen" value={coins(session.won)} />
-            <Stat label="Bester Treffer" value={coins(session.best)} />
-          </dl>
-          {history.length > 0 && (
-            <ul className="mt-4 divide-y divide-line text-sm">
-              {history.map((h) => (
-                <li key={h.id} className="flex justify-between py-2">
-                  <span className="text-muted">{h.machine}</span>
-                  <span>
-                    <span className="num text-win">+{coins(h.win)}</span> <span className="text-xs text-faint">{h.mult.toFixed(1)}×</span>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-      )}
-    </>
-  );
+  const extra = <SlotsInfo machine={machine} amount={amount} session={session} history={history} />;
 
   return <GameFrame title="Slots" subtitle={t('Acht Automaten, jeder mit eigenen Regeln.')} stage={stage} controls={controls} extra={extra} />;
 }
 
-function BigWin({ label, amount }: { label: string; amount: number }) {
-  const t = useT();
-  const value = useCountUp(amount, 2200);
-  return (
-    <span className="pop-in block text-center">
-      <span className="slot-glow block text-sm font-bold tracking-[0.3em] text-gold uppercase">{label}</span>
-      <span className="num mt-1 block text-4xl font-bold text-white sm:text-5xl">{coins(value)}</span>
-      <span className="mt-2 block text-xs text-white/50">{t('Tippen zum Schließen')}</span>
-    </span>
-  );
-}
-
-const Meter = ({ label, value }: { label: string; value: string }) => (
-  <div className="min-w-0">
-    <p className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">{label}</p>
-    <p className="num truncate text-sm text-white/85">{value}</p>
-  </div>
-);
-
-const Badge = ({ children }: { children: ReactNode }) => <span className="pop-in rounded-full bg-gold/15 px-2.5 py-1 font-medium text-gold">{children}</span>;
-
-const pct = (n: number) => n.toLocaleString('de-DE', { maximumFractionDigits: 1 });
-
 /** Short feature name for machines without a triggered bonus. */
 const featureShort = (m: Machine) =>
   m.tumble ? 'Kaskaden' : m.chaos ? 'Chaos-Multiplikator' : m.wildMult ? `Wild ×${m.wildMult}` : m.symbols.some((s) => s.mystery) ? 'Mystery' : m.symbols.some((s) => s.pays?.[2]) ? 'Paare zahlen' : 'Hohe Gewinne';
-
-const Odd = ({ label, value, hint }: { label: string; value: string; hint: string }) => (
-  <div className="rounded-xl border border-line bg-surface px-3 py-2.5">
-    <dt className="text-[11px] text-muted">{label}</dt>
-    <dd className="num text-base font-semibold">{value}</dd>
-    <dd className="truncate text-[11px] text-faint">{hint}</dd>
-  </div>
-);
-
-const Stat = ({ label, value }: { label: string; value: string }) => (
-  <div>
-    <dt className="text-xs text-muted">{label}</dt>
-    <dd className="num font-medium">{value}</dd>
-  </div>
-);

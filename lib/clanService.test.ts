@@ -125,3 +125,18 @@ test('weekly goal: needs a clan and a reached goal', async () => {
   await assert.rejects(m.clans.claimClanGoal(leader, 1), /noch nicht erreicht/);
   assert.equal((await fresh(leader)).balance, 100_000 - m.consts.CLAN_COST, 'no reward without the goal');
 });
+
+test('syncClanTags repairs a drifted tag copy and leaves correct ones alone', async () => {
+  const { leader, clanId, tag } = await found();
+  const member = await join(clanId);
+  const stray = await user();
+  await m.hub.db.user.update({ where: { id: member.id }, data: { clanTag: 'WRONG' } }); // drifted
+  await m.hub.db.user.update({ where: { id: stray.id }, data: { clanTag: 'GHOST' } }); // tag without a clan
+  await m.hub.db.user.update({ where: { id: leader.id }, data: { clanTag: null } }); // missing
+  const fixed = await m.clans.syncClanTags();
+  assert.ok(fixed >= 3);
+  assert.equal((await fresh(member)).clanTag, tag);
+  assert.equal((await fresh(leader)).clanTag, tag);
+  assert.equal((await fresh(stray)).clanTag, null);
+  assert.equal(await m.clans.syncClanTags(), 0, 'a second run finds nothing to fix');
+});

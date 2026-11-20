@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { aviaFlight, aviaPayout } from '@/lib/avia';
-import { payout, placeBet } from '@/lib/wallet';
+import { instantRound } from './instant';
 import { randInt } from './rng';
 import { amount, handle, type Register } from './socket';
 
@@ -13,13 +13,11 @@ export const registerAvia: Register = (_io, socket) => {
     socket,
     'avia:play',
     z.object({ amount }),
-    async ({ amount }) => {
-      await placeBet(user.id, amount, 'avia');
-      const flight = aviaFlight(randInt);
-      const won = aviaPayout(amount, flight);
-      await payout(user.id, won, 'avia');
-      return { ...flight, payout: won };
-    },
+    ({ amount }) =>
+      instantRound(user.id, 'avia', amount, () => {
+        const flight = aviaFlight(randInt);
+        return { ...flight, payout: aviaPayout(amount, flight) };
+      }),
     { play: true },
   );
 };

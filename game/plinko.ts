@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { PLINKO, PLINKO_ROWS } from '@/lib/solo';
-import { payout, placeBet } from '@/lib/wallet';
+import { instantRound } from './instant';
 import { randInt } from './rng';
 import { amount, handle, type Register } from './socket';
 
@@ -12,15 +12,13 @@ export const registerPlinko: Register = (_io, socket) => {
     socket,
     'plinko:drop',
     z.object({ amount, risk: z.enum(['low', 'medium', 'high']) }),
-    async ({ amount, risk }) => {
-      await placeBet(user.id, amount, 'plinko');
-      const path = Array.from({ length: PLINKO_ROWS }, () => randInt(2));
-      const slot = path.reduce((a, b) => a + b, 0);
-      const multiplier = PLINKO[risk][slot];
-      const won = Math.floor(amount * multiplier);
-      await payout(user.id, won, 'plinko');
-      return { path, slot, multiplier, payout: won };
-    },
+    ({ amount, risk }) =>
+      instantRound(user.id, 'plinko', amount, () => {
+        const path = Array.from({ length: PLINKO_ROWS }, () => randInt(2));
+        const slot = path.reduce((a, b) => a + b, 0);
+        const multiplier = PLINKO[risk][slot];
+        return { path, slot, multiplier, payout: Math.floor(amount * multiplier) };
+      }),
     { play: true },
   );
 };

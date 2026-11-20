@@ -4,7 +4,12 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/ui';
 import { requireRole } from '@/lib/auth';
 import { atLeast } from '@/lib/roles';
-import { AuditLog, FunTab, LiveTab, OverviewTab, PlayersTab, ServerTab, StatusPills } from './sections';
+import { FunTab } from './FunTab';
+import { LiveTab } from './LiveTab';
+import { OverviewTab } from './OverviewTab';
+import { PlayersTab } from './PlayersTab';
+import { AuditLog, ServerTab } from './ServerTab';
+import { StatusPills } from './shared';
 
 export const metadata = { title: 'Admin' };
 

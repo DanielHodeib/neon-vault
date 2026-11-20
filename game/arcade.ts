@@ -22,6 +22,7 @@ import {
 } from '@/lib/arcade';
 import { UserError } from '@/lib/hub';
 import { cancelBet, payout, placeBet } from '@/lib/wallet';
+import { instantRound } from './instant';
 import { newDeck, rankValue, score5 } from './cards';
 import { rand, randInt, shuffle } from './rng';
 import { amount, empty, handle, type Register } from './socket';
@@ -115,13 +116,11 @@ export const registerArcade: Register = (_io, socket) => {
     socket,
     'scratch:buy',
     z.object({ amount }),
-    async ({ amount }) => {
-      await placeBet(user.id, amount, 'scratch');
-      const card = scratchCard();
-      const won = Math.floor(amount * card.multiplier);
-      await payout(user.id, won, 'scratch');
-      return { ...card, payout: won };
-    },
+    ({ amount }) =>
+      instantRound(user.id, 'scratch', amount, () => {
+        const card = scratchCard();
+        return { ...card, payout: Math.floor(amount * card.multiplier) };
+      }),
     { play: true },
   );
 
@@ -131,12 +130,11 @@ export const registerArcade: Register = (_io, socket) => {
     z.object({ amount, picks: z.array(z.number().int().min(1).max(KENO_NUMBERS)).min(1).max(KENO_MAX_PICKS) }),
     async ({ amount, picks }) => {
       if (new Set(picks).size !== picks.length) throw new UserError('Jede Zahl nur einmal.');
-      await placeBet(user.id, amount, 'keno');
-      const drawn = shuffle(Array.from({ length: KENO_NUMBERS }, (_, i) => i + 1)).slice(0, KENO_DRAWN);
-      const { hits, multiplier } = kenoResult(picks, drawn);
-      const won = Math.floor(amount * multiplier);
-      await payout(user.id, won, 'keno');
-      return { drawn, hits, multiplier, payout: won };
+      return instantRound(user.id, 'keno', amount, () => {
+        const drawn = shuffle(Array.from({ length: KENO_NUMBERS }, (_, i) => i + 1)).slice(0, KENO_DRAWN);
+        const { hits, multiplier } = kenoResult(picks, drawn);
+        return { drawn, hits, multiplier, payout: Math.floor(amount * multiplier) };
+      });
     },
     { play: true },
   );
@@ -147,11 +145,10 @@ export const registerArcade: Register = (_io, socket) => {
     z.object({ amount, target: z.number().min(LIMBO_MIN).max(LIMBO_MAX) }),
     async ({ amount, target }) => {
       const t = Math.floor(target * 100) / 100;
-      await placeBet(user.id, amount, 'limbo');
-      const result = limboResult();
-      const won = result >= t ? Math.floor(amount * t) : 0;
-      await payout(user.id, won, 'limbo');
-      return { result, target: t, payout: won };
+      return instantRound(user.id, 'limbo', amount, () => {
+        const result = limboResult();
+        return { result, target: t, payout: result >= t ? Math.floor(amount * t) : 0 };
+      });
     },
     { play: true },
   );
@@ -160,16 +157,13 @@ export const registerArcade: Register = (_io, socket) => {
     socket,
     'baccarat:play',
     z.object({ amount, side: z.enum(['player', 'banker', 'tie']) }),
-    async ({ amount, side }) => {
-      await placeBet(user.id, amount, 'baccarat');
-      const hand = baccaratDeal(newDeck(8));
-      const back = baccaratReturn(side, hand.winner);
-      const won = Math.floor(amount * back);
-      // A push hands the stake back as a cancelled bet, not as a win.
-      if (back === 1) await cancelBet(user.id, won, 'baccarat');
-      else await payout(user.id, won, 'baccarat');
-      return { ...hand, side, multiplier: back, payout: won };
-    },
+    ({ amount, side }) =>
+      instantRound(user.id, 'baccarat', amount, () => {
+        const hand = baccaratDeal(newDeck(8));
+        const back = baccaratReturn(side, hand.winner);
+        // A push hands the stake back as a cancelled bet, not as a win.
+        return { ...hand, side, multiplier: back, payout: Math.floor(amount * back), refund: back === 1 };
+      }),
     { play: true },
   );
 

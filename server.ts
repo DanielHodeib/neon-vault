@@ -10,6 +10,7 @@ import { startTournaments } from './lib/tournament';
 import { CHAT_KEEP, loadMaintenance, startCountdown, startEventScheduler } from './lib/events';
 import { loadBigWins } from './lib/bigwins';
 import { loadChat } from './lib/chatlog';
+import { syncClanTags } from './lib/clanService';
 import { db, hub, type ChatMessage } from './lib/hub';
 import { loadMutes } from './lib/moderation';
 
@@ -27,6 +28,8 @@ async function main() {
   await loadBigWins();
   hub.chat = await loadChat<ChatMessage>('global', CHAT_KEEP);
   await loadMutes();
+  const fixedTags = await syncClanTags();
+  if (fixedTags) console.log(`> Clan-Tags repariert: ${fixedTags}`);
   // Expired logins are useless; drop them now and once a day so the table doesn't grow forever.
   const dropExpiredSessions = () => db.session.deleteMany({ where: { expiresAt: { lt: new Date() } } }).catch(console.error);
   void dropExpiredSessions();

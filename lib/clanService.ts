@@ -134,3 +134,13 @@ export async function claimClanGoal(me: Me, tier: number) {
   }
   return reward;
 }
+
+/**
+ * `User.clanTag` is a copy of the clan's tag (shown next to names without a join). If it ever drifts
+ * (a crash between two writes, a manual DB edit), this makes it right again. Returns how many rows it fixed.
+ */
+export async function syncClanTags() {
+  const orphans = await db.$executeRaw`UPDATE "User" SET "clanTag" = NULL WHERE "clanId" IS NULL AND "clanTag" IS NOT NULL`;
+  const wrong = await db.$executeRaw`UPDATE "User" SET "clanTag" = (SELECT "tag" FROM "Clan" WHERE "Clan"."id" = "User"."clanId") WHERE "clanId" IS NOT NULL AND "clanTag" IS NOT (SELECT "tag" FROM "Clan" WHERE "Clan"."id" = "User"."clanId")`;
+  return orphans + wrong;
+}
