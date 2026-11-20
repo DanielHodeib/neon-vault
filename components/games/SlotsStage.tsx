@@ -184,6 +184,20 @@ export function SlotsStage({ machine, machineKey, phase, choose, free, freeHere,
         ))}
       </div>
       {cabinet}
+      <div className="hidden sm:block">
+        <SlotsOdds machine={machine} amount={amount} />
+      </div>
+    </div>
+  );
+
+  return stage;
+}
+
+/** Short feature name for machines without a triggered bonus. */
+/** Odds of the chosen machine: next to the reels on wider screens, below the controls on phones (so Spin stays near the reels). */
+export function SlotsOdds({ machine, amount }: { machine: Machine; amount: number }) {
+  const t = useT();
+  return (
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <Odd label={t('Auszahlungsquote')} value={`${pct(machine.odds.rtp)} %`} hint={t('langfristig zurück')} />
         <Odd label={t('Trefferquote')} value={`${pct(machine.odds.hit)} %`} hint={t('etwa jeder {n}. Spin', { n: Math.round(100 / machine.odds.hit) })} />
@@ -194,12 +208,8 @@ export function SlotsStage({ machine, machineKey, phase, choose, free, freeHere,
         />
         <Odd label={t('Max. Gewinn')} value={`${coins(SLOT_MAX_WIN)}×`} hint={coins(SLOT_MAX_WIN * amount) + ' NVC'} />
       </dl>
-    </div>
   );
-
-  return stage;
 }
 
-/** Short feature name for machines without a triggered bonus. */
 const featureShort = (m: Machine) =>
   m.tumble ? 'Kaskaden' : m.chaos ? 'Chaos-Multiplikator' : m.wildMult ? `Wild ×${m.wildMult}` : m.symbols.some((s) => s.mystery) ? 'Mystery' : m.symbols.some((s) => s.pays?.[2]) ? 'Paare zahlen' : 'Hohe Gewinne';

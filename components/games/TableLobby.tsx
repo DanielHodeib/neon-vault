@@ -58,8 +58,8 @@ export function TableLobby({
             </div>
           </div>
           {extra}
-          <label className="flex items-center gap-2.5 text-sm text-muted">
-            <input type="checkbox" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+          <label className="flex min-h-10 items-center gap-2.5 text-sm text-muted">
+            <input type="checkbox" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} className="h-5 w-5 accent-[var(--accent)]" />
             {t('Privat – nur mit Tisch-Code')}
           </label>
           <button className="btn-primary w-full" onClick={() => onCreate({ bots, isPrivate })}>{t('Tisch erstellen')}</button>
@@ -107,7 +107,7 @@ export function TableBar({ id, isPrivate, info, onLeave, leaveLabel }: { id: str
 }
 
 export function PlayingCard({ card }: { card: string }) {
-  if (card === '??') return <span className="playing-card border-line-strong bg-raised bg-[repeating-linear-gradient(45deg,transparent_0_4px,rgba(255,255,255,.04)_4px_8px)]" />;
+  if (card === '??') return <span className="playing-card playing-card-back" />;
   const suit = { S: '♠', H: '♥', D: '♦', C: '♣' }[card[1]];
   const red = card[1] === 'H' || card[1] === 'D';
   return (

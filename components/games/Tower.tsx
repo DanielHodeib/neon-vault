@@ -114,7 +114,7 @@ export function Tower() {
                       disabled={!current || busy}
                       onClick={() => pick(d)}
                       aria-label={t('Stockwerk {f}, Tür {d}', { f: f + 1, d: d + 1 })}
-                      className={`grid h-10 place-items-center rounded-lg border transition sm:h-11 ${
+                      className={`grid h-9 place-items-center rounded-lg border transition sm:h-11 ${
                         boom
                           ? 'border-loss bg-loss/30'
                           : chosen

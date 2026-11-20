@@ -58,7 +58,7 @@ body {
 @utility eyebrow { @apply text-[11px] font-semibold tracking-wider text-faint uppercase; }
 @utility num { @apply font-mono tabular-nums; }
 @utility chip {
-  @apply inline-flex h-8 shrink-0 items-center rounded-full border border-line px-3 text-xs font-medium text-muted transition hover:text-fg;
+  @apply inline-flex h-8 shrink-0 items-center justify-center rounded-full border border-line px-3 text-xs font-medium text-muted transition hover:text-fg pointer-coarse:min-h-10 pointer-coarse:min-w-10;
 }
 @utility chip-active { @apply chip border-accent bg-accent/10 text-fg; }
 @utility no-scrollbar {
@@ -277,6 +277,9 @@ html { -webkit-tap-highlight-color: transparent; }
 
 /* Video Poker: bigger cards than at the tables */
 .vp-cards .playing-card { width: clamp(3.3rem, 15vw, 5.6rem); height: clamp(4.7rem, 21vw, 7.8rem); font-size: clamp(1.05rem, 4vw, 1.75rem); }
+
+/* Card back (after .playing-card, so its white face doesn't win) */
+.playing-card-back { @apply border-line-strong bg-raised; background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.04) 4px 8px); }
 
 /* Live reactions rising over the board */
 .reaction-float { animation-name: reaction-up; animation-duration: 2.6s; animation-timing-function: cubic-bezier(.2, .7, .3, 1); animation-fill-mode: both; }

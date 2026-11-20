@@ -86,7 +86,7 @@ export function Mines() {
 
   const stage = (
     <div className="panel p-3 sm:p-6">
-      <div className="mx-auto grid max-w-md grid-cols-5 gap-2 sm:gap-3">
+      <div className="mx-auto grid max-w-[17rem] grid-cols-5 gap-2 sm:max-w-md sm:gap-3">
         {Array.from({ length: MINES_TILES }, (_, i) => {
           const gem = revealed.includes(i);
           const bomb = bombs.includes(i);

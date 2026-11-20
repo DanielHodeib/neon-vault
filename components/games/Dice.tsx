@@ -87,7 +87,7 @@ export function Dice() {
         <input
           type="range"
           aria-label={t('Zielzahl')}
-          className="mt-4 w-full accent-accent"
+          className="-my-2 mt-2 h-8 w-full accent-accent"
           min={DICE_MIN}
           max={DICE_MAX}
           value={target}

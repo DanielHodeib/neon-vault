@@ -74,7 +74,7 @@ export function GameTile({ game, players, fav, onFav, onPick, size = 'md' }: { g
         onClick={onFav}
         aria-pressed={fav}
         aria-label={fav ? t('Aus Favoriten entfernen') : t('Zu Favoriten')}
-        className={`absolute top-2 right-2 grid h-7 w-7 place-items-center rounded-md transition ${fav ? 'text-gold' : 'text-faint opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:text-fg'}`}
+        className={`absolute top-2 right-2 grid h-9 w-9 place-items-center rounded-md transition ${fav ? 'text-gold' : 'text-faint opacity-0 pointer-coarse:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 hover:text-fg'}`}
       >
         <Star size={15} fill={fav ? 'currentColor' : 'none'} />
       </button>

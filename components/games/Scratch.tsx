@@ -143,7 +143,11 @@ export function Scratch() {
               onPointerCancel={() => (drawing.current = false)}
             />
           )}
-          {!card && <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/50 text-sm text-white/80">{t('Kauf ein Los')}</div>}
+          {!card && (
+            <div className="absolute inset-0 grid place-items-center rounded-xl bg-black/50">
+              <span className="rounded-full bg-black/80 px-4 py-1.5 text-sm text-white">{t('Kauf ein Los')}</span>
+            </div>
+          )}
         </div>
       </div>
       <p className="mt-4 min-h-7 text-center text-lg font-semibold">

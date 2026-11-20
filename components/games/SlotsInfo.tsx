@@ -5,6 +5,7 @@ import { coins } from '@/lib/format';
 import { lineCount, type Machine } from '@/lib/slots';
 import { Section } from '../ui';
 import { pct, Stat } from './SlotsParts';
+import { SlotsOdds } from './SlotsStage';
 
 export type SlotsSession = { spins: number; bet: number; won: number; best: number };
 export type SlotsHistory = { id: number; machine: string; win: number; mult: number }[];
@@ -16,6 +17,9 @@ export function SlotsInfo({ machine, amount, session, history }: { machine: Mach
   const totalWeight = machine.symbols.reduce((sum, x) => sum + x.weight, 0);
   return (
     <>
+    <div className="sm:hidden">
+      <SlotsOdds machine={machine} amount={amount} />
+    </div>
     <Section title={t('Gewinntabelle')} action={<span className="text-xs text-muted">{t('bei {n} NVC Einsatz', { n: coins(amount) })}</span>} pad>
       <p className="mb-3 text-sm text-muted">{t(machine.feature)}</p>
       <p className="mb-2 text-[11px] text-faint">{t('Prozent = Chance, dass ein Feld dieses Symbol zeigt.')}</p>
