@@ -1,51 +1,18 @@
 'use client';
 
-import { Gift, Square, Volume2, VolumeX, Zap } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import { coins } from '@/lib/format';
-import { BIG_WIN, lineCount, MACHINES, SLOT_MAX_WIN, topSymbol, type Machine } from '@/lib/slots';
+import { BIG_WIN, MACHINES, type Machine } from '@/lib/slots';
 import { useJoin, useLive } from '../SocketProvider';
-import { BetInput } from '../ui';
 import { GameFrame } from './GameFrame';
 import { sound, soundPref } from './sound';
 import { useT } from '@/components/I18n';
 import { useCountUp } from '../useCountUp';
-import { BigWin, Meter, Badge, Odd, pct } from './SlotsParts';
+import { SlotsControls } from './SlotsControls';
 import { SlotsInfo } from './SlotsInfo';
-
-type Cell = [number, number];
-
-type Win = { symbol: string; count: number; cells: Cell[]; amount: number; line?: number; ways?: number };
-
-type Step = { grid: string[][]; wins: Win[]; mult: number; reveal?: Cell[] };
-
-type FreeSpins = { machine: string; spins: number; bet: number; special: string | null } | null;
-
-type Result = {
-  steps: Step[];
-  multiplier: number;
-  features: string[];
-  freeWon: number;
-  freeSpins: FreeSpins;
-  win: number;
-  bet: number;
-  free: boolean;
-  special?: string;
-  chaos?: number;
-  expand?: { symbol: string; cols: number[]; amount: number };
-};
-
-type Phase = 'idle' | 'spinning' | 'showing';
-
-const AUTO = [0, 10, 25, 50, 100];
-
-const STRIP = 10;
-
-const LINE_COLORS = ['#fbbf24', '#f472b6', '#60a5fa', '#34d399', '#f87171', '#a78bfa', '#fb923c', '#22d3ee', '#facc15', '#e879f9'];
+import { SlotsStage } from './SlotsStage';
+import { cellKey, STRIP, type FreeSpins, type Phase, type Result, type Step } from './slotsTypes';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
-const cellKey = ([c, r]: Cell) => `${c}:${r}`;
 
 const startGrid = (m: Machine) =>
   Array.from({ length: m.cols }, (_, c) => Array.from({ length: m.rows }, (_, r) => m.symbols[(c * 2 + r) % m.symbols.length].icon));
@@ -230,224 +197,57 @@ export function Slots() {
   const autoRunning = auto > 0 || (freeHere > 0 && autoFree && !!result);
   const shownWin = useCountUp(result?.win ?? 0);
 
-  const cabinet = (
-    <div
-      className={`relative overflow-hidden rounded-2xl border p-3 sm:p-5 ${freeHere ? 'border-gold/60' : 'border-white/10'}`}
-      style={{ background: `radial-gradient(120% 90% at 50% 0%, ${machine.colors[0]}, ${machine.colors[1]} 70%)` }}
-    >
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-lg font-semibold tracking-tight sm:text-xl">{t(machine.name)}</p>
-          <p className="truncate text-xs text-white/60">{t(machine.tagline)}</p>
-        </div>
-        <p className="shrink-0 rounded-full bg-black/30 px-2.5 py-1 text-[11px] font-medium text-white/70">
-          {machine.lines ? t('{n} Linien', { n: machine.lines.length }) : t('{n} Wege', { n: lineCount(machine) })} · {machine.cols}×{machine.rows}
-        </p>
-      </div>
-
-      {/* Reels keep a fixed size per reel so a 3×3 machine does not fill a wide screen. */}
-      <div className="relative mx-auto rounded-xl bg-black/45 p-1.5 shadow-[inset_0_2px_12px_rgba(0,0,0,.6)] sm:p-2" style={{ maxWidth: `${machine.cols * 6.5}rem` }}>
-        <div className="relative grid gap-1.5 sm:gap-2" style={{ gridTemplateColumns: `repeat(${machine.cols}, minmax(0, 1fr))` }}>
-          {grid.map((col, c) => {
-            const spinning = c >= stopped;
-            const expanded = expand && expand.cols.includes(c);
-            return (
-              <div key={c} className={`relative overflow-hidden rounded-lg bg-black/40 ${spinning && tease ? 'ring-2 ring-gold/70' : ''}`}>
-                <div>
-                  {col.map((icon, r) => {
-                    if (spinning) return <div key={r} className="aspect-square" />;
-                    const k = `${c}:${r}`;
-                    const win = lit.has(k);
-                    return (
-                      <div
-                        key={`${spinId}-${k}-${icon}`}
-                        className={`grid aspect-square place-items-center text-[clamp(1.5rem,7vw,2.75rem)] leading-none transition-opacity ${
-                          vanish?.has(k) ? 'slot-pop' : reveal.has(k) ? 'slot-flip' : 'slot-land'
-                        } ${lit.size && !win ? 'opacity-30' : ''}`}
-                      >
-                        <span className={`grid h-[86%] w-[86%] place-items-center rounded-md ${win ? 'slot-win bg-gold/15 ring-2 ring-gold/80' : ''}`}>{icon}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-                {spinning && strips[c] && (
-                  <div className="absolute inset-0 overflow-hidden">
-                    <div className="slot-strip absolute inset-x-0 top-0" style={{ height: `${((STRIP * 2) / machine.rows) * 100}%` }}>
-                      {[...strips[c], ...strips[c]].map((icon, i) => (
-                        <div key={i} className="grid place-items-center text-[clamp(1.5rem,7vw,2.75rem)] opacity-80" style={{ height: `${100 / (STRIP * 2)}%` }}>
-                          {icon}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                {expanded && expand && (
-                  <div className="pop-in absolute inset-0 grid place-items-center rounded-lg bg-gold/20 text-[clamp(2.5rem,12vw,4.5rem)] ring-2 ring-gold">
-                    {expand.symbol}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-          {drawn.length > 0 && (
-            <svg className="pointer-events-none absolute inset-0 h-full w-full" viewBox={`0 0 ${machine.cols * 100} ${machine.rows * 100}`} preserveAspectRatio="none">
-              {drawn.map((w) => {
-                const points = machine.lines![w.line!].map((row, c) => `${c * 100 + 50},${row * 100 + 50}`);
-                const color = drawn.length > 1 ? LINE_COLORS[w.line! % LINE_COLORS.length] : 'var(--color-gold)';
-                return (
-                  <g key={w.line} stroke={color} fill="none" strokeLinejoin="round" strokeLinecap="round">
-                    {/* the whole payline, faint; solid only across the symbols that pay */}
-                    <polyline points={points.join(' ')} strokeWidth="2" strokeDasharray="3 7" vectorEffect="non-scaling-stroke" opacity=".55" />
-                    <polyline points={points.slice(0, w.count).join(' ')} strokeWidth="6" vectorEffect="non-scaling-stroke" opacity=".95" />
-                  </g>
-                );
-              })}
-            </svg>
-          )}
-        </div>
-
-        {big && (
-          <button
-            type="button"
-            onClick={() => setBig(null)}
-            className="absolute inset-0 z-10 grid place-items-center rounded-xl bg-black/70 backdrop-blur-sm"
-            aria-label={t('Schließen')}
-          >
-            <BigWin label={big.label} amount={big.amount} />
-          </button>
-        )}
-        {result?.freeWon && !big ? (
-          <div className="pop-in pointer-events-none absolute inset-x-0 top-1/2 z-10 mx-auto w-fit -translate-y-1/2 rounded-xl bg-black/80 px-5 py-3 text-center ring-1 ring-gold/60">
-            <p className="text-xs font-semibold tracking-wider text-gold uppercase">{t('Free Spins')}</p>
-            <p className="text-2xl font-bold">+{result.freeWon}</p>
-            {result.special && <p className="text-xs text-white/70">{t('Sondersymbol')} {result.special}</p>}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="mt-3 grid grid-cols-3 items-center gap-2 text-center">
-        <Meter label={t('Einsatz')} value={coins(freeHere ? free!.bet : amount)} />
-        <div>
-          <p className="text-[10px] font-semibold tracking-wider text-white/50 uppercase">{t('Gewinn')}</p>
-          <p className={`num text-xl font-bold sm:text-2xl ${result?.win ? 'text-gold' : 'text-white/40'}`}>{coins(shownWin)}</p>
-        </div>
-        <Meter label={t('Guthaben')} value={coins(balance)} />
-      </div>
-
-      <div className="mt-2 flex min-h-7 flex-wrap items-center justify-center gap-1.5 text-xs">
-        {focused && (
-          <span className="rounded-full bg-black/40 px-2.5 py-1 text-white/80">
-            {focused.line !== undefined ? t('Linie {n}', { n: focused.line + 1 }) : t('{n} Wege', { n: focused.ways! })} · {focused.count}× {focused.symbol} ·{' '}
-            <span className="num text-gold">{coins(Math.floor(focused.amount * (result?.bet ?? amount) * (step?.mult ?? 1) * (result?.chaos ?? 1) * (result?.free ? (machine.freeSpins?.mult ?? 1) : 1)))}</span>
-          </span>
-        )}
-        {step && step.mult > 1 && <Badge>{t('Kaskade')} ×{step.mult}</Badge>}
-        {result?.chaos && result.chaos > 1 && <Badge>Chaos ×{result.chaos}</Badge>}
-        {result?.features.includes('mystery') && <Badge>Mystery!</Badge>}
-        {result?.expand && <Badge>{result.expand.symbol} breitet sich aus · {result.expand.amount}×</Badge>}
-        {result?.free && machine.freeSpins?.mult && result.win > 0 && <Badge>Free Spin ×{machine.freeSpins.mult}</Badge>}
-        {!focused && phase === 'idle' && result && !result.win && <span className="text-white/40">{t('Kein Gewinn')}</span>}
-      </div>
-    </div>
-  );
-
   const stage = (
-    <div className="space-y-3">
-      <div className="no-scrollbar -mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:px-0">
-        {Object.entries(MACHINES).map(([k, m]) => (
-          <button
-            key={k}
-            onClick={() => choose(k)}
-            disabled={phase !== 'idle'}
-            className={`relative flex w-28 shrink-0 flex-col items-start gap-1 rounded-xl border p-2.5 text-left transition sm:w-32 ${
-              k === key ? 'border-accent' : 'border-line opacity-80 hover:opacity-100'
-            }`}
-            style={{ background: `linear-gradient(160deg, ${m.colors[0]}, ${m.colors[1]})` }}
-          >
-            <span className="text-2xl leading-none">{topSymbol(m)}</span>
-            <span className="w-full truncate text-xs font-semibold">{t(m.name)}</span>
-            <span className="text-[10px] text-white/60">ab {coins(m.minBet)}</span>
-            {free?.machine === k && free.spins > 0 && (
-              <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 rounded-full bg-gold px-1.5 text-[10px] font-bold text-black">
-                <Gift className="h-3 w-3" /> {free.spins}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
-      {cabinet}
-      <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-        <Odd label={t('Auszahlungsquote')} value={`${pct(machine.odds.rtp)} %`} hint={t('langfristig zurück')} />
-        <Odd label={t('Trefferquote')} value={`${pct(machine.odds.hit)} %`} hint={t('etwa jeder {n}. Spin', { n: Math.round(100 / machine.odds.hit) })} />
-        <Odd
-          label={machine.freeSpins ? t('Free Spins') : 'Feature'}
-          value={machine.odds.feature ? `1 : ${machine.odds.feature}` : t(featureShort(machine))}
-          hint={machine.odds.feature ? t('Chance pro Spin') : t('bei jedem Spin aktiv')}
-        />
-        <Odd label={t('Max. Gewinn')} value={`${coins(SLOT_MAX_WIN)}×`} hint={coins(SLOT_MAX_WIN * amount) + ' NVC'} />
-      </dl>
-    </div>
+    <SlotsStage
+      machine={machine}
+      machineKey={key}
+      phase={phase}
+      choose={choose}
+      free={free}
+      freeHere={freeHere}
+      amount={amount}
+      balance={balance}
+      grid={grid}
+      strips={strips}
+      stopped={stopped}
+      tease={tease}
+      spinId={spinId}
+      expand={expand}
+      lit={lit}
+      reveal={reveal}
+      vanish={vanish}
+      drawn={drawn}
+      focused={focused}
+      step={step}
+      result={result}
+      big={big}
+      closeBig={() => setBig(null)}
+      shownWin={shownWin}
+    />
   );
 
   const controls = (
-    <div className="card space-y-4">
-      {freeHere > 0 ? (
-        <div className="rounded-lg bg-gold/10 px-3 py-2.5 text-sm text-gold">
-          <p className="font-semibold">{freeHere} Free Spins übrig</p>
-          <p className="text-xs text-gold/80">
-            {t('Einsatz')} <span className="num">{coins(free!.bet)}</span> NVC{free!.special && ` · ${t('Sondersymbol')} ${free!.special}`}
-            {machine.freeSpins?.mult && ` · ${t('Gewinne')} ×${machine.freeSpins.mult}`}
-          </p>
-        </div>
-      ) : (
-        <BetInput value={amount} onChange={setAmount} balance={balance} min={machine.minBet} />
-      )}
-
-      {autoRunning ? (
-        <button className="btn-secondary h-14 w-full text-base" onClick={stopAuto}>
-          <Square className="h-4 w-4" /> {t('Stopp')}{auto > 0 && ` (${auto})`}
-        </button>
-      ) : (
-        <button className="btn-primary h-14 w-full text-base font-semibold" onClick={spinNow} disabled={phase !== 'idle'}>
-          {phase !== 'idle' ? t('Dreht …') : freeHere ? `Free Spin (${freeHere})` : t('Drehen')}
-        </button>
-      )}
-
-      <div>
-        <p className="label">Autoplay</p>
-        <div className="grid grid-cols-5 gap-1.5">
-          {AUTO.map((n) => (
-            <button
-              key={n}
-              className={`h-9 rounded-lg border text-xs font-medium ${auto === n ? 'border-accent bg-accent/10' : 'border-line text-muted hover:text-fg'}`}
-              onClick={() => {
-                setAuto(n);
-                setAutoFree(true);
-              }}
-            >
-              {n || t('Aus')}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2">
-        <button className={`btn h-9 border text-xs ${turbo ? 'border-accent bg-accent/10' : 'border-line text-muted'}`} onClick={() => setTurbo((t) => !t)}>
-          <Zap className="h-3.5 w-3.5" /> Turbo
-        </button>
-        <button className={`btn h-9 border text-xs ${muted ? 'border-line text-muted' : 'border-accent bg-accent/10'}`} onClick={soundPref.toggle}>
-          {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />} Ton
-        </button>
-      </div>
-      <p className="hidden text-center text-[11px] text-faint sm:block">{t('Leertaste = Drehen')}</p>
-    </div>
+    <SlotsControls
+      machine={machine}
+      phase={phase}
+      free={free}
+      freeHere={freeHere}
+      amount={amount}
+      setAmount={setAmount}
+      balance={balance}
+      autoRunning={autoRunning}
+      auto={auto}
+      setAuto={setAuto}
+      setAutoFree={setAutoFree}
+      stopAuto={stopAuto}
+      spinNow={spinNow}
+      turbo={turbo}
+      toggleTurbo={() => setTurbo((on) => !on)}
+      muted={muted}
+    />
   );
 
   const extra = <SlotsInfo machine={machine} amount={amount} session={session} history={history} />;
 
   return <GameFrame title="Slots" subtitle={t('Acht Automaten, jeder mit eigenen Regeln.')} stage={stage} controls={controls} extra={extra} />;
 }
-
-/** Short feature name for machines without a triggered bonus. */
-const featureShort = (m: Machine) =>
-  m.tumble ? 'Kaskaden' : m.chaos ? 'Chaos-Multiplikator' : m.wildMult ? `Wild ×${m.wildMult}` : m.symbols.some((s) => s.mystery) ? 'Mystery' : m.symbols.some((s) => s.pays?.[2]) ? 'Paare zahlen' : 'Hohe Gewinne';
