@@ -143,6 +143,7 @@ export async function announceAction(_: ActionState, form: FormData) {
     const actor = await requireRole('MODERATOR');
     const { message, persist } = parse(z.object({ message: z.string().trim().min(1).max(300), persist: z.literal('on').optional() }), form);
     await announce(message, actor.username, !!persist);
+    await audit(actor, 'Ankündigung', null, `${persist ? 'bleibt im Chat: ' : ''}${message}`.slice(0, 200));
     return 'Gesendet.';
   });
 }
@@ -187,8 +188,9 @@ export async function stopEventAction() {
 /** Switches the server's random events on or off (until the next restart, then on again). */
 export async function toggleAutoEvents() {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     hub.autoEvents = !hub.autoEvents;
+    await audit(actor, hub.autoEvents ? 'Auto-Events an' : 'Auto-Events aus');
     refresh();
     return hub.autoEvents ? 'Automatische Events an.' : 'Automatische Events aus.';
   });
@@ -196,8 +198,9 @@ export async function toggleAutoEvents() {
 
 export async function cancelCountdownAction() {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     if (!cancelCountdown()) throw new UserError('Es läuft kein Countdown.');
+    await audit(actor, 'Countdown abgesagt');
     return 'Countdown abgesagt.';
   });
 }
@@ -274,9 +277,11 @@ export async function trollAction(effect: string, userId: string | null) {
       const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
       if (!user) throw new UserError('Spieler nicht gefunden.');
       emitToUser(user.id, 'fx', payload);
+      await audit(actor, 'Effekt', user, effect);
       return `Effekt an ${user.username} geschickt.`;
     }
     broadcast('fx', payload);
+    await audit(actor, 'Effekt', null, `${effect}, an alle`);
     return 'Effekt an alle geschickt.';
   });
 }
@@ -286,7 +291,7 @@ const FX_MAX_BYTES = 2_000_000;
 /** Adds a sound or image to the fun library; the type comes from the file's bytes. */
 export async function uploadFxAsset(_: ActionState, form: FormData) {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     const file = form.get('file');
     const name = String(form.get('name') ?? '').trim().slice(0, 40);
     if (!(file instanceof File) || file.size === 0) throw new UserError('Keine Datei.');
@@ -295,7 +300,9 @@ export async function uploadFxAsset(_: ActionState, form: FormData) {
     const image = sniffImage(data);
     const audio = image ? null : sniffAudio(data);
     if (!image && !audio) throw new UserError('Nur Bilder (JPG, PNG, WebP, GIF) oder Sounds (MP3, OGG, WAV, M4A).');
-    await db.fxAsset.create({ data: { kind: image ? 'image' : 'sound', name: name || file.name.replace(/\.[^.]+$/, '').slice(0, 40), mime: (image ?? audio)!, data } });
+    const label = name || file.name.replace(/\.[^.]+$/, '').slice(0, 40);
+    await db.fxAsset.create({ data: { kind: image ? 'image' : 'sound', name: label, mime: (image ?? audio)!, data } });
+    await audit(actor, 'Fun-Datei hinzugefügt', null, `${image ? 'Bild' : 'Sound'} „${label}“`);
     refresh();
     return image ? 'Bild hinzugefügt.' : 'Sound hinzugefügt.';
   });
@@ -303,8 +310,10 @@ export async function uploadFxAsset(_: ActionState, form: FormData) {
 
 export async function deleteFxAsset(id: string) {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
+    const gone = await db.fxAsset.findUnique({ where: { id }, select: { name: true, kind: true } });
     await db.fxAsset.deleteMany({ where: { id } });
+    if (gone) await audit(actor, 'Fun-Datei gelöscht', null, `${gone.kind === 'image' ? 'Bild' : 'Sound'} „${gone.name}“`);
     refresh();
     return 'Gelöscht.';
   });
@@ -333,9 +342,11 @@ export async function playFx(soundId: string | null, imageId: string | null, sty
       const user = await db.user.findUnique({ where: { id: userId }, select: { id: true, username: true } });
       if (!user) throw new UserError('Spieler nicht gefunden.');
       emitToUser(user.id, 'fx', payload);
+      await audit(actor, 'Fun-Datei abgespielt', user, what);
       return `${what} an ${user.username}.`;
     }
     broadcast('fx', payload);
+    await audit(actor, 'Fun-Datei abgespielt', null, `${what}, an alle`);
     return `${what} an alle.`;
   });
 }
@@ -358,10 +369,12 @@ export async function moodAction(_: ActionState, form: FormData) {
       const target = await db.user.findUnique({ where: { id: user }, select: { id: true, username: true } });
       if (!target) throw new UserError('Spieler nicht gefunden.');
       emitToUser(target.id, 'mood', mood);
+      await audit(actor, 'Stimmung', target, `${MOODS[name].label}, ${minutes} Min.`);
       return `${MOODS[name].label} bei ${target.username}.`;
     }
     hub.mood = mood;
     broadcast('mood', mood);
+    await audit(actor, 'Stimmung', null, `${MOODS[name].label}, ${minutes} Min., an alle`);
     refresh();
     return `${MOODS[name].label} für alle (${minutes} Min.).`;
   });
@@ -369,13 +382,15 @@ export async function moodAction(_: ActionState, form: FormData) {
 
 export async function stopMoodAction(userId: string | null) {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     if (userId) {
       emitToUser(userId, 'mood', null);
+      await audit(actor, 'Stimmung beendet', null, 'bei einem Spieler');
       return 'Stimmung beim Spieler beendet.';
     }
     hub.mood = null;
     broadcast('mood', null);
+    await audit(actor, 'Stimmung beendet', null, 'für alle');
     refresh();
     return 'Stimmung beendet.';
   });
@@ -384,9 +399,10 @@ export async function stopMoodAction(userId: string | null) {
 /** Chooses the uploaded sound the disco effect plays (null = built-in beat). */
 export async function setDiscoSound(id: string | null) {
   return run(async () => {
-    await requireRole('ADMIN');
+    const actor = await requireRole('ADMIN');
     if (id && !(await db.fxAsset.count({ where: { id, kind: 'sound' } }))) throw new UserError('Sound nicht gefunden.');
     await db.systemSettings.upsert({ where: { id: 1 }, update: { discoSoundId: id }, create: { id: 1, discoSoundId: id } });
+    await audit(actor, 'Disco-Sound', null, id ? 'eigener Sound' : 'eingebauter Beat');
     refresh();
     return id ? 'Disco spielt jetzt deinen Sound.' : 'Disco spielt den eingebauten Beat.';
   });

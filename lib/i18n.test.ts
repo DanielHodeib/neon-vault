@@ -45,6 +45,8 @@ test('translate fills placeholders, falls back to german and matches server patt
   assert.equal(translate('de', 'Tag {n}', { n: 3 }), 'Tag 3');
   assert.equal(translate('en', 'Gibt es nicht'), 'Gibt es nicht');
   assert.equal(translate('en', 'Du bist jetzt mit Ana befreundet.'), 'You are now friends with Ana.');
+  assert.equal(translate('en', '250 NVC auf „Ja“.'), '250 NVC on “Ja”.');
+  assert.equal(translate('en', 'Clan [NV] gegründet.'), 'Clan [NV] founded.');
   assert.equal(translate('en', 'Ace: Raise auf 300'), 'Ace: Raise to 300');
   assert.equal(translate('en', 'Daniel gewinnt 1.200 mit Zwei Paare'), 'Daniel wins 1.200 with Two pair');
 });
