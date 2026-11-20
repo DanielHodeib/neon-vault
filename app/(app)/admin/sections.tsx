@@ -286,11 +286,13 @@ export async function PlayersTab({ actor, q, selectedId }: { actor: User; q: str
                       )}
                       <ActionForm action={adjustUser} className="space-y-2">
                         <input type="hidden" name="userId" value={selected.id} />
-                        <p className="label">Guthaben / XP anpassen (±)</p>
+                        <p className="label">Guthaben / XP anpassen</p>
                         <div className="grid grid-cols-2 gap-2">
-                          <input className="input num" name="balance" type="number" placeholder="± NVC" defaultValue={0} />
-                          <input className="input num" name="xp" type="number" placeholder="± XP" defaultValue={0} />
+                          <input className="input num" name="setBalance" type="number" min={0} placeholder="Guthaben setzen auf …" aria-label="Guthaben setzen auf" />
+                          <input className="input num" name="balance" type="number" placeholder="oder ± NVC" defaultValue={0} aria-label="Guthaben ändern um" />
+                          <input className="input num col-span-2" name="xp" type="number" placeholder="± XP" defaultValue={0} />
                         </div>
+                        <p className="text-xs text-faint">Ein gesetzter Wert gilt genau so, „± NVC“ wird dann ignoriert.</p>
                         {selfEdit ? (
                           <input type="hidden" name="password" value="" />
                         ) : (

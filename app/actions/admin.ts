@@ -15,7 +15,7 @@ import { broadcast, db, disconnectUser, emitToUser, hub, notify, UserError } fro
 import { canManage, mayManage, ROLES } from '@/lib/roles';
 import { audit } from '@/lib/audit';
 import { dropChat } from '@/lib/chatlog';
-import { setMute } from '@/lib/moderation';
+import { setBalanceTo, setMute } from '@/lib/moderation';
 import { hashPassword } from '@/lib/password';
 import { applyLedger } from '@/lib/wallet';
 
@@ -71,10 +71,11 @@ export async function setRole(userId: string, role: Role) {
 
 export async function adjustUser(_: ActionState, form: FormData) {
   return run(async () => {
-    const { userId, balance, xp, password } = parse(
+    const { userId, balance, setBalance, xp, password } = parse(
       z.object({
         userId: z.string(),
         balance: z.coerce.number().int(),
+        setBalance: z.union([z.literal(''), z.coerce.number().int().min(0, 'Guthaben kann nicht negativ sein.').max(1e12, 'Höchstens 1 Billion NVC.')]).default(''),
         xp: z.coerce.number().int(),
         password: z.union([z.literal(''), passwordSchema]),
       }),
@@ -82,14 +83,16 @@ export async function adjustUser(_: ActionState, form: FormData) {
     );
     const { actor, user } = await target('ADMIN', userId, { self: true });
     if (password && user.id === actor.id) throw new UserError('Dein eigenes Passwort änderst du in den Einstellungen.');
-    if (balance) await applyLedger([{ userId: user.id, amount: balance, kind: 'ADMIN', note: `von ${actor.username}` }]);
+    let change = balance;
+    if (setBalance !== '') change = await setBalanceTo(user.id, setBalance, `gesetzt auf ${setBalance} von ${actor.username}`); // an exact value wins over ±
+    else if (balance) await applyLedger([{ userId: user.id, amount: balance, kind: 'ADMIN', note: `von ${actor.username}` }]);
     if (xp) await db.user.update({ where: { id: user.id }, data: { xp: Math.max(0, user.xp + xp) } });
     if (password) {
       await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
       await db.session.deleteMany({ where: { userId: user.id } });
       disconnectUser(user.id);
     }
-    const changes = [balance && `${balance > 0 ? '+' : ''}${balance} NVC`, xp && `${xp > 0 ? '+' : ''}${xp} XP`, password && 'Passwort'].filter(Boolean);
+    const changes = [setBalance !== '' ? `Guthaben auf ${setBalance} NVC gesetzt (${change > 0 ? '+' : ''}${change})` : balance && `${balance > 0 ? '+' : ''}${balance} NVC`, xp && `${xp > 0 ? '+' : ''}${xp} XP`, password && 'Passwort'].filter(Boolean);
     if (changes.length) await audit(actor, 'Spieler geändert', user, changes.join(', '));
     refresh();
     return 'Gespeichert.';

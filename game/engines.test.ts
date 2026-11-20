@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
 import { bestHand, bjTotal, describeHand, handName } from './cards';
+import { crashPointFrom } from './crash';
 import { splitPots } from './poker';
 import { rouletteMultiplier } from './roulette';
 import { MACHINES, spin } from './slots';
@@ -72,6 +73,14 @@ test('slot wins follow the machine rules', () => {
       if (r.multiplier > 0 && !r.freeSpins) assert.ok(r.steps[0].wins.length > 0 || r.expand);
     }
   }
+});
+
+test('crash point has a 1 % house edge', () => {
+  assert.equal(crashPointFrom(0), 1);
+  assert.equal(crashPointFrom(0.5), 1.98);
+  let survived = 0;
+  for (let i = 0; i < 200_000; i++) if (crashPointFrom(Math.random()) >= 2) survived++;
+  assert.ok(Math.abs(survived / 200_000 - 0.495) < 0.01);
 });
 
 test('roulette payouts', () => {

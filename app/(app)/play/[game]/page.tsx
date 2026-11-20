@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { Blackjack } from '@/components/games/Blackjack';
 import { Coinflip } from '@/components/games/Coinflip';
 import { Avia } from '@/components/games/Avia';
+import { Crash } from '@/components/games/Crash';
 import { Dice } from '@/components/games/Dice';
 import { HiLo } from '@/components/games/HiLo';
 import { Jackpot } from '@/components/games/Jackpot';
@@ -21,6 +22,7 @@ import { Tower } from '@/components/games/Tower';
 import { VideoPoker } from '@/components/games/VideoPoker';
 
 const GAMES = {
+  crash: <Crash />,
   avia: <Avia />,
   slots: <Slots />,
   blackjack: <Blackjack />,

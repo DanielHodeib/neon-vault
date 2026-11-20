@@ -15,7 +15,7 @@ export const eventActive = (type: EventType) => hub.event?.type === type;
 /** A setting of the running event, or undefined when that event isn't running. */
 export const eventParam = (type: EventType, key: string): number | undefined => (hub.event?.type === type ? hub.event.params[key] : undefined);
 
-const BOOSTED_GAMES = new Set(['avia', 'coinflip']);
+const BOOSTED_GAMES = new Set(['crash', 'coinflip']);
 const timers = hub.timers;
 
 /** Extra coins an event may still hand this player: boost and cashback stop at the event's per-player cap. */

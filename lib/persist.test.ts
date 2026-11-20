@@ -51,3 +51,14 @@ test('audit log: records who did what to whom', async () => {
     ['boss', 'Backup', null, null],
   ]);
 });
+
+test('admin: balance can be set to an exact value, down to zero, and is booked as ADMIN entries', async () => {
+  const u = await newUser('rich_or_poor');
+  assert.equal(await m.mod.setBalanceTo(u.id, 5_000_000, 'gesetzt'), 5_000_000 - 10_000);
+  assert.equal(Number((await m.hub.db.user.findUniqueOrThrow({ where: { id: u.id } })).balance), 5_000_000);
+  assert.equal(await m.mod.setBalanceTo(u.id, 5_000_000, 'gesetzt'), 0); // nothing to do, no entry
+  assert.equal(await m.mod.setBalanceTo(u.id, 0, 'gesetzt'), -5_000_000);
+  assert.equal(Number((await m.hub.db.user.findUniqueOrThrow({ where: { id: u.id } })).balance), 0);
+  const entries = await m.hub.db.ledgerEntry.findMany({ where: { userId: u.id }, orderBy: { createdAt: 'asc' } });
+  assert.deepEqual(entries.map((e) => [e.kind, Number(e.amount)]), [['ADMIN', 4_990_000], ['ADMIN', -5_000_000]]);
+});

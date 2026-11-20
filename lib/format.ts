@@ -13,6 +13,7 @@ export const timeAgo = (date: Date | string | number) => {
 };
 
 export const GAME_NAMES: Record<string, string> = {
+  crash: 'Crash',
   avia: 'Avia Masters',
   slots: 'Slots',
   blackjack: 'Blackjack',
@@ -35,7 +36,7 @@ export const GAME_NAMES: Record<string, string> = {
 };
 
 /** Ledger games that are not on the play page (stats and history still name them). */
-const EXTRA_GAME_NAMES: Record<string, string> = { duel: 'Duell', market: 'Wette', crash: 'Crash' };
+const EXTRA_GAME_NAMES: Record<string, string> = { duel: 'Duell', market: 'Wette' };
 /** Display name of any ledger game slug (German; translate with t()). */
 export const gameName = (slug: string | null | undefined) => (slug ? (GAME_NAMES[slug] ?? EXTRA_GAME_NAMES[slug] ?? slug) : '');
 

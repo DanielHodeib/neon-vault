@@ -23,6 +23,11 @@ test('dice', async () => {
   await expect(main().getByText(/^\d{1,2},\d{2}$/).first()).toBeVisible(); // the rolled number, win or lose
 });
 
+test('crash is back and opens', async () => {
+  await go(page, '/play/crash');
+  await expect(main().getByRole('heading', { name: 'Crash' })).toBeVisible();
+});
+
 test('avia masters', async () => {
   await go(page, '/play/avia');
   await button('Turbo').click();

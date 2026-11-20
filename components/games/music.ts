@@ -98,7 +98,7 @@ export const music = {
 /** Which style a page gets. */
 export function styleFor(pathname: string): MusicStyle {
   const game = pathname.startsWith('/play/') ? pathname.split('/')[2] : '';
-  if (['avia', 'roulette', 'race', 'wheel', 'jackpot', 'coinflip', 'mines', 'tower', 'hilo', 'poker', 'blackjack'].includes(game)) return 'tension';
+  if (['crash', 'avia', 'roulette', 'race', 'wheel', 'jackpot', 'coinflip', 'mines', 'tower', 'hilo', 'poker', 'blackjack'].includes(game)) return 'tension';
   if (game) return 'arcade';
   return 'lounge';
 }

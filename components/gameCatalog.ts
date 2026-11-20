@@ -1,4 +1,4 @@
-import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, Flag, Gauge, Grid3x3, PiggyBank, Plane, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
+import { ArrowUpDown, Bomb, Building2, CircleDot, Cherry, Club, Coins, Crown, Dices, FerrisWheel, Flag, Gauge, Grid3x3, PiggyBank, Plane, Rocket, Spade, Sparkles, SquareStack, Triangle, type LucideIcon } from 'lucide-react';
 
 // Every game once: sidebar, games panel, lobby and phone sheet all read this list.
 export type GameCategory = 'live' | 'tables' | 'solo';
@@ -11,6 +11,7 @@ export const CATEGORIES: { key: GameCategory; label: string; hint: string }[] = 
 ];
 
 export const GAME_LIST: GameEntry[] = [
+  { slug: 'crash', name: 'Crash', text: 'Rechtzeitig aussteigen', icon: Rocket, tint: '#3ddc97', category: 'live' },
   { slug: 'roulette', name: 'Roulette', text: 'Europäisch, live', icon: CircleDot, tint: '#ff8a4c', category: 'live' },
   { slug: 'race', name: 'Pferderennen', text: 'Alle wetten, live', icon: Flag, tint: '#fb7185', category: 'live' },
   { slug: 'wheel', name: 'Glücksrad', text: 'Alle drehen gemeinsam', icon: FerrisWheel, tint: '#34d399', category: 'live' },
@@ -35,4 +36,4 @@ export const GAME_LIST: GameEntry[] = [
 export const GAME_BY_SLUG = new Map(GAME_LIST.map((g) => [g.slug, g]));
 
 /** Games for the sidebar shortcut list when the player has no favourites or history yet. */
-export const DEFAULT_SHORTCUTS = ['avia', 'slots', 'blackjack', 'roulette', 'mines'];
+export const DEFAULT_SHORTCUTS = ['crash', 'avia', 'slots', 'blackjack', 'roulette'];
