@@ -25,7 +25,7 @@ export const LEVEL_REWARD_MAX = 10_000; // … but never more than this per leve
 
 export function assertAmount(amount: number, min = 1) {
   if (!Number.isSafeInteger(amount) || amount < min || amount > MAX_AMOUNT) {
-    throw new UserError(`Ungültiger Betrag (min. ${min}).`);
+    throw new UserError('err.amountMin', { min });
   }
 }
 
@@ -111,7 +111,7 @@ async function checkLimit(tx: Tx, userId: string, amount: bigint) {
     _sum: { amount: true },
   });
   const left = limit + (_sum.amount ?? 0n);
-  if (amount > left) throw new UserError(`Dein Tageslimit ist erreicht – heute noch ${(left > 0n ? left : 0n).toLocaleString('de-DE')} NVC möglich.`);
+  if (amount > left) throw new UserError('err.dailyLimit', { left: (left > 0n ? left : 0n).toLocaleString('de-DE') });
 }
 
 /** Credits a payout; 0 is a no-op so callers don't need to branch. */

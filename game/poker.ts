@@ -193,7 +193,7 @@ export function registerPoker(io: Server): Register {
       const to = 'to' in action ? action.to : s.bet + s.stack;
       const isFullRaise = to - t.currentBet >= t.minRaise;
       if (to <= t.currentBet && action.type === 'raise') throw new UserError('Raise muss höher als der aktuelle Einsatz sein.');
-      if (action.type === 'raise' && (!isFullRaise || to > s.bet + s.stack)) throw new UserError(`Raise mindestens auf ${t.currentBet + t.minRaise}.`);
+      if (action.type === 'raise' && (!isFullRaise || to > s.bet + s.stack)) throw new UserError('err.raiseMin', { to: t.currentBet + t.minRaise });
       commit(t, s, to - s.bet);
       say(t, s, s.allIn ? `All-in (${s.bet})` : `Raise auf ${s.bet}`);
       if (s.bet > t.currentBet) {

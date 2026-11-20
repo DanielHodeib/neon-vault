@@ -36,7 +36,7 @@ export function ImageField({ kind, name, label, initial }: { kind: 'avatar' | 'b
       const form = new FormData();
       form.set('file', await resize(file, SIZE[kind]), `${kind}.jpg`);
       const res = await uploadImage(kind, form);
-      if (!res.ok) toast.error(res.error);
+      if (!res.ok) toast.error(t(res.error, res.vars));
       else {
         setUrl(res.url);
         setBroken(false);

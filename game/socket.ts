@@ -45,7 +45,7 @@ export function handle<S extends z.ZodTypeAny>(
       afterEvent?.(socket, event, parsed.data, result);
     } catch (err) {
       if (!(err instanceof UserError)) console.error(`[socket ${event}]`, err);
-      reply({ ok: false, error: err instanceof UserError ? err.message : 'Serverfehler.' });
+      reply(err instanceof UserError ? { ok: false, error: err.code, vars: err.vars } : { ok: false, error: 'Serverfehler.' });
     }
   });
 }

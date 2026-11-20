@@ -1239,12 +1239,6 @@ export const EN: Record<string, string> = {
 /** Server messages with numbers or names inside: [German pattern, English replacement]. */
 export const EN_PATTERNS: [RegExp, string | ((g: string[], t: (s: string) => string) => string)][] = [
   // server messages with numbers or names
-  [/^Ungültiger Betrag \(min\. ([\d.]+)\)\.$/, 'Invalid amount (min. $1).'],
-  [/^Mindesteinsatz: ([\d.]+) NVC\.$/, 'Minimum bet: $1 NVC.'],
-  [/^Maximal (\d+) offene Lobbys\.$/, 'At most $1 open lobbies.'],
-  [/^Raise mindestens auf (\d+)\.$/, 'Raise to at least $1.'],
-  [/^Dein Tageslimit ist erreicht – heute noch ([\d.]+) NVC möglich\.$/, 'Your daily limit is reached – $1 NVC left today.'],
-  [/^Du bist im Chat stummgeschaltet bis ([\d:]+) Uhr\.$/, 'You are muted in the chat until $1.'],
   [/^Du bist (\d+) Minuten im Chat stummgeschaltet\.$/, 'You are muted in the chat for $1 minutes.'],
   [/^([\d.]+) NVC an (.+) gesendet\.$/, '$1 NVC sent to $2.'],
   [/^Du bist jetzt mit (.+) befreundet\.$/, 'You are now friends with $1.'],

@@ -8,7 +8,7 @@ type Me = { id: string; role: Parameters<typeof atLeast>[0] };
 
 export async function createMarket(meId: string, data: { question: string; optionA: string; optionB: string; minutes: number }) {
   if (data.optionA.toLowerCase() === data.optionB.toLowerCase()) throw new UserError('Die zwei Antworten müssen sich unterscheiden.');
-  if ((await db.market.count({ where: { creatorId: meId, status: 'open' } })) >= MARKET_MAX_OPEN) throw new UserError(`Maximal ${MARKET_MAX_OPEN} offene Wetten.`);
+  if ((await db.market.count({ where: { creatorId: meId, status: 'open' } })) >= MARKET_MAX_OPEN) throw new UserError('err.maxMarkets', { max: MARKET_MAX_OPEN });
   const { minutes, ...rest } = data;
   await db.market.create({ data: { creatorId: meId, ...rest, closesAt: new Date(Date.now() + minutes * 60_000) } });
   return 'Wette erstellt.';
@@ -16,7 +16,7 @@ export async function createMarket(meId: string, data: { question: string; optio
 
 export async function placeMarketBet(meId: string, marketId: string, option: MarketOption, amount: number) {
   if (option !== 'A' && option !== 'B') throw new UserError('Ungültige Antwort.');
-  if (!Number.isSafeInteger(amount) || amount < MARKET_MIN_BET) throw new UserError(`Mindesteinsatz: ${MARKET_MIN_BET} NVC.`);
+  if (!Number.isSafeInteger(amount) || amount < MARKET_MIN_BET) throw new UserError('err.minBet', { min: MARKET_MIN_BET });
   const market = await db.market.findUnique({ where: { id: marketId } });
   if (!market || market.status !== 'open' || market.closesAt.getTime() <= Date.now()) throw new UserError('Diese Wette nimmt keine Einsätze mehr an.');
   if (market.creatorId === meId) throw new UserError('Auf deine eigene Wette kannst du nicht setzen.');

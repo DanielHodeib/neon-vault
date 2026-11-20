@@ -113,7 +113,7 @@ export async function dailySpinAction() {
     const user = await requireUser();
     return { ok: true as const, ...(await spinDaily(user.id)) };
   } catch (err) {
-    if (err instanceof UserError) return { ok: false as const, error: err.message };
+    if (err instanceof UserError) return { ok: false as const, error: err.code, vars: err.vars };
     throw err;
   }
 }

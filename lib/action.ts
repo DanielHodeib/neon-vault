@@ -5,9 +5,10 @@ import { unstable_rethrow } from 'next/navigation';
 import { z } from 'zod';
 
 import { UserError } from './hub';
+import type { Vars } from './i18n';
 import { createLimiter } from './limiter';
 
-export type ActionState = { error?: string; success?: string } | undefined;
+export type ActionState = { error?: string; vars?: Vars; success?: string } | undefined;
 
 /** Runs a server action body and turns UserErrors into form state. */
 export async function run(fn: () => Promise<string | void>): Promise<ActionState> {
@@ -16,7 +17,7 @@ export async function run(fn: () => Promise<string | void>): Promise<ActionState
     return success ? { success } : {};
   } catch (err) {
     unstable_rethrow(err); // let redirect() and notFound() through
-    if (err instanceof UserError) return { error: err.message };
+    if (err instanceof UserError) return { error: err.code, vars: err.vars };
     console.error(err);
     return { error: 'Serverfehler – bitte später nochmal versuchen.' };
   }

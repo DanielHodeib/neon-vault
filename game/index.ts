@@ -69,7 +69,7 @@ export function setupRealtime(io: Server) {
     });
 
     handle(socket, 'chat:send', z.object({ text: z.string().trim().min(1).max(300) }), async ({ text }) => {
-      if (isMuted(user.id)) throw new UserError(`Du bist im Chat stummgeschaltet bis ${new Date(hub.muted.get(user.id)!).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })} Uhr.`);
+      if (isMuted(user.id)) throw new UserError('err.mutedUntil', { time: new Date(hub.muted.get(user.id)!).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) });
       if (text.startsWith('/tip')) return tip(user.id, user.username, text);
       const u = await db.user.findUniqueOrThrow({ where: { id: user.id } });
       const ownerFriend = (await db.friendship.count({

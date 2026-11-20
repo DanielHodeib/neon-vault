@@ -67,7 +67,7 @@ export const registerDuel: Register = (io, socket) => {
         target = { id: other.id, name: other.username };
       }
       const pending = creating.get(user.id) ?? 0;
-      if (lobby().filter((d) => d.from.id === user.id).length + pending >= DUEL_MAX_OPEN) throw new UserError(`Maximal ${DUEL_MAX_OPEN} offene Duelle.`);
+      if (lobby().filter((d) => d.from.id === user.id).length + pending >= DUEL_MAX_OPEN) throw new UserError('err.maxDuels', { max: DUEL_MAX_OPEN });
       creating.set(user.id, pending + 1);
       try {
         await placeBet(user.id, stake, 'duel');

@@ -32,7 +32,7 @@ export const registerSlots: Register = (_io, socket) => {
         if (!count) throw new UserError('Keine Free Spins mehr.');
         bet = Number(free.bet);
       } else {
-        if (bet < machine.minBet) throw new UserError(`Mindesteinsatz: ${machine.minBet} NVC.`);
+        if (bet < machine.minBet) throw new UserError('err.minBet', { min: machine.minBet });
         await placeBet(user.id, bet, 'slots', machine.minBet);
       }
 

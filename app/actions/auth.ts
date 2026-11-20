@@ -60,8 +60,13 @@ export async function login(_: ActionState, form: FormData) {
     if (!user || !check?.ok) throw new UserError('Benutzername oder Passwort falsch.');
     if (check.upgrade) await db.user.update({ where: { id: user.id }, data: { passwordHash: await hashPassword(password) } });
     if (isBanned(user)) {
-      const until = user.bannedUntil!.getFullYear() > 9000 ? 'dauerhaft' : `bis ${user.bannedUntil!.toLocaleString('de-DE')}`;
-      throw new UserError(`Gesperrt ${until}${user.banReason ? ` – Grund: ${user.banReason}` : ''}.`);
+      const forever = user.bannedUntil!.getFullYear() > 9000;
+      const reason = user.banReason;
+      const code = forever ? (reason ? 'err.banPermanentWhy' : 'err.banPermanent') : reason ? 'err.banUntilWhy' : 'err.banUntil';
+      throw new UserError(code, {
+        ...(forever ? {} : { date: user.bannedUntil!.toLocaleString('de-DE') }),
+        ...(reason ? { reason } : {}),
+      });
     }
     await startSession(user.id);
   });

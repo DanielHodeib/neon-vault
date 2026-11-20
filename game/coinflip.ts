@@ -48,7 +48,7 @@ export const registerCoinflip: Register = (io, socket) => {
     async ({ amount, side }) => {
       // Lobbies still being paid for count too, so parallel clicks can't pass the limit.
       const pending = creating.get(user.id) ?? 0;
-      if (list().filter((l) => l.userId === user.id).length + pending >= MAX_OPEN_PER_USER) throw new UserError(`Maximal ${MAX_OPEN_PER_USER} offene Lobbys.`);
+      if (list().filter((l) => l.userId === user.id).length + pending >= MAX_OPEN_PER_USER) throw new UserError('err.maxLobbies', { max: MAX_OPEN_PER_USER });
       creating.set(user.id, pending + 1);
       try {
         await placeBet(user.id, amount, 'coinflip');

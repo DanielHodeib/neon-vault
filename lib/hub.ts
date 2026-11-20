@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import type { Server } from 'socket.io';
 
 import type { EventParams, EventType } from './eventTypes';
+import { translate, type Vars } from './i18n';
 import type { Mood } from './fx';
 
 // server.ts (tsx) and Next's bundled code load separate copies of this module,
@@ -104,8 +105,18 @@ export async function notify(userId: string, title: string, message: string, ext
   emitToUser(userId, 'notification', { title, message });
 }
 
-/** Message shown to the user; anything else is logged and hidden. */
-export class UserError extends Error {}
+/**
+ * Message shown to the user; anything else is logged and hidden. `code` is a message ID (lib/messages.ts) or a plain
+ * German sentence; `vars` fill its {placeholders}. The client translates code + vars itself; `message` is the German text.
+ */
+export class UserError extends Error {
+  constructor(
+    readonly code: string,
+    readonly vars?: Vars,
+  ) {
+    super(translate('de', code, vars));
+  }
+}
 
 /** The atmosphere preset for everyone, unless it already ran out. */
 export const currentMood = () => (hub.mood && hub.mood.endsAt > Date.now() ? hub.mood : null);

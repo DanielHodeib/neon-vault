@@ -77,7 +77,7 @@ export function ActionForm({
 }) {
   const [state, formAction] = useActionState(action, undefined);
   useEffect(() => {
-    if (state?.error) errorToast(tPage(state.error));
+    if (state?.error) errorToast(tPage(state.error, state.vars));
     if (state?.success) toast.success(tPage(state.success));
   }, [state]);
   return (
@@ -90,7 +90,7 @@ export function ActionForm({
 /** Calls a server action that returns ActionState and toasts it. */
 export async function toastAction(promise: Promise<ActionState | void>) {
   const state = await promise;
-  if (state?.error) errorToast(tPage(state.error));
+  if (state?.error) errorToast(tPage(state.error, state.vars));
   if (state?.success) toast.success(tPage(state.success));
 }
 

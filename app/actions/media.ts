@@ -32,7 +32,7 @@ export async function uploadImage(kind: 'avatar' | 'banner', form: FormData) {
     refresh();
     return { ok: true as const, url };
   } catch (err) {
-    if (err instanceof UserError) return { ok: false as const, error: err.message };
+    if (err instanceof UserError) return { ok: false as const, error: err.code, vars: err.vars };
     throw err;
   }
 }

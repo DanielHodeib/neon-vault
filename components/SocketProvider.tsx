@@ -10,7 +10,7 @@ import { io, type Socket } from 'socket.io-client';
 import { GAME_NAMES } from '@/lib/format';
 import type { FxAssetPayload, FxName, Mood } from '@/lib/fx';
 import { MoodLayer } from './Mood';
-import { tPage } from '@/lib/i18n';
+import { tPage, type Vars } from '@/lib/i18n';
 import type { BigWin, ChatMessage, Countdown, GlobalEvent } from '@/lib/hub';
 import { celebrate, runAsset, runFx } from './fx';
 
@@ -175,9 +175,9 @@ export function SocketProvider({ me, initialBalance, children }: { me: Ctx['me']
     <T,>(name: string, data?: unknown) =>
       new Promise<T | null>((resolve) => {
         if (!socket) return resolve(null);
-        socket.timeout(10_000).emit(name, data ?? {}, (err: Error | null, res: { ok: boolean; error?: string } & T) => {
+        socket.timeout(10_000).emit(name, data ?? {}, (err: Error | null, res: { ok: boolean; error?: string; vars?: Vars } & T) => {
           if (err) errorToast(tPage('Keine Antwort vom Server.'));
-          else if (!res.ok) errorToast(tPage(res.error ?? 'Fehler'));
+          else if (!res.ok) errorToast(tPage(res.error ?? 'Fehler', res.vars));
           resolve(err || !res.ok ? null : res);
         });
       }),

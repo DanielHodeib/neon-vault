@@ -30,7 +30,7 @@ export function DailySpin({ username, claimedToday, streak, level, levelProgress
     setSpinning(true);
     const res = await dailySpinAction();
     if (!res.ok) {
-      toast.error(t(res.error));
+      toast.error(t(res.error, res.vars));
       setSpinning(false);
       return;
     }

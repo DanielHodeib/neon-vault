@@ -1,6 +1,7 @@
 // Two languages. German text is the key; English comes from lib/i18n-en.ts and falls back to
 // German when a string has no translation yet. `{name}` placeholders are filled from `vars`.
 import { EN, EN_LAST_PATTERNS, EN_PATTERNS } from './i18n-en';
+import { isMessageId, MESSAGES } from './messages';
 
 export type Lang = 'de' | 'en';
 export const LANGS: Lang[] = ['de', 'en'];
@@ -28,8 +29,9 @@ const compiled = () =>
 const fill = (text: string, vars?: Vars) => (vars ? text.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m)) : text);
 
 export function translate(lang: Lang, text: string, vars?: Vars): string {
+  if (isMessageId(text)) return fill(MESSAGES[text][lang], vars);
   if (lang === 'en') {
-    const hit = EN[text];
+    const hit = Object.hasOwn(EN, text) ? EN[text] : undefined;
     if (hit !== undefined) return fill(hit, vars);
     // Messages built on the server with numbers or names inside (e.g. errors) match by pattern.
     for (const [re, en] of EN_PATTERNS) {
